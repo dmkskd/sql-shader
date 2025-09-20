@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>SqlShader - DuckDB-WASM Shader</title>
+    <!-- This script enables SharedArrayBuffer, which is required for DuckDB-WASM. It must be served from the same origin. -->
+    <script src="coi-serviceworker.js"></script>
+  </head>
+  <body>
+    <h1>SqlShader - DuckDB-WASM Shader</h1>
+    <!-- The canvas where our DuckDB "shader" will be rendered -->
+    <canvas id="shader-canvas" width="640" height="360"></canvas>
+    <!-- 
+      An import map allows us to use "bare" module specifiers like in Node.js.
+      This is the modern way to resolve modules in the browser.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm"
+        }
+      }
+    </script>
+
+    <!-- Load the main application logic from an external file -->
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
