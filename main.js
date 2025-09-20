@@ -17,31 +17,41 @@ const main = async () => {
     -- Use CTEs (Common Table Expressions) to structure the logic
     WITH
     
-    -- 1. Generate a grid of pixel coordinates from (0,0) to (width, height)
+    -- 1. Define shader "uniforms" (inputs) once to avoid repetition.
+    -- This makes the parameter list from JavaScript much cleaner.
+    uniforms AS (
+      SELECT
+        ?::BIGINT AS width,
+        ?::BIGINT AS height,
+        ?::DOUBLE AS iTime,
+        ?::DOUBLE AS mx,
+        ?::DOUBLE AS my
+    ),
+
+    -- 2. Generate a grid of pixel coordinates from (0,0) to (width, height)
     pixels AS (
       SELECT
         i::DOUBLE AS x,
         j::DOUBLE AS y
-      FROM generate_series(0, ?::BIGINT) AS t(i)     -- width - 1
-      CROSS JOIN generate_series(0, ?::BIGINT) AS t2(j) -- height - 1
+      FROM generate_series(0, (SELECT width - 1 FROM uniforms)) AS t(i)
+      CROSS JOIN generate_series(0, (SELECT height - 1 FROM uniforms)) AS t2(j)
     ),
     
-    -- 2. Run the "shader" logic for each pixel
+    -- 3. Run the "shader" logic for each pixel, referencing the uniforms
     colors AS (
       SELECT
         -- Normalize coordinates to the 0.0 to 1.0 range
-        x / ? AS u, -- width
-        y / ? AS v, -- height
+        p.x / u.width AS u,
+        p.y / u.height AS v,
         
         -- Calculate RGB values using sine waves and iTime for animation
-        -- iMouse (mx, my) to influence the pattern.
-        0.5 + 0.5 * sin(SQRT(POW(x - ?::DOUBLE, 2) + POW(y - ?::DOUBLE, 2)) * 0.1 - ? * 2.0) AS r, -- mx, my, iTime
-        0.5 + 0.5 * sin(? * 1.5) AS g, -- iTime
-        0.5 + 0.5 * cos(SQRT(POW(x - ?::DOUBLE, 2) + POW(y - ?::DOUBLE, 2)) * 0.1 - ? * 2.0) AS b, -- mx, my, iTime
+        0.5 + 0.5 * sin(SQRT(POW(p.x - u.mx, 2) + POW(p.y - u.my, 2)) * 0.1 - u.iTime * 2.0) AS r,
+        0.5 + 0.5 * sin(u.iTime * 1.5) AS g,
+        0.5 + 0.5 * cos(SQRT(POW(p.x - u.mx, 2) + POW(p.y - u.my, 2)) * 0.1 - u.iTime * 2.0) AS b,
         
         -- Keep original coordinates for ordering
         x, y
-      FROM pixels
+      FROM pixels AS p, uniforms AS u
     )
     
     -- 3. Select the final color values, ensuring they are in the correct order for rendering
@@ -84,13 +94,14 @@ const main = async () => {
     const renderFrame = async () => {
       const iTime = (performance.now() - startTime) / 1000.0;
 
-      // Execute the prepared SQL statement with current parameters
+      // With the refactored SQL, the parameter list is now clean and simple.
+      // The order directly matches the 'uniforms' CTE.
       const result = await prepared.query(
-        resolution.width - 1, resolution.height - 1, // generate_series
-        resolution.width, resolution.height,         // normalization
-        iMouse.x, iMouse.y, iTime,                   // r channel
-        iTime,                                       // g channel
-        iMouse.x, iMouse.y, iTime                    // b channel
+        resolution.width,
+        resolution.height,
+        iTime,
+        iMouse.x,
+        iMouse.y
       );
 
       // --- High-Performance Data Transfer ---
