@@ -1,19 +1,31 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
 
 const main = async () => {
-  // Get the canvas and its context
+  // --- DOM Elements ---
   const canvas = document.getElementById('shader-canvas');
-  if (!canvas) {
-    console.error('Canvas element not found!');
-    return;
-  }
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  const resolution = { width: canvas.width, height: canvas.height };
+  const editorPane = document.querySelector('.editor-pane');
+  const editorTextarea = document.getElementById('sql-editor');
+  const statsPanel = document.getElementById('stats-panel');
+  const errorPanel = document.getElementById('error-panel');
+  const resizeHandle = document.getElementById('resize-handle');
 
-  // A simple SQL "shader" that creates a moving color pattern
-  // It generates a grid of pixels and calculates RGB values based on
-  // coordinates (x, y) and the current time (iTime).
-  const SHADER_SQL = `
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  let resolution = { width: canvas.width, height: canvas.height };
+
+  // --- Initialize CodeMirror ---
+  const editor = CodeMirror.fromTextArea(editorTextarea, {
+    mode: 'text/x-sql',
+    theme: 'material-darker',
+    lineNumbers: true,
+    lineWrapping: true,
+  });
+
+  // Move the error panel to be part of the CodeMirror DOM structure for correct layout
+  // editor.getWrapperElement().parentNode.appendChild(errorPanel);
+
+  // --- Initial SQL Shader ---
+  // This will be loaded into the editor.
+  const INITIAL_SHADER_SQL = `
     -- Use CTEs (Common Table Expressions) to structure the logic
     WITH
     
@@ -34,7 +46,7 @@ const main = async () => {
         i::DOUBLE AS x,
         j::DOUBLE AS y
       FROM generate_series(0, (SELECT width - 1 FROM uniforms)) AS t(i)
-      CROSS JOIN generate_series(0, (SELECT height - 1 FROM uniforms)) AS t2(j)
+      CROSS JOIN generate_series(0, (SELECT height - 1 FROM uniforms)) AS t2(j) -- Cross join to create a grid
     ),
     
     -- 3. Run the "shader" logic for each pixel, referencing the uniforms
@@ -45,20 +57,25 @@ const main = async () => {
         p.y / u.height AS v,
         
         -- Calculate RGB values using sine waves and iTime for animation
-        0.5 + 0.5 * sin(SQRT(POW(p.x - u.mx, 2) + POW(p.y - u.my, 2)) * 0.1 - u.iTime * 2.0) AS r,
+        0.5 + 0.5 * sin(sqrt(pow(p.x - u.mx, 2) + pow(p.y - u.my, 2)) * 0.1 - u.iTime * 2.0) AS r,
         0.5 + 0.5 * sin(u.iTime * 1.5) AS g,
-        0.5 + 0.5 * cos(SQRT(POW(p.x - u.mx, 2) + POW(p.y - u.my, 2)) * 0.1 - u.iTime * 2.0) AS b,
+        0.5 + 0.5 * cos(sqrt(pow(p.x - u.mx, 2) + pow(p.y - u.my, 2)) * 0.1 - u.iTime * 2.0) AS b,
         
         -- Keep original coordinates for ordering
         x, y
       FROM pixels AS p, uniforms AS u
     )
     
-    -- 3. Select the final color values, ensuring they are in the correct order for rendering
+    -- 4. Select the final color values, ensuring they are in the correct order for rendering
     SELECT r, g, b
     FROM colors
     ORDER BY y, x;
   `;
+
+  // --- Persist Code with localStorage ---
+  const LOCAL_STORAGE_KEY = 'duckdb-shader-sql';
+  const savedSql = localStorage.getItem(LOCAL_STORAGE_KEY);
+  editor.setValue(savedSql || INITIAL_SHADER_SQL.trim());
 
   try {
     // --- Database Initialization ---
@@ -77,25 +94,116 @@ const main = async () => {
 
     // Establish a persistent connection
     const c = await db.connect();
-    const prepared = await c.prepare(SHADER_SQL);
+    let prepared; // Will hold the currently valid prepared statement
 
-    // --- Animation Loop ---
-    const imageData = ctx.createImageData(resolution.width, resolution.height);
+    // --- Performance & Stats ---
+    const stats = {
+      fps: 0,
+      prepareTime: 0,
+      queryTime: 0,
+      elapsedTime: 0,
+    };
+    let frameCount = 0;
+    let lastStatsUpdate = performance.now();
+
+    const updateStatsPanel = () => {
+      // This function now only handles performance stats
+      statsPanel.textContent = `FPS: ${stats.fps.toFixed(1)} | Prepare: ${stats.prepareTime.toFixed(2)}ms | Query: ${stats.queryTime.toFixed(2)}ms | Resolution: ${resolution.width}x${resolution.height} | Time: ${stats.elapsedTime.toFixed(2)}s`;
+    };
+
+    const updateErrorPanel = (errorMessage) => {
+      errorPanel.textContent = errorMessage || '';
+      errorPanel.style.display = errorMessage ? 'block' : 'none';
+    };
+
+    // --- Live Editor Logic ---
+    let debounceTimer;
+    const updateShader = async () => {
+      const sql = editor.getValue();
+      try {
+        const t0 = performance.now();
+        // "Prepare" the SQL: This parses, validates, and creates an optimized
+        // execution plan for the query. It's the "compilation" step.
+        const newPrepared = await c.prepare(sql);
+        const t1 = performance.now();
+
+        // If successful, replace the old statement and clear errors
+        prepared = newPrepared;
+        stats.prepareTime = t1 - t0;
+        updateErrorPanel(null); // Clear any previous errors
+      } catch (e) {
+        // On failure, display the error and keep the old prepared statement
+        updateErrorPanel(e.message);
+        console.error("Shader compilation error:", e);
+      }
+      updateStatsPanel();
+    };
+
+    editor.on('change', () => {
+      // Save the current content to localStorage on every change
+      localStorage.setItem(LOCAL_STORAGE_KEY, editor.getValue());
+
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(updateShader, 300); // Debounce to avoid re-compiling on every keystroke
+    });
+
+    await updateShader(); // Initial shader compilation
+
+    // --- Animation & Rendering Loop ---
+    let imageData = ctx.createImageData(resolution.width, resolution.height);
     const startTime = performance.now();
     const iMouse = { x: resolution.width / 2, y: resolution.height / 2 };
 
-    // Add a mouse move listener to update the iMouse coordinates
     canvas.addEventListener('mousemove', (event) => {
       const rect = canvas.getBoundingClientRect();
       iMouse.x = event.clientX - rect.left;
       iMouse.y = event.clientY - rect.top;
     });
 
-    const renderFrame = async () => {
-      const iTime = (performance.now() - startTime) / 1000.0;
+    /**
+     * Sets up the logic for the draggable resize handle.
+     * @param {HTMLElement} handleEl The resize handle element.
+     * @param {HTMLElement} paneEl The grid pane element to resize.
+     * @param {() => void} onResizeEnd A callback to execute when resizing is finished.
+     */
+    const setupResizer = (handleEl, paneEl, onResizeEnd) => {
+      handleEl.addEventListener('mousedown', (e) => {
+        e.preventDefault();
 
-      // With the refactored SQL, the parameter list is now clean and simple.
-      // The order directly matches the 'uniforms' CTE.
+        const handleMouseMove = (moveEvent) => {
+          const canvasRect = canvas.getBoundingClientRect();
+          const newCanvasWidth = moveEvent.clientX - canvasRect.left;
+          if (newCanvasWidth > 100) {
+            paneEl.style.gridTemplateColumns = `${newCanvasWidth}px 6px 1fr`;
+          }
+        };
+
+        const handleMouseUp = () => {
+          window.removeEventListener('mousemove', handleMouseMove);
+          window.removeEventListener('mouseup', handleMouseUp);
+          onResizeEnd();
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+      });
+    };
+
+    // Initialize the resizer with a callback to update canvas state
+    setupResizer(resizeHandle, editorPane, () => {
+      resolution = { width: canvas.clientWidth, height: canvas.clientHeight };
+      canvas.width = resolution.width;
+      canvas.height = resolution.height;
+      imageData = ctx.createImageData(resolution.width, resolution.height);
+    });
+
+    const renderFrame = async (t) => {
+      const iTime = (performance.now() - startTime) / 1000.0;
+      stats.elapsedTime = iTime;
+
+      const t0 = performance.now();
+      // "Query" using the prepared statement: This executes the pre-compiled plan
+      // with the latest parameters. It's the "run" step.
       const result = await prepared.query(
         resolution.width,
         resolution.height,
@@ -103,6 +211,8 @@ const main = async () => {
         iMouse.x,
         iMouse.y
       );
+      const t1 = performance.now();
+      stats.queryTime = t1 - t0;
 
       // --- High-Performance Data Transfer ---
       // Instead of converting to an array of JS objects, we get direct access
@@ -121,12 +231,23 @@ const main = async () => {
       }
       ctx.putImageData(imageData, 0, 0);
 
+      // --- FPS Calculation ---
+      frameCount++;
+      const now = performance.now();
+      if (now - lastStatsUpdate > 1000) {
+        stats.fps = frameCount / ((now - lastStatsUpdate) / 1000);
+        lastStatsUpdate = now;
+        frameCount = 0;
+        updateStatsPanel();
+      }
+
       requestAnimationFrame(renderFrame); // Loop
     };
 
     requestAnimationFrame(renderFrame); // Start the animation
   } catch (e) {
     console.error(e);
+    statsPanel.textContent = `FATAL ERROR: ${e.message}`;
   }
 };
 

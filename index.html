@@ -2,14 +2,88 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>SqlShader - DuckDB-WASM Shader</title>
+    <title>DuckDB Live Shader Editor</title>
     <!-- This script enables SharedArrayBuffer, which is required for DuckDB-WASM. It must be served from the same origin. -->
     <script src="coi-serviceworker.js"></script>
+    <!-- CodeMirror for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+
+    <style>
+      body { font-family: sans-serif; margin: 0; background-color: #222; color: #eee; }
+      header {
+        padding: 10px 15px;
+        background-color: #1a1a1a;
+        border-bottom: 1px solid #444;
+        font-size: 1.2em;
+        font-weight: bold;
+        flex-shrink: 0; /* Prevent header from shrinking */
+      }
+      .main-container { display: flex; flex-direction: column; height: 100vh; }
+      .editor-pane {
+        display: grid;
+        grid-template-columns: 640px 6px 1fr; /* canvas | handle | editor */
+        flex-grow: 1;
+        overflow: hidden; /* Prevent content from overflowing */
+      }
+      .right-pane { display: flex; flex-direction: column; flex: 1; min-width: 0; /* Let this pane grow to fill remaining space */ }
+      #resize-handle {
+        width: 6px;
+        background-color: #444;
+        cursor: col-resize;
+        user-select: none; /* Prevent text selection during drag */
+      }
+      #shader-canvas {
+        background-color: black;
+        width: 100%; /* Fill the grid cell width */
+        aspect-ratio: 640 / 480; /* Maintain aspect ratio based on height */
+        /* The canvas will now fill the 640px width and its height will adjust based on aspect-ratio */
+        /* This ensures the editor always has space */
+        image-rendering: pixelated; /* For crisp pixels when resizing */
+      }
+      /* CodeMirror styling */
+      .CodeMirror {
+        flex-grow: 1; /* Allow editor to take up available space */
+        font-family: monospace;
+        font-size: 14px;
+        height: auto; /* Let flexbox control the height */
+        min-height: 0; /* Important for flexbox shrinking */
+      }
+      #error-panel {
+        display: none; /* Hidden by default */
+        padding: 10px;
+        flex-shrink: 0; /* Prevent the error panel from shrinking away */
+        background-color: #5c2828; /* Dark red for errors */
+        color: #ffc2c2;
+        font-family: monospace;
+        white-space: pre-wrap; /* Wrap long error messages */
+        max-height: 150px; /* Prevent it from taking too much space */
+        overflow-y: auto;
+      }
+      #stats-panel {
+        flex-shrink: 0;
+        padding: 10px;
+        background-color: #333;
+        font-family: monospace;
+        white-space: pre;
+      }
+    </style>
   </head>
   <body>
-    <h1>SqlShader - DuckDB-WASM Shader</h1>
-    <!-- The canvas where our DuckDB "shader" will be rendered -->
-    <canvas id="shader-canvas" width="640" height="360"></canvas>
+    <div class="main-container">
+      <header>DuckDB Live Shader</header>
+      <div class="editor-pane">
+        <canvas id="shader-canvas" width="640" height="480"></canvas>
+        <div id="resize-handle"></div>
+        <div class="right-pane">
+          <textarea id="sql-editor" spellcheck="false"></textarea>
+          <div id="error-panel"></div>
+        </div>
+      </div>
+      <div id="stats-panel">Initializing...</div>
+    </div>
     <!-- 
       An import map allows us to use "bare" module specifiers like in Node.js.
       This is the modern way to resolve modules in the browser.
