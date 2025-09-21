@@ -43,7 +43,11 @@
       .editor-pane.editor-hidden .right-pane {
         display: none;
       }
-      .right-pane { display: flex; flex-direction: column; flex: 1; min-width: 0; /* Let this pane grow to fill remaining space */ }
+      .right-pane {
+        display: flex; flex-direction: column; flex: 1; min-width: 0;
+        /* Make this container scroll, not CodeMirror itself */
+        overflow-y: auto;
+      }
       #resize-handle {
         width: 6px;
         background-color: #444;
@@ -61,21 +65,26 @@
       /* CodeMirror styling */
       .CodeMirror {
         flex-grow: 1; /* Allow editor to take up available space */
+        /* Let the editor grow to its full content height */
+        height: auto;
         font-family: monospace;
         font-size: 14px;
-        height: auto; /* Let flexbox control the height */
-        min-height: 0; /* Important for flexbox shrinking */
       }
       #error-panel {
-        display: none; /* Hidden by default */
         padding: 10px;
         flex-shrink: 0; /* Prevent the error panel from shrinking away */
-        background-color: #5c2828; /* Dark red for errors */
-        color: #ffc2c2;
         font-family: monospace;
         white-space: pre-wrap; /* Wrap long error messages */
         max-height: 150px; /* Prevent it from taking too much space */
         overflow-y: auto;
+      }
+      #error-panel.error {
+        background-color: #5c2828; /* Dark red for errors */
+        color: #ffc2c2;
+      }
+      #error-panel.success {
+        background-color: #2a4a3a;
+        color: #b3ffb3;
       }
       #stats-panel {
         flex-shrink: 0;
@@ -99,6 +108,11 @@
         cursor: pointer;
         font-size: 0.9em;
         border-radius: 3px;
+        transition: transform 0.05s ease-in-out;
+      }
+      #controls-bar button:active {
+        transform: translateY(1px); /* Give a "pressed" effect */
+        background-color: #4a4a4a; /* Slightly darken the button */
       }
       #controls-bar select {
         padding: 5px;
@@ -124,6 +138,7 @@
         <button id="play-toggle-button">❚❚ Stop</button>
         <button id="restart-button">↺ Restart</button>
         <select id="shader-select"></select>
+        <select id="resolution-select"></select>
         <button id="toggle-editor-button">Toggle Editor</button>
       </div>
       <div id="stats-panel">Initializing...</div>
