@@ -21,12 +21,27 @@
         font-weight: bold;
         flex-shrink: 0; /* Prevent header from shrinking */
       }
+      header #version-span {
+        font-size: 0.7em;
+        color: #999;
+        font-weight: normal;
+        margin-left: 8px;
+      }
       .main-container { display: flex; flex-direction: column; height: 100vh; }
       .editor-pane {
         display: grid;
         grid-template-columns: 640px 6px 1fr; /* canvas | handle | editor */
         flex-grow: 1;
         overflow: hidden; /* Prevent content from overflowing */
+      }
+      /* When the editor is hidden, the canvas column takes up all the space */
+      .editor-pane.editor-hidden {
+        grid-template-columns: 1fr;
+      }
+      /* Hide the handle and right pane when the parent has the .editor-hidden class */
+      .editor-pane.editor-hidden #resize-handle,
+      .editor-pane.editor-hidden .right-pane {
+        display: none;
       }
       .right-pane { display: flex; flex-direction: column; flex: 1; min-width: 0; /* Let this pane grow to fill remaining space */ }
       #resize-handle {
@@ -69,11 +84,34 @@
         font-family: monospace;
         white-space: pre;
       }
+      #controls-bar {
+        padding: 8px 15px;
+        background-color: #282828;
+        border-top: 1px solid #444;
+        flex-shrink: 0;
+      }
+      #controls-bar button {
+        padding: 5px 12px;
+        margin-right: 10px;
+        background-color: #555;
+        color: #eee;
+        border: 1px solid #666;
+        cursor: pointer;
+        font-size: 0.9em;
+        border-radius: 3px;
+      }
+      #controls-bar select {
+        padding: 5px;
+        background-color: #555;
+        color: #eee;
+      }
     </style>
   </head>
   <body>
     <div class="main-container">
-      <header>DuckDB Live Shader</header>
+      <header>
+        DuckDB Live Shader <span id="version-span"></span>
+      </header>
       <div class="editor-pane">
         <canvas id="shader-canvas" width="640" height="480"></canvas>
         <div id="resize-handle"></div>
@@ -81,6 +119,12 @@
           <textarea id="sql-editor" spellcheck="false"></textarea>
           <div id="error-panel"></div>
         </div>
+      </div>
+      <div id="controls-bar">
+        <button id="play-toggle-button">❚❚ Stop</button>
+        <button id="restart-button">↺ Restart</button>
+        <select id="shader-select"></select>
+        <button id="toggle-editor-button">Toggle Editor</button>
       </div>
       <div id="stats-panel">Initializing...</div>
     </div>
@@ -91,7 +135,8 @@
     <script type="importmap">
       {
         "imports": {
-          "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm"
+          "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm",
+          "@apache/arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@latest/+esm"
         }
       }
     </script>
