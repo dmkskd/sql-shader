@@ -46,6 +46,11 @@ if(typeof window === 'undefined'){
             return;
         }
 
+        // If the request is not for the same origin, do not intercept it.
+        if (!event.request.url.startsWith(self.location.origin)) {
+            return;
+        }
+
         event.respondWith(fetch(event.request).then(response => {
             if (response.status === 0) {
                 return response;
