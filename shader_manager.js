@@ -55,13 +55,26 @@ export class ShaderManager {
                     const width = parseInt(customSizeMatch[1], 10);
                     const height = parseInt(customSizeMatch[2], 10);
                     const customResName = `Custom (${width}x${height})`;
-                    const option = document.createElement('option');
-                    option.value = RESOLUTIONS.length;
-                    option.textContent = customResName;
-                    dom.resolutionSelect.appendChild(option);
-                    dom.resolutionSelect.value = option.value;
-                    RESOLUTIONS.push({ name: customResName, width, height });
-                    settingsChanged = true;
+
+                    // Check if this custom resolution already exists to prevent duplicates.
+                    const existingIndex = RESOLUTIONS.findIndex(r => r.width === width && r.height === height);
+
+                    if (existingIndex !== -1) {
+                        // It already exists, just select it.
+                        if (dom.resolutionSelect.value != existingIndex) {
+                            dom.resolutionSelect.value = existingIndex;
+                            settingsChanged = true;
+                        }
+                    } else {
+                        // It's a new custom resolution, so add it.
+                        const option = document.createElement('option');
+                        option.value = RESOLUTIONS.length;
+                        option.textContent = customResName;
+                        dom.resolutionSelect.appendChild(option);
+                        RESOLUTIONS.push({ name: customResName, width, height });
+                        dom.resolutionSelect.value = option.value;
+                        settingsChanged = true;
+                    }
                 } else {
                     const resIndex = RESOLUTIONS.findIndex(r => r.name.startsWith(resValue));
                     if (resIndex !== -1 && dom.resolutionSelect.value != resIndex) {

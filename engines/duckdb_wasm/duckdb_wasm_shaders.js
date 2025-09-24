@@ -55,216 +55,9 @@ SELECT r, g, b FROM colors ORDER BY y, x;`
   {
     name: 'Raymarched Sphere',
     sql: `
--- "Raymarched Sphere" - Renders a 3D scene using a raymarching loop.
--- This is implemented with a RECURSIVE Common Table Expression (CTE).
-
-WITH RECURSIVE
-  uniforms AS (
-    SELECT
-      ?::BIGINT AS width, ?::BIGINT AS height,
-      ?::DOUBLE AS iTime, ?::DOUBLE AS mx, ?::DOUBLE AS my
-  ),
-  -- 1. Define the unnormalized ray direction for each pixel
-  rays_unnormalized AS (
-    SELECT
-      i::DOUBLE AS x,
-      j::DOUBLE AS y,
-      [
-        (i - (SELECT width / 2.0 FROM uniforms)) / (SELECT width FROM uniforms),
-        (j - (SELECT height / 2.0 FROM uniforms)) / (SELECT height FROM uniforms),
-        -1.0
-      ] AS unnormalized_rd
-    FROM generate_series(0, (SELECT width - 1 FROM uniforms)) AS t(i)
-    CROSS JOIN generate_series(0, (SELECT height - 1 FROM uniforms)) AS t2(j)
-  ),
-  -- 2. For each pixel, define a ray with an origin (ro) and a normalized direction (rd)
-  rays AS (
-    SELECT
-      x, y,
-      (SELECT iTime FROM uniforms) AS iTime,
-      [0.0, 0.0, -5.0] AS ro, -- Ray Origin (camera position), moved in front of the scene
-      list_apply(unnormalized_rd, val -> val / length(unnormalized_rd)) AS rd -- Manually normalize the vector
-    FROM rays_unnormalized
-  ),
-  -- 3. The Raymarching Loop, implemented as a recursive CTE
-  raymarch(x, y, ro, rd, iTime, step, t) AS (
-    -- Base case: Start at step 0 with distance 0 for every ray
-    SELECT x, y, ro, rd, iTime, 0::DOUBLE, 0.0::DOUBLE
-    FROM rays
-    UNION ALL
-    -- This is the correct and direct recursive step.
-    -- The SDF is calculated once and used in both SELECT and WHERE.
-    SELECT
-      x, y, ro, rd, iTime, step + 1,
-      t + (length([(ro + list_apply(rd, val -> val * t))[1] - 0.0, (ro + list_apply(rd, val -> val * t))[2] - 0.0, (ro + list_apply(rd, val -> val * t))[3] - 1.0]) - (0.5 + 0.25 * sin(iTime * 2.0)))
-    FROM raymarch
-    -- Conditions to continue marching:
-    WHERE step < 50 AND t < 100.0 AND (length([(ro + list_apply(rd, val -> val * t))[1] - 0.0, (ro + list_apply(rd, val -> val * t))[2] - 0.0, (ro + list_apply(rd, val -> val * t))[3] - 1.0]) - (0.5 + 0.25 * sin(iTime * 2.0))) > 0.001
-  ),
-  -- 4. Find the final state for each ray (the point where it hit or missed)
-  hits AS (
-    SELECT x, y, step, t,
-      -- Use ROW_NUMBER to find the last step for each pixel's ray
-      ROW_NUMBER() OVER (PARTITION BY x, y ORDER BY step DESC) as rn
-    FROM raymarch
-  ),
-  -- 5. Calculate the final color for each pixel
-  colors AS (
-    SELECT
-      -- If the ray hit the sphere (step < max_steps), color it based on distance. Otherwise, black.
-      greatest(CASE WHEN step < 50 THEN 1.0 - (t / 10.0) ELSE 0.0 END, 0.0) AS r,
-      greatest(CASE WHEN step < 50 THEN 1.0 - (t / 12.0) ELSE 0.0 END, 0.0) AS g,
-      greatest(CASE WHEN step < 50 THEN 1.0 - (t / 8.0) ELSE 0.0 END, 0.0) AS b,
-      x, y
-    FROM hits
-    WHERE rn = 1 -- Only consider the final step for each ray
-  )
-SELECT r, g, b FROM colors ORDER BY y, x;`
-  }
-,
-  {
-    name: 'Debug Raymarch (Directions)',
-    sql: `
--- "Debug Raymarch" - A debugging tool to visualize ray directions.
--- This query is fast because it removes the slow recursive raymarching loop.
--- It colors pixels based on the initial ray direction (rd) vector.
--- Red = rd.x, Green = rd.y, Blue = rd.z
-
-WITH
-  uniforms AS (
-    SELECT
-      ?::BIGINT AS width, ?::BIGINT AS height,
-      ?::DOUBLE AS iTime, ?::DOUBLE AS mx, ?::DOUBLE AS my
-  ),
-  rays_unnormalized AS (
-    SELECT
-      i::DOUBLE AS x, j::DOUBLE AS y,
-      [
-        (i - (SELECT width / 2.0 FROM uniforms)) / (SELECT width FROM uniforms),
-        (j - (SELECT height / 2.0 FROM uniforms)) / (SELECT height FROM uniforms),
-        -1.0
-      ] AS unnormalized_rd
-    FROM generate_series(0, (SELECT width - 1 FROM uniforms)) AS t(i)
-    CROSS JOIN generate_series(0, (SELECT height - 1 FROM uniforms)) AS t2(j)
-  ),
-  rays_normalized AS (
-    SELECT
-      x, y,
-      list_apply(unnormalized_rd, val -> val / length(unnormalized_rd)) AS rd
-    FROM rays_unnormalized
-  ),
-  colors AS (
-    SELECT
-      x, y,
-      -- Manually normalize the vector and map its components to colors
-      -- Map the normalized vector components to RGB colors
-      rd[1] * 0.5 + 0.5 AS r,
-      rd[2] * 0.5 + 0.5 AS g,
-      abs(rd[3]) AS b
-    FROM rays_normalized
-  )
-SELECT r, g, b FROM colors ORDER BY y, x;`
-  }
-,
-  {
-    name: 'Debug Raymarch (Steps)',
-    sql: `
--- "Debug Raymarch (Steps)" - Visualizes the number of steps each ray takes.
--- This helps debug if rays are hitting the object or timing out.
--- Bright areas = max steps (miss). Dark areas = fewer steps (hit).
-
-WITH RECURSIVE
-  uniforms AS (
-    SELECT
-      ?::BIGINT AS width, ?::BIGINT AS height,
-      ?::DOUBLE AS iTime, ?::DOUBLE AS mx, ?::DOUBLE AS my
-  ),
-  rays_unnormalized AS (
-    SELECT i::DOUBLE AS x, j::DOUBLE AS y, [ (i - (SELECT width / 2.0 FROM uniforms)) / (SELECT width FROM uniforms), (j - (SELECT height / 2.0 FROM uniforms)) / (SELECT height FROM uniforms), -1.0 ] AS unnormalized_rd
-    FROM generate_series(0, (SELECT width - 1 FROM uniforms)) AS t(i)
-    CROSS JOIN generate_series(0, (SELECT height - 1 FROM uniforms)) AS t2(j)
-  ),
-  rays AS (
-    SELECT x, y, (SELECT iTime FROM uniforms) AS iTime, [0.0, 0.0, -5.0] AS ro, list_apply(unnormalized_rd, val -> val / length(unnormalized_rd)) AS rd
-    FROM rays_unnormalized
-  ),
-  raymarch(x, y, ro, rd, iTime, step, t) AS (
-    SELECT x, y, ro, rd, iTime, 0::DOUBLE, 0.0::DOUBLE FROM rays
-    UNION ALL
-    SELECT x, y, ro, rd, iTime, step + 1, t + sdf_dist
-    FROM (
-      SELECT *,
-        length([(ro + list_apply(rd, val -> val * t))[1] - 0.0, (ro + list_apply(rd, val -> val * t))[2] - 0.0, (ro + list_apply(rd, val -> val * t))[3] - 1.0]) - (0.5 + 0.25 * sin(iTime * 2.0)) AS sdf_dist
-      FROM raymarch
-    )
-    WHERE step < 50 AND t < 100.0 AND sdf_dist > 0.001
-  ),
-  hits AS (
-    SELECT x, y, step,
-      ROW_NUMBER() OVER (PARTITION BY x, y ORDER BY step DESC) as rn
-    FROM raymarch
-  ),
-  colors AS (
-    SELECT
-      -- Visualize the number of steps taken, normalized to a 0-1 range.
-      step / 50.0 AS r,
-      step / 50.0 AS g,
-      step / 50.0 AS b,
-      x, y
-    FROM hits
-    WHERE rn = 1
-  )
-SELECT r, g, b FROM colors ORDER BY y, x;`
-  }
-,
-  {
-    name: 'Debug SDF (1st Step)',
-    sql: `
--- "Debug SDF (1st Step)" - Visualizes the result of the FIRST SDF calculation.
--- This is a fast, critical debugging tool. It removes the slow recursion.
--- A dark circle in the middle means the SDF calculation is correct.
-
-WITH
-  uniforms AS (
-    SELECT
-      ?::BIGINT AS width, ?::BIGINT AS height,
-      ?::DOUBLE AS iTime, ?::DOUBLE AS mx, ?::DOUBLE AS my
-  ),
-  rays_unnormalized AS (
-    SELECT i::DOUBLE AS x, j::DOUBLE AS y, [ (i - (SELECT width / 2.0 FROM uniforms)) / (SELECT width FROM uniforms), (j - (SELECT height / 2.0 FROM uniforms)) / (SELECT height FROM uniforms), -1.0 ] AS unnormalized_rd
-    FROM generate_series(0, (SELECT width - 1 FROM uniforms)) AS t(i)
-    CROSS JOIN generate_series(0, (SELECT height - 1 FROM uniforms)) AS t2(j)
-  ),
-  rays AS (
-    SELECT x, y, (SELECT iTime FROM uniforms) AS iTime, [0.0, 0.0, -5.0] AS ro, list_apply(unnormalized_rd, val -> val / length(unnormalized_rd)) AS rd
-    FROM rays_unnormalized
-  ),
-  -- Calculate the SDF for the initial ray position (t=0)
-  first_step_sdf AS (
-    SELECT
-      x, y,
-      -- Calculate SDF from the point on the view plane, not the camera origin.
-      -- The point on the view plane is ro + rd * initial_distance. Let's use a distance of 4.
-      length([(ro + list_apply(rd, val -> val * 4.0))[1] - 0.0, (ro + list_apply(rd, val -> val * 4.0))[2] - 0.0, (ro + list_apply(rd, val -> val * 4.0))[3] - 1.0]) - (0.5 + 0.25 * sin(iTime * 2.0)) AS sdf_dist
-    FROM rays
-  ),
-  colors AS (
-    SELECT
-      -- Visualize the SDF distance, clamped to a 0-1 range.
-      greatest(sdf_dist / 5.0, 0.0) AS r,
-      greatest(sdf_dist / 5.0, 0.0) AS g,
-      greatest(sdf_dist / 5.0, 0.0) AS b,
-      x, y
-    FROM first_step_sdf
-  )
-SELECT r, g, b FROM colors ORDER BY y, x;`
-  }
-,
-  {
-    name: 'Simple Raymarch Check',
-    sql: `
--- "Simple Raymarch Check" - A simplified, non-recursive raymarcher for debugging.
--- It checks a fixed number of points along each ray to see if they intersect the sphere.
+-- DuckDB Raymarching Sphere + Box with Metaball Blending
+-- Returns RGB color values for each pixel
+-- @run: resolution=80x60, zoom=4
 
 WITH
 uniforms AS (
@@ -283,151 +76,275 @@ pixels AS (
         (x::DOUBLE / u.width) * 2.0 - 1.0 as screen_x,
         (y::DOUBLE / u.height) * 2.0 - 1.0 as screen_y,
         
-        -- Simple camera setup (fixed position)
+        -- Simple camera setup
         0.0 as cam_x,
         0.0 as cam_y, 
         -3.0 as cam_z,
         
-        -- Simple sphere (fixed at origin)
-        0.0 as sphere_x,
-        0.0 as sphere_y,
-        0.0 as sphere_z,
-        1.0 as sphere_radius
+        -- ANIMATED sphere
+        sin(u.iTime * 1.2) * 0.8 as sphere_x,              
+        cos(u.iTime * 0.8) * 0.4 as sphere_y,        
+        sin(u.iTime * 0.5) * 0.3 as sphere_z,        
+        0.6 + sin(u.iTime * 2.0) * 0.2 as sphere_radius,
+        
+        -- ANIMATED spinning box (counter-orbiting with rotation)
+        -sin(u.iTime * 0.9) * 0.9 as box_center_x,          
+        sin(u.iTime * 1.1) * 0.5 as box_center_y,           
+        cos(u.iTime * 0.7) * 0.4 as box_center_z,           
+        0.4 + sin(u.iTime * 1.8) * 0.15 as box_size,
+        
+        -- Box rotation angles
+        u.iTime * 1.3 as box_rot_x,  -- Spin around X axis
+        u.iTime * 0.8 as box_rot_y,  -- Spin around Y axis  
+        u.iTime * 1.1 as box_rot_z,  -- Spin around Z axis
+        
+        -- Metaball blending strength
+        0.3 as blend_strength
         
     FROM uniforms u
     CROSS JOIN generate_series(0, u.width - 1) as t(x)
     CROSS JOIN generate_series(0, u.height - 1) as s(y)
 ),
 
--- Calculate ray directions and intersections
-intersections AS (
+-- Raymarching with metaball SDF blending
+hits AS (
     SELECT 
-        x, y,
-        screen_x, screen_y,
+        x, y, iTime,
         
-        -- Ray direction (simple orthographic-like projection)
-        screen_x as ray_x,
-        screen_y as ray_y,
-        1.0 as ray_z,  -- Looking down positive Z
+        -- Find the hit point using metaball blending
+        COALESCE(
+            (SELECT step * 0.025
+             FROM (
+                SELECT 
+                    step,
+                    -- Current ray position
+                    cam_x + screen_x + screen_x * (step * 0.025) as ray_x,
+                    cam_y + screen_y + screen_y * (step * 0.025) as ray_y,
+                    cam_z + 1.0 * (step * 0.025) as ray_z,
+                    
+                    -- Distance to sphere (SDF)
+                    sqrt(
+                        power(cam_x + screen_x + screen_x * (step * 0.025) - sphere_x, 2) +
+                        power(cam_y + screen_y + screen_y * (step * 0.025) - sphere_y, 2) + 
+                        power(cam_z + 1.0 * (step * 0.025) - sphere_z, 2)
+                    ) - sphere_radius as sphere_dist,
+                    
+                    -- Distance to spinning box (SDF with rotation)
+                    -- First translate to box center
+                    cam_x + screen_x + screen_x * (step * 0.025) - box_center_x as box_local_x,
+                    cam_y + screen_y + screen_y * (step * 0.025) - box_center_y as box_local_y,
+                    cam_z + 1.0 * (step * 0.025) - box_center_z as box_local_z,
+                    
+                    -- Apply rotation (simplified - just Y rotation for performance)
+                    (cam_x + screen_x + screen_x * (step * 0.025) - box_center_x) * cos(box_rot_y) - 
+                    (cam_z + 1.0 * (step * 0.025) - box_center_z) * sin(box_rot_y) as rotated_box_x,
+                    
+                    cam_y + screen_y + screen_y * (step * 0.025) - box_center_y as rotated_box_y,
+                    
+                    (cam_x + screen_x + screen_x * (step * 0.025) - box_center_x) * sin(box_rot_y) + 
+                    (cam_z + 1.0 * (step * 0.025) - box_center_z) * cos(box_rot_y) as rotated_box_z,
+                    
+                    -- Box SDF on rotated coordinates
+                    GREATEST(
+                        abs((cam_x + screen_x + screen_x * (step * 0.025) - box_center_x) * cos(box_rot_y) - 
+                            (cam_z + 1.0 * (step * 0.025) - box_center_z) * sin(box_rot_y)) - box_size,
+                        abs(cam_y + screen_y + screen_y * (step * 0.025) - box_center_y) - box_size,
+                        abs((cam_x + screen_x + screen_x * (step * 0.025) - box_center_x) * sin(box_rot_y) + 
+                            (cam_z + 1.0 * (step * 0.025) - box_center_z) * cos(box_rot_y)) - box_size
+                    ) as box_dist,
+                    
+                    -- METABALL BLENDING: Smooth minimum function
+                    -- smin(a,b,k) = -log(exp(-k*a) + exp(-k*b))/k
+                    -- Approximation: min(a,b) - smoothstep blend
+                    LEAST(
+                        sqrt(
+                            power(cam_x + screen_x + screen_x * (step * 0.025) - sphere_x, 2) +
+                            power(cam_y + screen_y + screen_y * (step * 0.025) - sphere_y, 2) + 
+                            power(cam_z + 1.0 * (step * 0.025) - sphere_z, 2)
+                        ) - sphere_radius,
+                        GREATEST(
+                            abs((cam_x + screen_x + screen_x * (step * 0.025) - box_center_x) * cos(box_rot_y) - 
+                                (cam_z + 1.0 * (step * 0.025) - box_center_z) * sin(box_rot_y)) - box_size,
+                            abs(cam_y + screen_y + screen_y * (step * 0.025) - box_center_y) - box_size,
+                            abs((cam_x + screen_x + screen_x * (step * 0.025) - box_center_x) * sin(box_rot_y) + 
+                                (cam_z + 1.0 * (step * 0.025) - box_center_z) * cos(box_rot_y)) - box_size
+                        )
+                    ) - 
+                    -- Smooth blending term
+                    blend_strength * exp(-
+                        power(
+                            sqrt(
+                                power(cam_x + screen_x + screen_x * (step * 0.025) - sphere_x, 2) +
+                                power(cam_y + screen_y + screen_y * (step * 0.025) - sphere_y, 2) + 
+                                power(cam_z + 1.0 * (step * 0.025) - sphere_z, 2)
+                            ) - sphere_radius -
+                            GREATEST(
+                                abs((cam_x + screen_x + screen_x * (step * 0.025) - box_center_x) * cos(box_rot_y) - 
+                                    (cam_z + 1.0 * (step * 0.025) - box_center_z) * sin(box_rot_y)) - box_size,
+                                abs(cam_y + screen_y + screen_y * (step * 0.025) - box_center_y) - box_size,
+                                abs((cam_x + screen_x + screen_x * (step * 0.025) - box_center_x) * sin(box_rot_y) + 
+                                    (cam_z + 1.0 * (step * 0.025) - box_center_z) * cos(box_rot_y)) - box_size
+                            ), 2
+                        ) / 0.5
+                    ) as metaball_dist
+                    
+                FROM generate_series(0, 100) as t(step)
+             ) distances
+             WHERE metaball_dist <= 0.05
+             ORDER BY step
+             LIMIT 1),
+            -1.0
+        ) as hit_distance,
         
-        cam_x, cam_y, cam_z,
-        sphere_x, sphere_y, sphere_z, sphere_radius
+        cam_x + screen_x as ray_start_x,
+        cam_y + screen_y as ray_start_y,
+        cam_z as ray_start_z,
+        
+        sphere_x, sphere_y, sphere_z, sphere_radius,
+        box_center_x, box_center_y, box_center_z, box_size, box_rot_x, box_rot_y, box_rot_z,
+        screen_x, screen_y
         
     FROM pixels
 ),
 
--- Simple distance check (instead of complex quadratic)
-hits AS (
+-- Calculate lighting for the blended surface
+lighting AS (
     SELECT 
-        x, y,
+        x, y, iTime,
+        CASE WHEN hit_distance > 0 THEN 1 ELSE 0 END as hit,
+        hit_distance,
         
-        -- Test multiple points along the ray
-        CASE 
-            WHEN EXISTS (
-                SELECT 1 FROM generate_series(0, 50) as t(step)
-                WHERE sqrt(
-                    power(cam_x + screen_x + ray_x * (step * 0.1) - sphere_x, 2) +
-                    power(cam_y + screen_y + ray_y * (step * 0.1) - sphere_y, 2) + 
-                    power(cam_z + ray_z * (step * 0.1) - sphere_z, 2)
-                ) <= sphere_radius + 0.1
-            ) THEN 1
-            ELSE 0
-        END as hit
+        -- Hit position in world space
+        ray_start_x + screen_x * hit_distance as hit_x,
+        ray_start_y + screen_y * hit_distance as hit_y,
+        ray_start_z + 1.0 * hit_distance as hit_z,
         
-    FROM intersections
+        -- Approximate surface normal (gradient of the metaball field)
+        CASE WHEN hit_distance > 0 THEN
+            -- Blend between sphere and box normals based on proximity
+            CASE 
+                WHEN sqrt(power(ray_start_x + screen_x * hit_distance - sphere_x, 2) + 
+                         power(ray_start_y + screen_y * hit_distance - sphere_y, 2) + 
+                         power(ray_start_z + 1.0 * hit_distance - sphere_z, 2)) - sphere_radius < 
+                     GREATEST(abs((ray_start_x + screen_x * hit_distance - box_center_x) * cos(box_rot_y) - 
+                                 (ray_start_z + 1.0 * hit_distance - box_center_z) * sin(box_rot_y)) - box_size,
+                             abs(ray_start_y + screen_y * hit_distance - box_center_y) - box_size,
+                             abs((ray_start_x + screen_x * hit_distance - box_center_x) * sin(box_rot_y) + 
+                                 (ray_start_z + 1.0 * hit_distance - box_center_z) * cos(box_rot_y)) - box_size)
+                THEN
+                    -- Closer to sphere - use sphere normal
+                    (ray_start_x + screen_x * hit_distance - sphere_x) / sphere_radius * 0.7
+                ELSE
+                    -- Closer to spinning box - use rotated box normal  
+                    CASE 
+                        WHEN abs((ray_start_x + screen_x * hit_distance - box_center_x) * cos(box_rot_y) - 
+                                 (ray_start_z + 1.0 * hit_distance - box_center_z) * sin(box_rot_y)) >= 
+                             GREATEST(abs(ray_start_y + screen_y * hit_distance - box_center_y), 
+                                     abs((ray_start_x + screen_x * hit_distance - box_center_x) * sin(box_rot_y) + 
+                                         (ray_start_z + 1.0 * hit_distance - box_center_z) * cos(box_rot_y)))
+                        THEN SIGN((ray_start_x + screen_x * hit_distance - box_center_x) * cos(box_rot_y) - 
+                                  (ray_start_z + 1.0 * hit_distance - box_center_z) * sin(box_rot_y)) * 0.5
+                        ELSE 0.0
+                    END
+            END
+        ELSE 0.0 END as normal_x,
+        
+        CASE WHEN hit_distance > 0 THEN
+            CASE 
+                WHEN sqrt(power(ray_start_x + screen_x * hit_distance - sphere_x, 2) + 
+                         power(ray_start_y + screen_y * hit_distance - sphere_y, 2) + 
+                         power(ray_start_z + 1.0 * hit_distance - sphere_z, 2)) - sphere_radius < 
+                     GREATEST(abs((ray_start_x + screen_x * hit_distance - box_center_x) * cos(box_rot_y) - 
+                                 (ray_start_z + 1.0 * hit_distance - box_center_z) * sin(box_rot_y)) - box_size,
+                             abs(ray_start_y + screen_y * hit_distance - box_center_y) - box_size,
+                             abs((ray_start_x + screen_x * hit_distance - box_center_x) * sin(box_rot_y) + 
+                                 (ray_start_z + 1.0 * hit_distance - box_center_z) * cos(box_rot_y)) - box_size)
+                THEN
+                    (ray_start_y + screen_y * hit_distance - sphere_y) / sphere_radius * 0.7
+                ELSE
+                    CASE 
+                        WHEN abs(ray_start_y + screen_y * hit_distance - box_center_y) >= 
+                             GREATEST(abs((ray_start_x + screen_x * hit_distance - box_center_x) * cos(box_rot_y) - 
+                                         (ray_start_z + 1.0 * hit_distance - box_center_z) * sin(box_rot_y)), 
+                                     abs((ray_start_x + screen_x * hit_distance - box_center_x) * sin(box_rot_y) + 
+                                         (ray_start_z + 1.0 * hit_distance - box_center_z) * cos(box_rot_y)))
+                        THEN SIGN(ray_start_y + screen_y * hit_distance - box_center_y) * 0.5
+                        ELSE 0.0
+                    END
+            END
+        ELSE 0.0 END as normal_y,
+        
+        CASE WHEN hit_distance > 0 THEN
+            CASE 
+                WHEN sqrt(power(ray_start_x + screen_x * hit_distance - sphere_x, 2) + 
+                         power(ray_start_y + screen_y * hit_distance - sphere_y, 2) + 
+                         power(ray_start_z + 1.0 * hit_distance - sphere_z, 2)) - sphere_radius < 
+                     GREATEST(abs((ray_start_x + screen_x * hit_distance - box_center_x) * cos(box_rot_y) - 
+                                 (ray_start_z + 1.0 * hit_distance - box_center_z) * sin(box_rot_y)) - box_size,
+                             abs(ray_start_y + screen_y * hit_distance - box_center_y) - box_size,
+                             abs((ray_start_x + screen_x * hit_distance - box_center_x) * sin(box_rot_y) + 
+                                 (ray_start_z + 1.0 * hit_distance - box_center_z) * cos(box_rot_y)) - box_size)
+                THEN
+                    (ray_start_z + 1.0 * hit_distance - sphere_z) / sphere_radius * 0.7
+                ELSE
+                    CASE 
+                        WHEN abs((ray_start_x + screen_x * hit_distance - box_center_x) * sin(box_rot_y) + 
+                                 (ray_start_z + 1.0 * hit_distance - box_center_z) * cos(box_rot_y)) >= 
+                             GREATEST(abs((ray_start_x + screen_x * hit_distance - box_center_x) * cos(box_rot_y) - 
+                                         (ray_start_z + 1.0 * hit_distance - box_center_z) * sin(box_rot_y)), 
+                                     abs(ray_start_y + screen_y * hit_distance - box_center_y))
+                        THEN SIGN((ray_start_x + screen_x * hit_distance - box_center_x) * sin(box_rot_y) + 
+                                  (ray_start_z + 1.0 * hit_distance - box_center_z) * cos(box_rot_y)) * 0.5
+                        ELSE 0.0
+                    END
+            END
+        ELSE 0.0 END as normal_z,
+        
+        -- Animated light direction 
+        -0.6 + sin(iTime * 0.8) * 0.3 as light_x,
+        0.8 + cos(iTime * 0.6) * 0.2 as light_y, 
+        -0.5 + sin(iTime * 1.1) * 0.2 as light_z
+        
+    FROM hits
 )
 
--- Generate final RGB values
+-- Generate beautiful RGB colors
 SELECT 
-    CASE WHEN hit = 1 THEN 1.0 ELSE 0.2 + (x::DOUBLE / width) * 0.3 END as r,
-    CASE WHEN hit = 1 THEN 0.4 ELSE 0.2 + (y::DOUBLE / height) * 0.3 END as g,
-    CASE WHEN hit = 1 THEN 0.4 ELSE 0.3 + ((x + y)::DOUBLE / (width + height)) * 0.3 END as b
+    CASE 
+        WHEN hit = 1 THEN
+            -- Metaball surface with beautiful colors
+            GREATEST(0.0, LEAST(1.0, 
+                0.15 + GREATEST(0.0, normal_x * light_x + normal_y * light_y + normal_z * light_z) * 
+                (0.6 + sin(lighting.iTime * 1.2 + hit_x * 3.0 + hit_y * 2.0) * 0.3)
+            ))
+        ELSE 
+            -- Animated background
+            0.05 + (x::DOUBLE / uniforms.width) * 0.1 + sin(lighting.iTime * 0.4) * 0.03
+    END as r,
+    
+    CASE 
+        WHEN hit = 1 THEN
+            GREATEST(0.0, LEAST(1.0,
+                0.1 + GREATEST(0.0, normal_x * light_x + normal_y * light_y + normal_z * light_z) * 
+                (0.5 + cos(lighting.iTime * 1.5 + hit_x * 2.5 + hit_z * 3.0) * 0.3)
+            ))
+        ELSE 
+            0.08 + (y::DOUBLE / uniforms.height) * 0.15 + cos(lighting.iTime * 0.3) * 0.04
+    END as g,
+    
+    CASE 
+        WHEN hit = 1 THEN
+            GREATEST(0.0, LEAST(1.0,
+                0.2 + GREATEST(0.0, normal_x * light_x + normal_y * light_y + normal_z * light_z) * 
+                (0.4 + sin(lighting.iTime * 1.8 + hit_y * 4.0 + hit_z * 2.0) * 0.4)
+            ))
+        ELSE 
+            0.1 + ((x + y)::DOUBLE / (uniforms.width + uniforms.height)) * 0.2 + sin(lighting.iTime * 0.6) * 0.02
+    END as b
 
-FROM hits
-CROSS JOIN uniforms  -- Need width/height for background calculation
+FROM lighting
+CROSS JOIN uniforms
 ORDER BY y, x;`
-  }
-,
-  {
-    name: 'Quasar',
-    sql: `
--- "Quasar" - An SQL translation of a compact GLSL shader.
--- This demonstrates complex vector math and iterative refinement using a recursive CTE.
-
-WITH RECURSIVE
-  uniforms AS (
-    SELECT
-      ?::BIGINT AS width, ?::BIGINT AS height,
-      ?::DOUBLE AS iTime, ?::DOUBLE AS mx, ?::DOUBLE AS my
-  ),
-  -- 1. Setup initial state for each pixel's ray
-  initial_state AS (
-    SELECT
-      i::DOUBLE AS x, j::DOUBLE AS y,
-      (SELECT iTime FROM uniforms) AS iTime,
-      -- o (output color), initialized to black [r,g,b,a]
-      [0.0::DOUBLE, 0.0::DOUBLE, 0.0::DOUBLE, 0.0::DOUBLE] AS o,
-      -- FC (Fragment Coordinate), normalized
-      [i / (SELECT width FROM uniforms), j / (SELECT height FROM uniforms), 0.0] AS FC,
-      (SELECT width FROM uniforms) as r_x,
-      (SELECT height FROM uniforms) as r_y
-    FROM generate_series(0, (SELECT width - 1 FROM uniforms)) AS t(i)
-    CROSS JOIN generate_series(0, (SELECT height - 1 FROM uniforms)) AS t2(j)
-  ),
-  -- 2. The main loop, implemented as a recursive CTE
-  quasar_loop(x, y, i, o, FC, r_x, r_y, iTime) AS (
-    -- Base case: Start at loop counter i = 0
-    SELECT x, y, 0.0::DOUBLE, o, FC, r_x, r_y, iTime
-    FROM initial_state
-    UNION ALL
-    -- This is the optimized recursive step using a LATERAL join.
-    -- It calculates all intermediate values for each row once, preventing memory explosion.
-    SELECT
-      ql.x, ql.y,
-      ql.i + 1.0,
-      -- Perform element-wise addition: o = o + increment_vec
-      [ql.o[1] + calc.inc_vec[1], ql.o[2] + calc.inc_vec[2], ql.o[3] + calc.inc_vec[3], ql.o[4] + calc.inc_vec[4]],
-      ql.FC, ql.r_x, ql.r_y, ql.iTime
-    FROM quasar_loop AS ql,
-      -- The LATERAL subquery can see columns from 'ql' (the previous item in FROM)
-      LATERAL (
-        SELECT inc_vec FROM (
-            WITH s_cte AS (SELECT ql.iTime - (ql.i / 10.0) AS s, ql.i),
-                 p_cte AS (SELECT list_apply([ql.FC[1]*2.0-ql.r_x/ql.r_y, ql.FC[2]*2.0-1.0, 1.0::DOUBLE], val -> val * (ql.i*0.2)) AS p),
-                 a_cte AS (SELECT list_apply(p_cte.p, val -> val - 0.57) AS a FROM p_cte),
-                 a_mixed_cte AS (
-                    WITH part1 AS (SELECT list_apply(a_cte.a, val -> val * list_dot_product(a_cte.a, p_cte.p) * cos(s_cte.s)) as vec FROM a_cte, p_cte, s_cte),
-                         part2 AS (SELECT list_apply([a_cte.a[2]*p_cte.p[3] - a_cte.a[3]*p_cte.p[2], a_cte.a[3]*p_cte.p[1] - a_cte.a[1]*p_cte.p[3], a_cte.a[1]*p_cte.p[2] - a_cte.a[2]*p_cte.p[1]], val -> val * sin(s_cte.s)) as vec FROM a_cte, p_cte, s_cte)
-                    SELECT [part1.vec[1] - part2.vec[1], part1.vec[2] - part2.vec[2], part1.vec[3] - part2.vec[3]] AS a_mixed FROM part1, part2
-                 ),
-                 s_len_cte AS (SELECT sqrt(length([a_mixed_cte.a_mixed[1], a_mixed_cte.a_mixed[3]])) AS s_len FROM a_mixed_cte),
-                 z_inc_cte AS (
-                    WITH normalized_a AS (SELECT list_apply(a_mixed_cte.a_mixed, val -> val / length(a_mixed_cte.a_mixed)) as vec FROM a_mixed_cte)
-                    SELECT length(list_apply(list_apply(a_mixed_cte.a_mixed, val -> sin(val)), val -> val + list_dot_product(a_mixed_cte.a_mixed, normalized_a.vec) * 0.2)) * s_len_cte.s_len / 20.0 AS z_inc
-                    FROM a_mixed_cte, s_len_cte, normalized_a
-                 )
-            SELECT list_apply([z_inc_cte.z_inc, 2.0::DOUBLE, s_cte.s, 1.0::DOUBLE], val -> val / s_cte.s / (s_cte.i + 1.0)) as inc_vec
-            FROM z_inc_cte, s_cte
-        )
-      ) AS calc
-    WHERE i < 70.0 -- Loop condition: i++ < 7e1
-  ),
-  -- 3. Get the final color value for each pixel after the loop finishes
-  final_colors AS (
-    SELECT x, y, o, ROW_NUMBER() OVER (PARTITION BY x, y ORDER BY i DESC) as rn
-    FROM quasar_loop
-  ),
-  -- 4. Normalize the output color
-  colors AS (
-    SELECT
-      tanh(o[1] / 20.0) AS r,
-      tanh(o[2] / 20.0) AS g,
-      tanh(o[3] / 20.0) AS b,
-      x, y
-    FROM final_colors
-    WHERE rn = 1
-  )
-SELECT r, g, b FROM colors ORDER BY y, x;`
   }
 ,
   {
