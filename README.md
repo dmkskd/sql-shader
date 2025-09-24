@@ -2,11 +2,11 @@
 
 **[Try the Live Demo Here](https://dmkskd.github.io/sql-shader/)**
 
-This project is a browser-based, live shader editor that uses SQL as a shading language. It allows you to write SQL queries that run on every frame to generate real-time, procedural graphics. The application is designed to be a creative coding environment and a powerful tool for exploring the performance and capabilities of different analytical database engines for per-pixel computations.
+This project is a browser-based, live shader editor that uses SQL as a shading language. It allows you to write SQL queries that run on every frame to generate real-time, procedural graphics. The application is designed to be a creative coding environment and a tool for exploring the performance and capabilities of different analytical database engines for per-pixel computations.
 
 It currently supports two database engines:
 *   **DuckDB-WASM**: Runs entirely in the browser using WebAssembly. No server required.
-*   **ClickHouse**: Connects to a remote ClickHouse server via its HTTP interface.
+*   **ClickHouse**: Connects to a 'remote' (as external to the browser) ClickHouse server via its HTTP interface. It can be a local instance running on your machine.
 
 ## Features
 
@@ -25,7 +25,7 @@ This is a pure front-end application. You do not need `npm` or any build tools t
 1.  **Clone the repository:**
     ```bash
     git clone <repository-url>
-    cd duckdb-shader
+    cd sql-shader
     ```
 
 2.  **Run a local web server.**
@@ -49,8 +49,10 @@ To use the ClickHouse engine, you need a running ClickHouse server that is acces
 
 1.  **Run ClickHouse using Docker (Recommended):**
     This command will start a ClickHouse server and expose its HTTP interface on port 8123.
+    The `-e CLICKHOUSE_PASSWORD=your_password` flag is necessary for recent versions of the image to enable network access for the `default` user.
+    Replace `your_password` with a password of your choice.
     ```bash
-    docker run -d -p 8123:8123 --name some-clickhouse-server --ulimit nofile=262144:262144 clickhouse/clickhouse-server
+    docker run -p 8123:8123  --ulimit nofile=262144:262144 -e CLICKHOUSE_PASSWORD=your_password clickhouse/clickhouse-server
     ```
 
 2.  **Configure Connection in the App:**
