@@ -38,7 +38,8 @@ class ClickHouseEngine {
       statusCallback('ClickHouse engine ready.');
     } catch (e) {
       statusCallback(`ClickHouse connection failed: ${e.message}. Is it running at ${url}?`);
-      throw new Error(`Could not connect to ClickHouse. Is it running and accessible at ${url}?`);
+      // Instead of throwing, we return a specific error to be handled by the caller.
+      throw new Error(`Could not connect to ClickHouse at ${url}. Please check the URL and ensure the server is running.`);
     }
   }
 

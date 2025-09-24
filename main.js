@@ -124,10 +124,11 @@ const main = async (engine) => {
 
             if (dom.engineSelect.value === 'clickhouse' && profileData.trim().startsWith('digraph')) {
                 // For ClickHouse DOT output, render it as an SVG graph.
+                const wipMessage = `<p style="background-color: #444; padding: 10px; border-radius: 3px; border-left: 3px solid #ffc980;"><b>Note:</b> The graphical query plan for ClickHouse is a work in progress. The structure is correct, but performance metrics are not yet integrated into the nodes.</p>`;
                 updateInitStatus('Rendering query plan with Mermaid...');
                 const mermaidGraph = dotToMermaid(profileData);
                 const { svg } = await mermaid.render('mermaid-graph', mermaidGraph);
-                dom.profileContainer.innerHTML = svg;
+                dom.profileContainer.innerHTML = wipMessage + svg;
             } else {
                 // For other formats, use the color-coding approach.
                 const formattedPlan = colorCodeQueryPlan(profileData);
@@ -241,6 +242,7 @@ const main = async (engine) => {
         const shaderIndex = SHADERS.findIndex(s => s.name === shaderName);
 
         if (shaderIndex !== -1) {
+            dom.shaderSelect.value = shaderIndex; // Set the dropdown to the correct shader
             shaderManager.loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS);
         } else {
             console.warn(`Shared shader "${shaderName}" not found. Loading default.`);
@@ -456,11 +458,14 @@ const initializeEngine = async () => {
 
     try {
         console.log(`[Init] Attempting to load engine: ${selectedEngine}`);
+        updateInitStatus(`Loading ${selectedEngine} engine...`);
         const engineModule = await import(`./engines/${selectedEngine}/${selectedEngine}_engine.js`);
         await main(engineModule.engine);
     } catch (e) {
-        console.error(`Failed to load engine '${selectedEngine}':`, e);
-        document.getElementById('stats-panel').textContent = `FATAL: Could not load engine. ${e.message}`;
+        // This catch block will now handle critical loading errors, like a failed import.
+        const errorMessage = `FATAL: Could not load engine module for '${selectedEngine}'. ${e.message}`;
+        console.error(errorMessage, e);
+        document.getElementById('stats-panel').textContent = errorMessage;
     }
 };
 
@@ -468,8 +473,12 @@ const initializeEngine = async () => {
 const engineSelect = document.getElementById('engine-select');
 if (engineSelect) {
     engineSelect.addEventListener('change', (event) => {
-        localStorage.setItem('selected-engine', event.target.value);
-        window.location.reload();
+        const newEngine = event.target.value;
+        localStorage.setItem('selected-engine', newEngine);
+
+        // When manually switching engines, clear any URL parameters to start fresh.
+        // The page will reload and use the 'selected-engine' from localStorage.
+        window.location.href = window.location.origin + window.location.pathname;
     });
 }
 initializeEngine();
