@@ -46,6 +46,10 @@
         font-size: 0.8em;
         margin-left: 15px;
       }
+      #clear-state-button {
+        font-size: 0.8em;
+        margin-left: 15px;
+      }
       .main-container { display: flex; flex-direction: column; height: 100vh; }
       .editor-pane {
         display: grid;
@@ -229,6 +233,20 @@
         color: #eee;
         border-radius: 3px;
       }
+      /* Style for confirmation buttons in modals */
+      .modal-content button {
+        padding: 10px 15px;
+        margin-right: 10px;
+        border-radius: 3px;
+        cursor: pointer;
+        border: 1px solid #666;
+        font-size: 1em;
+      }
+      #share-link-input {
+        width: calc(100% - 20px);
+        padding: 8px;
+        margin-bottom: 15px;
+      }
     </style>
   </head>
   <body>
@@ -242,6 +260,7 @@
             <option value="clickhouse">ClickHouse</option>
           </select>
           <button id="settings-button">⚙️ Settings</button>
+          <button id="clear-state-button" title="Clear all saved settings and shaders from your browser's local storage">⚠️ Clear State</button>
         </div>
       </header>
       <div class="editor-pane">
@@ -260,6 +279,7 @@
         <select id="resolution-select"></select>
         <select id="zoom-select"></select>
         <button id="toggle-editor-button">Toggle Editor</button>
+        <button id="share-button" title="Generate a shareable link for the current shader and settings">🔗 Share</button>
       </div>
       <div id="stats-panel">Initializing...</div>
     </div>
@@ -301,6 +321,25 @@
           </div>
           <button id="save-settings-button">Save and Reload</button>
         </div>
+      </div>
+    </div>
+    <div id="clear-state-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="width: auto; height: auto; max-width: 500px;">
+        <span class="modal-close-button" title="Close">&times;</span>
+        <h2>Confirm Clear State</h2>
+        <p style="font-size: 1.1em; line-height: 1.5;">Are you sure you want to clear all saved shaders and settings from your browser's local storage? This action cannot be undone.</p>
+        <br>
+        <button id="confirm-clear-state-button" style="background-color: #a04040; color: #fff;">Yes, Clear Everything</button>
+        <button id="cancel-clear-state-button">Cancel</button>
+      </div>
+    </div>
+    <div id="share-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="width: auto; height: auto; max-width: 600px;">
+        <span class="modal-close-button" title="Close">&times;</span>
+        <h2>Share Link</h2>
+        <p>Use this link to share your current shader and settings:</p>
+        <input type="text" id="share-link-input" readonly>
+        <button id="copy-link-button">Copy to Clipboard</button>
       </div>
     </div>
     <!-- 

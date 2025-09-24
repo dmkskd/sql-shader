@@ -185,6 +185,23 @@ const main = async (engine) => {
             iMouse.x = resolution.width / 2;
             iMouse.y = resolution.height / 2;
         },
+        onClearState: () => {
+            console.log('Clearing all items from localStorage...');
+            localStorage.removeItem('duckdb-shader-sql');
+            localStorage.removeItem('duckdb-shader-select-index');
+            localStorage.removeItem('selected-engine');
+            localStorage.removeItem('clickhouse-settings');
+            alert('Local state has been cleared. The application will now reload.');
+            window.location.reload();
+        },
+        onShare: () => {
+            const baseUrl = window.location.origin + window.location.pathname;
+            const engineName = dom.engineSelect.value;
+            const shaderName = dom.shaderSelect.options[dom.shaderSelect.selectedIndex].textContent;
+
+            const shareUrl = `${baseUrl}?engine=${engineName}&shader=${encodeURIComponent(shaderName)}`;
+            return shareUrl;
+        },
     });
 
     const SHADERS = shaderManager.getShaders();
@@ -216,16 +233,30 @@ const main = async (engine) => {
     });
     dom.zoomSelect.value = 1;
 
-    dom.shaderSelect.value = savedIndex;
-    if (savedSql) {
-        editor.setValue(savedSql);
-        if (shaderManager.applyPerformanceHints(savedSql, RESOLUTIONS, ZOOM_LEVELS)) {
-            updateCanvasSizeAndResolution();
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('shader')) {
+        // A shared link was used, override local storage
+        console.log('[Init] Loading state from URL parameters.');
+        const shaderName = decodeURIComponent(urlParams.get('shader'));
+        const shaderIndex = SHADERS.findIndex(s => s.name === shaderName);
+
+        if (shaderIndex !== -1) {
+            shaderManager.loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS);
         } else {
-            updateCanvasSizeAndResolution();
+            console.warn(`Shared shader "${shaderName}" not found. Loading default.`);
+            shaderManager.loadShader(0, RESOLUTIONS, ZOOM_LEVELS);
         }
     } else {
-        shaderManager.loadShader(savedIndex, RESOLUTIONS, ZOOM_LEVELS);
+        // Default behavior: load from local storage
+        dom.shaderSelect.value = savedIndex;
+        if (savedSql) {
+            editor.setValue(savedSql);
+        } else {
+            shaderManager.loadShader(savedIndex, RESOLUTIONS, ZOOM_LEVELS);
+        }
+        if (shaderManager.applyPerformanceHints(editor.getValue(), RESOLUTIONS, ZOOM_LEVELS)) {
+            updateCanvasSizeAndResolution();
+        }
     }
 
     editor.on('change', async () => {
@@ -401,8 +432,15 @@ const initializeEngine = async () => {
     setupUI({});
 
     const engineSelect = document.getElementById('engine-select');    
-    // Prioritize the engine selected and saved in localStorage to handle reloads correctly.
-    const selectedEngine = localStorage.getItem('selected-engine') || engineSelect.value;
+    const urlParams = new URLSearchParams(window.location.search);
+    let selectedEngine;
+
+    if (urlParams.has('engine')) {
+        // If a shared link is used, its engine parameter takes top priority.
+        selectedEngine = urlParams.get('engine');
+    } else {
+        selectedEngine = localStorage.getItem('selected-engine') || engineSelect.value;
+    }
     // Ensure the dropdown visually matches the engine being loaded.
     engineSelect.value = selectedEngine;
 

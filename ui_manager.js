@@ -19,6 +19,7 @@ export const dom = {
     zoomSelect: document.getElementById('zoom-select'),
     profileButton: document.getElementById('profile-button'),
     toggleEditorButton: document.getElementById('toggle-editor-button'),
+    shareButton: document.getElementById('share-button'),
     profileModal: document.getElementById('profile-modal'),
     profileContainer: document.getElementById('profile-container'),
     profileModalClose: document.querySelector('.modal-close-button'),
@@ -30,6 +31,15 @@ export const dom = {
     settingsModalClose: document.querySelector('#settings-modal .modal-close-button'),
     clickhouseSettings: document.getElementById('clickhouse-settings'),
     saveSettingsButton: document.getElementById('save-settings-button'),
+    clearStateButton: document.getElementById('clear-state-button'),
+    clearStateModal: document.getElementById('clear-state-modal'),
+    clearStateModalClose: document.querySelector('#clear-state-modal .modal-close-button'),
+    confirmClearStateButton: document.getElementById('confirm-clear-state-button'),
+    cancelClearStateButton: document.getElementById('cancel-clear-state-button'),
+    shareModal: document.getElementById('share-modal'),
+    shareModalClose: document.querySelector('#share-modal .modal-close-button'),
+    shareLinkInput: document.getElementById('share-link-input'),
+    copyLinkButton: document.getElementById('copy-link-button'),
 };
 
 export const updateInitStatus = (message) => {
@@ -97,6 +107,8 @@ export const setupUI = (callbacks) => {
         onRestart,
         onToggleEditor,
         onResizeEnd,
+        onClearState,
+        onShare,
     } = callbacks;
 
     // Profiler Modal
@@ -149,6 +161,42 @@ export const setupUI = (callbacks) => {
         };
         localStorage.setItem('clickhouse-settings', JSON.stringify(settings));
         window.location.reload();
+    });
+
+    // --- Clear State Modal Logic ---
+    const openClearStateModal = () => dom.clearStateModal.style.display = 'flex';
+    const closeClearStateModal = () => dom.clearStateModal.style.display = 'none';
+
+    dom.clearStateButton.addEventListener('click', openClearStateModal);
+    dom.clearStateModalClose.addEventListener('click', closeClearStateModal);
+    dom.cancelClearStateButton.addEventListener('click', closeClearStateModal);
+    dom.clearStateModal.addEventListener('click', (e) => {
+        if (e.target === dom.clearStateModal) closeClearStateModal();
+    });
+    dom.confirmClearStateButton.addEventListener('click', () => {
+        closeClearStateModal();
+        onClearState(); // Execute the callback to clear state
+    });
+
+    // --- Share Modal Logic ---
+    const openShareModal = () => {
+        const shareUrl = onShare(); // Get the URL from the main logic
+        dom.shareLinkInput.value = shareUrl;
+        dom.shareModal.style.display = 'flex';
+        dom.shareLinkInput.select();
+    };
+    const closeShareModal = () => dom.shareModal.style.display = 'none';
+
+    dom.shareButton.addEventListener('click', openShareModal);
+    dom.shareModalClose.addEventListener('click', closeShareModal);
+    dom.shareModal.addEventListener('click', (e) => {
+        if (e.target === dom.shareModal) closeShareModal();
+    });
+    dom.copyLinkButton.addEventListener('click', () => {
+        navigator.clipboard.writeText(dom.shareLinkInput.value).then(() => {
+            dom.copyLinkButton.textContent = 'Copied!';
+            setTimeout(() => { dom.copyLinkButton.textContent = 'Copy to Clipboard'; }, 2000);
+        });
     });
 
     // Main Controls
