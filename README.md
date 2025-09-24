@@ -1,5 +1,7 @@
 # PixelQL
 
+**[Try the Live Demo Here](https://dmkskd.github.io/sql-shader/)**
+
 This project is a browser-based, live shader editor that uses SQL as a shading language. It allows you to write SQL queries that run on every frame to generate real-time, procedural graphics. The application is designed to be a creative coding environment and a powerful tool for exploring the performance and capabilities of different analytical database engines for per-pixel computations.
 
 It currently supports two database engines:
