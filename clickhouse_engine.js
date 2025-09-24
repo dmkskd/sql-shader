@@ -15,10 +15,13 @@ class ClickHouseEngine {
 
     // Default connection details. These can be overridden by URL parameters
     // e.g., http://localhost:8000/?ch_host=...&ch_port=...
+    const storedSettings = JSON.parse(localStorage.getItem('clickhouse-settings')) || {};
     const urlParams = new URLSearchParams(window.location.search);
-    const url = urlParams.get('ch_host') || 'http://localhost:8123'; // Use 'url' to align with client-web's 'url' parameter
-    const username = urlParams.get('ch_user') || 'default';
-    const password = urlParams.get('ch_password') || '';
+
+    // Priority: 1. Stored Settings, 2. URL Params, 3. Defaults
+    const url = storedSettings.url || urlParams.get('ch_host') || 'http://localhost:8123';
+    const username = storedSettings.username || urlParams.get('ch_user') || 'default';
+    const password = storedSettings.password || urlParams.get('ch_password') || '';
 
     this.client = createClient({
       url: url, // Deprecated 'host' is replaced by 'url'

@@ -23,6 +23,11 @@ const main = async (engine) => {
     profileModal: document.getElementById('profile-modal'),
     profileContainer: document.getElementById('profile-container'),
     profileModalClose: document.querySelector('.modal-close-button'),
+    settingsButton: document.getElementById('settings-button'),
+    settingsModal: document.getElementById('settings-modal'),
+    settingsModalClose: document.querySelector('#settings-modal .modal-close-button'),
+    clickhouseSettings: document.getElementById('clickhouse-settings'),
+    saveSettingsButton: document.getElementById('save-settings-button'),
   };
   dom.versionSpan.textContent = `v${APP_VERSION}`;
 
@@ -246,34 +251,22 @@ const main = async (engine) => {
       }
     };
 
-    // Initialize UI and Engine
-    await engine.initialize(updateInitStatus);
-    setupUI({ editor, iMouse });
-
-
     // --- Live Editor Logic ---
     let debounceTimer;
     let hasCompilationError = false;
     let isPlaying = true;
+    let engineReady = false;
     let wasPlayingBeforeError = true; // Assume it's playing initially
     const updateShader = async (isInitialCompile = false) => {
       const sql = editor.getValue();
       
+      if (!engineReady) return false; // Do not attempt to compile if engine is not ready
+      
       // --- Dynamic Hint Parsing ---
-      // This block runs synchronously before any compilation starts.
-      if (applyPerformanceHints(sql)) {
-        console.log('[Hints] Performance hint change detected.');
-        updateCanvasSizeAndResolution();
-        console.log('[Hints] Canvas resized. Forcing a single frame redraw.');
-        // Force a single frame render *before* we set the compiling flag.
-        // This is a non-awaited call to ensure the UI updates immediately.
-        if (isPlaying) renderFrame(); 
-      }
 
       updateInitStatus('Compiling shader...');
       // Set the compiling flag. Any subsequent renderFrame calls will now pause.
       hasCompilationError = true;
-      console.log('[Compiler] hasCompilationError set to true. Pausing render loop.');
 
       try {
         const t0 = performance.now();
@@ -285,7 +278,6 @@ const main = async (engine) => {
         // If successful, replace the old statement and clear errors
         prepared = newPrepared;
         stats.prepareTime = t1 - t0;
-        console.log('[Compiler] Compilation successful. Clearing hasCompilationError flag.');
         hasCompilationError = false;
         stats.errorMessage = null;
         updateErrorPanel();
@@ -380,6 +372,13 @@ const main = async (engine) => {
       }
     };
 
+    // --- Dynamic Hint Parsing on editor change ---
+    const handleEditorChange = () => {
+      if (applyPerformanceHints(editor.getValue())) {
+        updateCanvasSizeAndResolution();
+      }
+    };
+
     // Add listeners to close the modal
     const closeModal = () => dom.profileModal.style.display = 'none';
     dom.profileModalClose.addEventListener('click', closeModal);
@@ -394,16 +393,63 @@ const main = async (engine) => {
       }
     });
 
+    // --- Settings Modal Logic ---
+    const openSettingsModal = () => {
+      const selectedEngine = dom.engineSelect.value;
+      if (selectedEngine === 'clickhouse') {
+        // Load saved settings into the form
+        const storedSettings = JSON.parse(localStorage.getItem('clickhouse-settings')) || {};
+        document.getElementById('ch-url').value = storedSettings.url || '';
+        document.getElementById('ch-user').value = storedSettings.username || '';
+        document.getElementById('ch-password').value = storedSettings.password || '';
+
+        dom.clickhouseSettings.style.display = 'block';
+        dom.settingsModal.style.display = 'flex';
+      } else {
+        alert('No specific settings for the DuckDB WASM engine.');
+      }
+    };
+
+    const closeSettingsModal = () => dom.settingsModal.style.display = 'none';
+
+    dom.settingsButton.addEventListener('click', openSettingsModal);
+    dom.settingsModalClose.addEventListener('click', closeSettingsModal);
+    dom.settingsModal.addEventListener('click', (e) => {
+      if (e.target === dom.settingsModal) closeSettingsModal();
+    });
+
+    dom.saveSettingsButton.addEventListener('click', () => {
+      const settings = {
+        url: document.getElementById('ch-url').value,
+        username: document.getElementById('ch-user').value,
+        password: document.getElementById('ch-password').value,
+      };
+      localStorage.setItem('clickhouse-settings', JSON.stringify(settings));
+      alert('Settings saved. The application will now reload.');
+      window.location.reload();
+    });
+
     editor.on('change', async () => {
       // Save the current content to localStorage on every change
       localStorage.setItem(LOCAL_STORAGE_KEY, editor.getValue());
       localStorage.setItem(SHADER_SELECT_KEY, dom.shaderSelect.value);
 
+      // We separate hint parsing from shader compilation for responsiveness.
+      handleEditorChange();
+
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => updateShader(false), 300); // Debounce to avoid re-compiling on every keystroke
     });
 
+    // --- Final Initialization Steps ---
+    console.log('[Init] Setting up UI and event listeners...');
+    setupUI({ editor, iMouse });
+    console.log('[Init] UI setup complete.');
+
+    console.log('[Init] Initializing database engine...');
     updateInitStatus('Compiling initial shader...'); // Pass true for the initial compile
+    await engine.initialize(updateInitStatus);
+    engineReady = true; // Signal that the engine is now ready for use
     // Initial shader compilation. If it fails, we stop before starting the render loop.
     const initialCompileSuccess = await updateShader(true);
     if (!initialCompileSuccess) {
@@ -414,6 +460,7 @@ const main = async (engine) => {
     // --- Animation & Rendering Loop ---
     let imageData = ctx.createImageData(resolution.width, resolution.height); // ctx is from canvas
     let startTime = performance.now();
+    let lastGoodResult = null;
     let lastR, lastG, lastB; // Store the last rendered color data
 
     dom.canvas.addEventListener('mousemove', (event) => {
@@ -558,13 +605,22 @@ const main = async (engine) => {
       ctx.putImageData(targetImageData, 0, 0);
     };
 
+    /**
+     * A synchronous function to redraw the canvas with the last known good result.
+     * Used for immediate UI updates after resizing.
+     * @param {import('@apache/arrow').Table} resultTable The last successful query result.
+     */
+    const forceRedraw = (resultTable) => {
+      const localImageData = ctx.createImageData(resolution.width, resolution.height);
+      drawResultToCanvas(resultTable, localImageData);
+    };
+
     const renderFrame = async (t) => {
       const iTime = (performance.now() - startTime) / 1000.0;
 
       // If there is no valid prepared statement (e.g., due to a compilation error),
       // skip rendering but keep the animation loop alive.
       if (!prepared || hasCompilationError) {
-        if (hasCompilationError) console.log('[Render] Frame skipped due to hasCompilationError flag.');
         // Still update stats so the UI doesn't get stuck on "Initializing..."
         updateStatsPanel();
         // Keep the animation loop going to allow for live editing.
@@ -594,6 +650,7 @@ const main = async (engine) => {
         stats.queryTime = t1 - t0;
 
         drawResultToCanvas(result, localImageData);
+        lastGoodResult = result; // Store the successful result
       } catch (e) {
         console.error("Query runtime error:", e);
         stats.errorMessage = `Runtime Error:\n${e.message}`;
