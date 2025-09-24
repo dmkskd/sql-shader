@@ -351,7 +351,7 @@ const initializeEngine = async () => {
     const selectedEngine = engineSelect.value;
 
     try {
-        const engineModule = await import(`./${selectedEngine}_engine.js`);
+        const engineModule = await import(`./engines/${selectedEngine}/${selectedEngine}_engine.js`);
         await main(engineModule.engine);
     } catch (e) {
         console.error(`Failed to load engine '${selectedEngine}':`, e);
