@@ -3,6 +3,7 @@
  * shader compilation, and performance hints.
  */
 
+
 import { dom, updateErrorPanel, updateInitStatus } from './ui_manager.js';
 
 const LOCAL_STORAGE_KEY = 'duckdb-shader-sql';
