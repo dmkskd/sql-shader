@@ -203,7 +203,7 @@
           <label for="engine-select">Engine:</label>
           <select id="engine-select">
             <option value="duckdb_wasm" selected>DuckDB WASM</option>
-            <option value="clickhouse" disabled>ClickHouse (soon)</option>
+            <option value="clickhouse">ClickHouse</option>
           </select>
         </div>
       </header>
@@ -242,7 +242,8 @@
       {
         "imports": {
           "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm",
-          "@apache/arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@latest/+esm"
+          "@apache/arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@latest/+esm",
+          "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm"
         }
       }
     </script>

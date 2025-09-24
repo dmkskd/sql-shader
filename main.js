@@ -1,12 +1,11 @@
-import { engine } from './duckdb_wasm_engine.js';
-
 console.log('Executing main.js - Debug Version: 1.4.0');
 
 const APP_VERSION = '1.1.0';
 
-const main = async () => {
+const main = async (engine) => {
   // --- DOM Elements ---
   const dom = {
+    engineSelect: document.getElementById('engine-select'),
     versionSpan: document.getElementById('version-span'),
     canvas: document.getElementById('shader-canvas'),
     editorPane: document.querySelector('.editor-pane'),
@@ -49,6 +48,80 @@ const main = async () => {
   const LOCAL_STORAGE_KEY = 'duckdb-shader-sql';
   const SHADER_SELECT_KEY = 'duckdb-shader-select-index';
 
+  const RESOLUTIONS = [
+    { name: 'Tiny (64x48)', width: 64, height: 48 },
+    { name: 'Small (320x240)', width: 320, height: 240 },
+    { name: 'Default (640x480)', width: 640, height: 480 },
+    { name: 'Large (800x600)', width: 800, height: 600 },
+  ];
+  const ZOOM_LEVELS = [1, 2, 4, 8, 16];
+
+  /**
+   * Parses performance hints from a SQL string and applies them to the UI.
+   * @param {string} sql The SQL content to parse for hints.
+   * @returns {boolean} True if any settings were changed, otherwise false.
+   */
+  const applyPerformanceHints = (sql) => {
+    let settingsChanged = false;
+    const runHintMatch = sql.match(/--\s*@run:\s*(.*)/);
+    if (runHintMatch) {
+      const hints = runHintMatch[1];
+      const resolutionMatch = hints.match(/resolution=([^,]+)/);
+      const zoomMatch = hints.match(/zoom=([\d]+)/);
+
+      if (resolutionMatch) {
+        const resValue = resolutionMatch[1].trim();
+        const customSizeMatch = resValue.match(/^(\d+)x(\d+)$/);
+
+        if (customSizeMatch) {
+          const width = parseInt(customSizeMatch[1], 10);
+          const height = parseInt(customSizeMatch[2], 10);
+          const customResName = `Custom (${width}x${height})`;
+          const option = document.createElement('option');
+          option.value = RESOLUTIONS.length;
+          option.textContent = customResName;
+          dom.resolutionSelect.appendChild(option);
+          dom.resolutionSelect.value = option.value;
+          RESOLUTIONS.push({ name: customResName, width, height });
+          settingsChanged = true;
+        } else {
+          const resIndex = RESOLUTIONS.findIndex(r => r.name.startsWith(resValue));
+          if (resIndex !== -1 && dom.resolutionSelect.value != resIndex) {
+            dom.resolutionSelect.value = resIndex;
+            settingsChanged = true;
+          }
+        }
+      }
+
+      if (zoomMatch) {
+        const zoomValue = parseInt(zoomMatch[1].trim(), 10);
+        if (ZOOM_LEVELS.includes(zoomValue) && dom.zoomSelect.value != zoomValue) {
+          dom.zoomSelect.value = zoomValue;
+          settingsChanged = true;
+        }
+      }
+    }
+    return settingsChanged;
+  };
+
+  const updateCanvasSizeAndResolution = () => {
+    const selectedRes = RESOLUTIONS[dom.resolutionSelect.value];
+    const selectedZoom = parseInt(dom.zoomSelect.value, 10);
+
+    resolution = { width: selectedRes.width, height: selectedRes.height };
+    dom.canvas.width = resolution.width;
+    dom.canvas.height = resolution.height;
+    ctx = dom.canvas.getContext('2d', { willReadFrequently: true });
+
+    const displayWidth = resolution.width * selectedZoom;
+    dom.editorPane.style.gridTemplateColumns = `${displayWidth}px 6px 1fr`;
+
+    setTimeout(() => editor.refresh(), 50);
+
+    iMouse.x = resolution.width / 2;
+    iMouse.y = resolution.height / 2;
+  };
+
   /**
    * Sets up all UI event listeners and initial states.
    * @param {object} options - Contains dependencies like the editor instance.
@@ -60,26 +133,36 @@ const main = async () => {
     const savedSql = localStorage.getItem(LOCAL_STORAGE_KEY);
     const savedIndex = localStorage.getItem(SHADER_SELECT_KEY) || 0;
 
+    /**
+     * Loads a shader, sets its SQL in the editor, and applies any performance hints.
+     * @param {number} shaderIndex The index of the shader to load.
+     */
+    const loadShader = (shaderIndex) => {
+      const shader = SHADERS[shaderIndex];
+      if (!shader) return;
+
+      const sql = shader.sql.trim();
+      editor.setValue(sql);
+
+      // After potentially changing dropdowns, trigger the canvas update
+      if (applyPerformanceHints(sql)) {
+        updateCanvasSizeAndResolution();
+      }
+    };
+
+    dom.shaderSelect.innerHTML = ''; // Clear previous options
     SHADERS.forEach((shader, index) => {
       const option = document.createElement('option');
       option.value = index;
       option.textContent = shader.name;
       dom.shaderSelect.appendChild(option);
     });
-    dom.shaderSelect.value = savedIndex;
-    editor.setValue(savedSql || SHADERS[savedIndex].sql.trim());
 
     dom.shaderSelect.addEventListener('change', () => {
-      editor.setValue(SHADERS[dom.shaderSelect.value].sql.trim());
+      loadShader(dom.shaderSelect.value);
     });
 
     // --- Resolution & Zoom Dropdowns ---
-    const RESOLUTIONS = [
-      { name: 'Tiny (64x48)', width: 64, height: 48 },
-      { name: 'Small (320x240)', width: 320, height: 240 },
-      { name: 'Default (640x480)', width: 640, height: 480 },
-      { name: 'Large (800x600)', width: 800, height: 600 },
-    ];
     const DEFAULT_RESOLUTION_INDEX = 2;
 
     RESOLUTIONS.forEach((res, index) => {
@@ -90,7 +173,6 @@ const main = async () => {
     });
     dom.resolutionSelect.value = DEFAULT_RESOLUTION_INDEX;
 
-    const ZOOM_LEVELS = [1, 2, 4, 8, 16];
     ZOOM_LEVELS.forEach(level => {
       const option = document.createElement('option');
       option.value = level;
@@ -99,36 +181,27 @@ const main = async () => {
     });
     dom.zoomSelect.value = 1;
 
-    const updateCanvasSizeAndResolution = () => {
-      const selectedRes = RESOLUTIONS[dom.resolutionSelect.value];
-      const selectedZoom = parseInt(dom.zoomSelect.value, 10);
-
-      resolution = { width: selectedRes.width, height: selectedRes.height };
-      dom.canvas.width = resolution.width;
-      dom.canvas.height = resolution.height;
-      ctx = dom.canvas.getContext('2d', { willReadFrequently: true });
-
-      const displayWidth = resolution.width * selectedZoom;
-      dom.editorPane.style.gridTemplateColumns = `${displayWidth}px 6px 1fr`;
-
-      setTimeout(() => editor.refresh(), 50);
-
-      iMouse.x = resolution.width / 2;
-      iMouse.y = resolution.height / 2;
-    };
-
     dom.resolutionSelect.addEventListener('change', updateCanvasSizeAndResolution);
     dom.zoomSelect.addEventListener('change', updateCanvasSizeAndResolution);
 
     // Set initial size
-    updateCanvasSizeAndResolution();
+    dom.shaderSelect.value = savedIndex;
+    if (savedSql) {
+      editor.setValue(savedSql);
+      // On load with saved SQL, parse hints and update if necessary
+      if (applyPerformanceHints(savedSql)) {
+        updateCanvasSizeAndResolution();
+      } else {
+        // Otherwise, just use the default/saved resolution
+        updateCanvasSizeAndResolution();
+      }
+    } else {
+      loadShader(savedIndex); // Load default shader and apply its hints
+    }
   };
 
   // Initialize all UI components
-  setupUI({ editor, iMouse });
-
   try {
-    await engine.initialize(updateInitStatus);
 
     let prepared; // Will hold the currently valid prepared statement
 
@@ -160,7 +233,12 @@ const main = async () => {
 
     const updateErrorPanel = () => {
       if (stats.errorMessage) {
-        dom.errorPanel.textContent = `Compilation Error:\n${stats.errorMessage}`;
+        // Distinguish between compilation and runtime errors for clarity.
+        if (stats.errorMessage.startsWith('Runtime Error')) {
+          dom.errorPanel.textContent = stats.errorMessage;
+        } else {
+          dom.errorPanel.textContent = `Compilation Error:\n${stats.errorMessage}`;
+        }
         dom.errorPanel.className = 'error';
       } else {
         dom.errorPanel.textContent = `Compilation Successful in ${stats.prepareTime.toFixed(2)}ms`;
@@ -168,11 +246,35 @@ const main = async () => {
       }
     };
 
+    // Initialize UI and Engine
+    await engine.initialize(updateInitStatus);
+    setupUI({ editor, iMouse });
+
+
     // --- Live Editor Logic ---
     let debounceTimer;
+    let hasCompilationError = false;
+    let isPlaying = true;
+    let wasPlayingBeforeError = true; // Assume it's playing initially
     const updateShader = async (isInitialCompile = false) => {
       const sql = editor.getValue();
+      
+      // --- Dynamic Hint Parsing ---
+      // This block runs synchronously before any compilation starts.
+      if (applyPerformanceHints(sql)) {
+        console.log('[Hints] Performance hint change detected.');
+        updateCanvasSizeAndResolution();
+        console.log('[Hints] Canvas resized. Forcing a single frame redraw.');
+        // Force a single frame render *before* we set the compiling flag.
+        // This is a non-awaited call to ensure the UI updates immediately.
+        if (isPlaying) renderFrame(); 
+      }
+
       updateInitStatus('Compiling shader...');
+      // Set the compiling flag. Any subsequent renderFrame calls will now pause.
+      hasCompilationError = true;
+      console.log('[Compiler] hasCompilationError set to true. Pausing render loop.');
+
       try {
         const t0 = performance.now();
         // "Prepare" the SQL: This parses, validates, and creates an optimized
@@ -183,10 +285,20 @@ const main = async () => {
         // If successful, replace the old statement and clear errors
         prepared = newPrepared;
         stats.prepareTime = t1 - t0;
+        console.log('[Compiler] Compilation successful. Clearing hasCompilationError flag.');
+        hasCompilationError = false;
         stats.errorMessage = null;
         updateErrorPanel();
+
+        // If it was playing before the error, resume it automatically.
+        if (wasPlayingBeforeError && !isPlaying) {
+          isPlaying = true;
+          dom.playToggleButton.innerHTML = '❚❚ Stop';
+          requestAnimationFrame(renderFrame); // Kickstart the loop
+        }
       } catch (e) {
         // On failure, display the error and keep the old prepared statement
+        wasPlayingBeforeError = isPlaying; // Remember the state when the error occurred
         stats.errorMessage = e.message;
         // Only log to console if it's not the very first load, to keep the console clean.
         if (!isInitialCompile) {
@@ -242,19 +354,30 @@ const main = async () => {
      * @returns {string} An HTML string with color-coded timings.
      */
     const colorCodeQueryPlan = (planText) => {
-      // This regex is designed to find timing information in two common formats:
-      // 1. The simple form, e.g., `(0.00s)`
-      // 2. The detailed form, e.g., `(actual time: 0.000s)`
-      return planText.replace(/(\(actual time: ([\d.]+)s|\(([\d.]+)s\))/g, (match, _, timeStr1, timeStr2) => {
-        const time = parseFloat(timeStr1 || timeStr2);
-        let colorClass = 'time-good'; // Default to green for fast operations
-        if (time > 0.1) {
-          colorClass = 'time-hot'; // Red for times > 100ms
-        } else if (time > 0.01) {
-          colorClass = 'time-warm'; // Orange for times > 10ms
-        }
-        return `<span class="${colorClass}">${match}</span>`;
-      });
+      const selectedEngine = dom.engineSelect.value;
+
+      if (selectedEngine === 'duckdb_wasm') {
+        // DuckDB provides detailed timing, so we color-code it.
+        return planText.replace(/(\(actual time: ([\d.]+)s|\(([\d.]+)s\))/g, (match, _, timeStr1, timeStr2) => {
+          const time = parseFloat(timeStr1 || timeStr2);
+          let colorClass = 'time-good'; // Default to green for fast operations
+          if (time > 0.1) {
+            colorClass = 'time-hot'; // Red for times > 100ms
+          } else if (time > 0.01) {
+            colorClass = 'time-warm'; // Orange for times > 10ms
+          }
+          return `<span class="${colorClass}">${match}</span>`;
+        });
+      } else if (selectedEngine === 'clickhouse') {
+        // ClickHouse EXPLAIN PLAN is structural. We can highlight keywords for readability.
+        return planText.replace(/(Expression|Filter|Sort|Sorting|Join|Projection|ReadFromSystemNumbers)/g, (match) => {
+          let colorClass = 'time-warm'; // Use orange for keywords
+          return `<span class="${colorClass}">${match}</span>`;
+        });
+      } else {
+        // For any other engine, return the plain text.
+        return planText;
+      }
     };
 
     // Add listeners to close the modal
@@ -351,7 +474,6 @@ const main = async () => {
     });
 
     // --- Play/Stop Controls ---
-    let isPlaying = true;
     dom.restartButton.addEventListener('click', () => {
       startTime = performance.now(); // Reset the elapsed time
       if (!isPlaying) {
@@ -441,7 +563,8 @@ const main = async () => {
 
       // If there is no valid prepared statement (e.g., due to a compilation error),
       // skip rendering but keep the animation loop alive.
-      if (!prepared) {
+      if (!prepared || hasCompilationError) {
+        if (hasCompilationError) console.log('[Render] Frame skipped due to hasCompilationError flag.');
         // Still update stats so the UI doesn't get stuck on "Initializing..."
         updateStatsPanel();
         // Keep the animation loop going to allow for live editing.
@@ -471,8 +594,6 @@ const main = async () => {
         stats.queryTime = t1 - t0;
 
         drawResultToCanvas(result, localImageData);
-        // If the query was successful, clear any previous runtime error.
-        if (stats.errorMessage && !stats.errorMessage.startsWith('Compilation')) stats.errorMessage = null;
       } catch (e) {
         console.error("Query runtime error:", e);
         stats.errorMessage = `Runtime Error:\n${e.message}`;
@@ -504,4 +625,21 @@ const main = async () => {
   }
 };
 
-main();
+/**
+ * Dynamically loads and initializes the selected database engine.
+ */
+const initializeEngine = async () => {
+    const engineSelect = document.getElementById('engine-select');
+    const selectedEngine = engineSelect.value;
+
+    try {
+        const engineModule = await import(`./${selectedEngine}_engine.js`);
+        await main(engineModule.engine);
+    } catch (e) {
+        console.error(`Failed to load engine '${selectedEngine}':`, e);
+        document.getElementById('stats-panel').textContent = `FATAL: Could not load engine. ${e.message}`;
+    }
+};
+
+document.getElementById('engine-select').addEventListener('change', () => window.location.reload());
+initializeEngine();
