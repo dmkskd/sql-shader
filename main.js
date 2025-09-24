@@ -347,10 +347,14 @@ const main = async (engine) => {
  * Dynamically loads and initializes the selected database engine.
  */
 const initializeEngine = async () => {
-    const engineSelect = document.getElementById('engine-select');
-    const selectedEngine = engineSelect.value;
+    const engineSelect = document.getElementById('engine-select');    
+    // Prioritize the engine selected and saved in localStorage to handle reloads correctly.
+    const selectedEngine = localStorage.getItem('selected-engine') || engineSelect.value;
+    // Ensure the dropdown visually matches the engine being loaded.
+    engineSelect.value = selectedEngine;
 
     try {
+        console.log(`[Init] Attempting to load engine: ${selectedEngine}`);
         const engineModule = await import(`./engines/${selectedEngine}/${selectedEngine}_engine.js`);
         await main(engineModule.engine);
     } catch (e) {
@@ -359,5 +363,8 @@ const initializeEngine = async () => {
     }
 };
 
-document.getElementById('engine-select').addEventListener('change', () => window.location.reload());
+document.getElementById('engine-select').addEventListener('change', (event) => {
+    localStorage.setItem('selected-engine', event.target.value);
+    window.location.reload();
+});
 initializeEngine();
