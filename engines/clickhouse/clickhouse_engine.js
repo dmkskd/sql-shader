@@ -85,14 +85,14 @@ class ClickHouseEngine {
   }
 
   async profile(sql, params) {
-    console.log('[engine.profile] Step 1: Using new EXPLAIN PLAN strategy for ClickHouse.');
+    console.log('[engine.profile] Step 1: Using EXPLAIN PIPELINE graph strategy for ClickHouse.');
 
     // The raw SQL contains parameter placeholders like {width:UInt32}.
     // The ClickHouse client will error if it sees these without a `params` object,
     // even for an EXPLAIN PLAN query. We must remove them by replacing them with
     // a dummy literal value (e.g., 1) that allows the query to be parsed.
     const cleanedSql = sql.replace(/{[^}]+}/g, '1');
-    const explainedSql = `EXPLAIN PLAN ${cleanedSql}`;
+    const explainedSql = `EXPLAIN PIPELINE graph = 1 ${cleanedSql}`;
 
     console.log(`[engine.profile] Step 2: Executing query: ${explainedSql.substring(0, 100)}...`);
 

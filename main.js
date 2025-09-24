@@ -1,4 +1,5 @@
 import { dom, setupUI, updateInitStatus, updateStatsPanel, colorCodeQueryPlan, openSettingsModal } from './ui_manager.js';
+import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 
 console.log('Executing main.js - Debug Version: 1.4.0');
@@ -6,6 +7,12 @@ console.log('Executing main.js - Debug Version: 1.4.0');
 const APP_VERSION = '1.1.0';
 
 const main = async (engine) => {
+  // Initialize Mermaid once with settings that are robust for secure environments.
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    securityLevel: 'loose', // Forces rendering with native SVG <text> instead of <foreignObject>
+  });
   dom.versionSpan.textContent = `v${APP_VERSION}`;
 
   updateInitStatus('Initializing...');
@@ -65,6 +72,34 @@ const main = async (engine) => {
       iMouse.y = resolution.height / 2;
     };
 
+    /**
+     * Parses a DOT graph string from ClickHouse and converts it to Mermaid syntax.
+     * @param {string} dotString The raw DOT graph string.
+     * @returns {string} A Mermaid graph definition string.
+     */
+    const dotToMermaid = (dotString) => {
+      let mermaidString = 'graph LR;\n'; // LR = Left to Right
+      const nodeLabels = new Map();
+
+      // First pass: find all node labels using a more reliable regex
+      const nodeRegex = /(\w+)\s+\[label="([^"]+)"\]/g;
+      let match;
+      while ((match = nodeRegex.exec(dotString)) !== null) {
+        nodeLabels.set(match[1], match[2].replace(/"/g, '&quot;'));
+      }
+
+      // Second pass: build the connections using the labels from the map
+      const edgeRegex = /^\s*(\w+)\s*->\s*(\w+)/gm;
+      while ((match = edgeRegex.exec(dotString)) !== null) {
+        const fromNode = match[1];
+        const toNode = match[2];
+        const fromLabel = nodeLabels.get(fromNode) || fromNode;
+        const toLabel = nodeLabels.get(toNode) || toNode;
+        mermaidString += `    ${fromNode}["${fromLabel}"] --> ${toNode}["${toLabel}"];\n`;
+      }
+      return mermaidString;
+    };
+
     const shaderManager = new ShaderManager(engine, editor, updateCanvasSizeAndResolution);
 
     // --- Final Initialization Steps ---
@@ -83,8 +118,22 @@ const main = async (engine) => {
                 resolution.width, resolution.height,
                 stats.elapsedTime, iMouse.x, iMouse.y
             ]);
-            const formattedPlan = colorCodeQueryPlan(profileData);
-            dom.profileContainer.innerHTML = `<pre>${formattedPlan}</pre>`;
+
+            // Clear previous content
+            dom.profileContainer.innerHTML = '';
+
+            if (dom.engineSelect.value === 'clickhouse' && profileData.trim().startsWith('digraph')) {
+                // For ClickHouse DOT output, render it as an SVG graph.
+                updateInitStatus('Rendering query plan with Mermaid...');
+                const mermaidGraph = dotToMermaid(profileData);
+                const { svg } = await mermaid.render('mermaid-graph', mermaidGraph);
+                dom.profileContainer.innerHTML = svg;
+            } else {
+                // For other formats, use the color-coding approach.
+                const formattedPlan = colorCodeQueryPlan(profileData);
+                dom.profileContainer.innerHTML = `<pre>${formattedPlan}</pre>`;
+            }
+
             dom.profileModal.style.display = 'flex';
             updateInitStatus('Profiling complete.');
             setTimeout(() => updateStatsPanel(stats, resolution), 3000); // Use imported function

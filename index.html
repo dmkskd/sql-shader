@@ -182,9 +182,25 @@
       .profile-summary strong {
         color: #fff;
       }
+      .graph-controls {
+        margin-left: auto; /* Push controls to the right */
+      }
+      .graph-controls button {
+        padding: 2px 8px;
+        font-size: 1.2em;
+        font-weight: bold;
+      }
       #profile-container pre {
         white-space: pre; /* Preserve formatting from EXPLAIN ANALYZE */
         font-size: 12px; /* Make text a bit smaller to fit more */
+      }
+      /*
+       * Forcefully style the text inside Mermaid nodes. The 'dark' theme creates
+       * light-colored nodes, but our global body color can make the text invisible.
+       * We target the native SVG <text> element which uses `fill` for color.
+       */
+      #profile-container svg text {
+        fill: #000 !important;
       }
       /* Color coding for profiler timings */
       .time-hot {
@@ -251,6 +267,11 @@
       <div class="modal-content">
         <span class="modal-close-button" title="Close">&times;</span>
         <h2>Query Profile</h2>
+        <div class="graph-controls">
+          <button id="zoom-in-button" title="Zoom In">+</button>
+          <button id="zoom-out-button" title="Zoom Out">-</button>
+          <button id="zoom-reset-button" title="Reset Zoom">1:1</button>
+        </div>
         <!-- The query plan will be inserted here -->
         <div id="profile-container"></div>
       </div>
@@ -291,7 +312,8 @@
         "imports": {
           "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm",
           "@apache/arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@latest/+esm",
-          "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm"
+          "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm",
+          "mermaid": "https://esm.sh/mermaid@10"
         }
       }
     </script>

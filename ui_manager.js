@@ -22,6 +22,9 @@ export const dom = {
     profileModal: document.getElementById('profile-modal'),
     profileContainer: document.getElementById('profile-container'),
     profileModalClose: document.querySelector('.modal-close-button'),
+    zoomInButton: document.getElementById('zoom-in-button'),
+    zoomOutButton: document.getElementById('zoom-out-button'),
+    zoomResetButton: document.getElementById('zoom-reset-button'),
     settingsButton: document.getElementById('settings-button'),
     settingsModal: document.getElementById('settings-modal'),
     settingsModalClose: document.querySelector('#settings-modal .modal-close-button'),
@@ -71,6 +74,7 @@ export const colorCodeQueryPlan = (planText) => {
             return `<span class="${colorClass}">${match}</span>`;
         });
     } else if (selectedEngine === 'clickhouse') {
+        // Fallback for non-graph ClickHouse EXPLAIN formats
         return planText.replace(/(Expression|Filter|Sort|Sorting|Join|Projection|ReadFromSystemNumbers)/g, (match) => {
             return `<span class="time-warm">${match}</span>`;
         });
@@ -108,6 +112,29 @@ export const setupUI = (callbacks) => {
     });
     dom.profileButton.addEventListener('click', onProfile);
 
+    // --- Graph Zoom Logic ---
+    let currentGraphZoom = 1.0;
+    const zoomStep = 0.2;
+    const updateGraphZoom = () => {
+        const svg = dom.profileContainer.querySelector('svg');
+        if (svg) {
+            svg.style.transform = `scale(${currentGraphZoom})`;
+            svg.style.transformOrigin = 'top left';
+        }
+    };
+    dom.zoomInButton.addEventListener('click', () => {
+        currentGraphZoom += zoomStep;
+        updateGraphZoom();
+    });
+    dom.zoomOutButton.addEventListener('click', () => {
+        currentGraphZoom = Math.max(0.2, currentGraphZoom - zoomStep); // Prevent zooming out too much
+        updateGraphZoom();
+    });
+    dom.zoomResetButton.addEventListener('click', () => {
+        currentGraphZoom = 1.0;
+        updateGraphZoom();
+    });
+
     const closeSettingsModal = () => dom.settingsModal.style.display = 'none';
     dom.settingsButton.addEventListener('click', openSettingsModal);
     dom.settingsModalClose.addEventListener('click', closeSettingsModal);
@@ -121,7 +148,6 @@ export const setupUI = (callbacks) => {
             password: document.getElementById('ch-password').value,
         };
         localStorage.setItem('clickhouse-settings', JSON.stringify(settings));
-        alert('Settings saved. The application will now reload.');
         window.location.reload();
     });
 

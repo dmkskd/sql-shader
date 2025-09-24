@@ -29,16 +29,11 @@ SELECT
     pow(dist_mouse, 0.5) * cos(iTime) + wave1 * 0.2 AS b
 FROM
 (
-    -- Generate a grid of pixels (x, y)
-    SELECT
-        n1.number AS x,
-        n2.number AS y
-    FROM
-        system.numbers AS n1,
-        system.numbers AS n2
-    WHERE (n1.number < width) AND (n2.number < height)
-    SETTINGS max_block_size = 65536
-)
+    -- Generate a grid of pixels using system.numbers and an explicit CROSS JOIN
+    SELECT number AS y
+    FROM system.numbers LIMIT height
+) AS t_y
+CROSS JOIN (SELECT number AS x FROM system.numbers LIMIT width) AS t_x
 ORDER BY
     y ASC,
     x ASC
@@ -61,16 +56,11 @@ SELECT
     (0.5 + (0.5 * cos(iTime + 0.5))) AS b
 FROM
 (
-    -- Generate a grid of pixels (x, y)
-    SELECT
-        n1.number AS x,
-        n2.number AS y
-    FROM
-        system.numbers AS n1,
-        system.numbers AS n2
-    WHERE (n1.number < width) AND (n2.number < height)
-    SETTINGS max_block_size = 65536
-)
+    -- Generate a grid of pixels using system.numbers and an explicit CROSS JOIN
+    SELECT number AS y
+    FROM system.numbers LIMIT height
+) AS t_y
+CROSS JOIN (SELECT number AS x FROM system.numbers LIMIT width) AS t_x
 ORDER BY
     y ASC,
     x ASC
