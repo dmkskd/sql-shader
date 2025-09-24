@@ -1,4 +1,4 @@
-import { dom, setupUI, updateInitStatus, updateStatsPanel, colorCodeQueryPlan } from './ui_manager.js';
+import { dom, setupUI, updateInitStatus, updateStatsPanel, colorCodeQueryPlan, openSettingsModal } from './ui_manager.js';
 import { ShaderManager } from './shader_manager.js';
 
 console.log('Executing main.js - Debug Version: 1.4.0');
@@ -347,11 +347,25 @@ const main = async (engine) => {
  * Dynamically loads and initializes the selected database engine.
  */
 const initializeEngine = async () => {
+    // First, set up the UI and all its event listeners to ensure the application is responsive.
+    // This is a temporary measure until the full main() function is called.
+    setupUI({});
+
     const engineSelect = document.getElementById('engine-select');    
     // Prioritize the engine selected and saved in localStorage to handle reloads correctly.
     const selectedEngine = localStorage.getItem('selected-engine') || engineSelect.value;
     // Ensure the dropdown visually matches the engine being loaded.
     engineSelect.value = selectedEngine;
+
+    // If switching to ClickHouse for the first time, show the settings modal.
+    if (selectedEngine === 'clickhouse') {
+        const hasConfiguredClickHouse = !!localStorage.getItem('clickhouse-settings');
+        if (!hasConfiguredClickHouse) {
+            openSettingsModal();
+            // Stop further execution. The user will save settings and the page will reload.
+            return; 
+        }
+    }
 
     try {
         console.log(`[Init] Attempting to load engine: ${selectedEngine}`);
@@ -363,8 +377,12 @@ const initializeEngine = async () => {
     }
 };
 
-document.getElementById('engine-select').addEventListener('change', (event) => {
-    localStorage.setItem('selected-engine', event.target.value);
-    window.location.reload();
-});
+// We must attach the engine-switching listener immediately on script load.
+const engineSelect = document.getElementById('engine-select');
+if (engineSelect) {
+    engineSelect.addEventListener('change', (event) => {
+        localStorage.setItem('selected-engine', event.target.value);
+        window.location.reload();
+    });
+}
 initializeEngine();

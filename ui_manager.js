@@ -108,20 +108,6 @@ export const setupUI = (callbacks) => {
     });
     dom.profileButton.addEventListener('click', onProfile);
 
-    // Settings Modal
-    const openSettingsModal = () => {
-        const selectedEngine = dom.engineSelect.value;
-        if (selectedEngine === 'clickhouse') {
-            const storedSettings = JSON.parse(localStorage.getItem('clickhouse-settings')) || {};
-            document.getElementById('ch-url').value = storedSettings.url || '';
-            document.getElementById('ch-user').value = storedSettings.username || '';
-            document.getElementById('ch-password').value = storedSettings.password || '';
-            dom.clickhouseSettings.style.display = 'block';
-            dom.settingsModal.style.display = 'flex';
-        } else {
-            alert('No specific settings for the DuckDB WASM engine.');
-        }
-    };
     const closeSettingsModal = () => dom.settingsModal.style.display = 'none';
     dom.settingsButton.addEventListener('click', openSettingsModal);
     dom.settingsModalClose.addEventListener('click', closeSettingsModal);
@@ -168,4 +154,19 @@ export const setupUI = (callbacks) => {
         });
     };
     setupResizer(dom.resizeHandle, dom.editorPane);
+};
+
+// Exported function to handle opening the settings modal
+export const openSettingsModal = () => {
+    const selectedEngine = dom.engineSelect.value;
+    if (selectedEngine === 'clickhouse') {
+        const storedSettings = JSON.parse(localStorage.getItem('clickhouse-settings')) || {};
+        document.getElementById('ch-url').value = storedSettings.url || '';
+        document.getElementById('ch-user').value = storedSettings.username || '';
+        document.getElementById('ch-password').value = storedSettings.password || '';
+        dom.clickhouseSettings.style.display = 'block';
+        dom.settingsModal.style.display = 'flex';
+    } else {
+        alert('No specific settings for the DuckDB WASM engine.');
+    }
 };
