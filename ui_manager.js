@@ -18,6 +18,7 @@ export const dom = {
     resolutionSelect: document.getElementById('resolution-select'),
     zoomSelect: document.getElementById('zoom-select'),
     profileButton: document.getElementById('profile-button'),
+    effectSelect: document.getElementById('effect-select'),
     toggleEditorButton: document.getElementById('toggle-editor-button'),
     shareButton: document.getElementById('share-button'),
     profileModal: document.getElementById('profile-modal'),
@@ -223,6 +224,17 @@ export const setupUI = (callbacks) => {
     dom.playToggleButton.addEventListener('click', onPlayToggle);
     dom.restartButton.addEventListener('click', onRestart);
     dom.toggleEditorButton.addEventListener('click', onToggleEditor);
+    
+    // --- Visual Effect Selector ---
+    dom.effectSelect.addEventListener('change', (e) => {
+        const selectedEffect = e.target.value;
+        // Remove all possible effect classes first
+        document.body.classList.remove('crt-effect', 'vhs-effect', 'terminal-effect');
+        if (selectedEffect !== 'none') {
+            document.body.classList.add(selectedEffect);
+        }
+    });
+
 
     // Resizer
     const setupResizer = (handleEl, paneEl) => {

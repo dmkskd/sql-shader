@@ -14,6 +14,110 @@
     <link rel="stylesheet" type="text/css" href="https://unpkg.com/d3-flame-graph@4.1.3/dist/d3-flame-graph.css">
 
     <style>
+      /* --- Visual Effect Styles --- */
+      .crt-effect::after {
+        content: " ";
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
+        /* Scanlines */
+        background: linear-gradient(
+          to bottom,
+          rgba(18, 16, 16, 0) 50%,
+          rgba(0, 0, 0, 0.25) 50%
+        );
+        background-size: 100% 4px;
+        z-index: 2000;
+        pointer-events: none;
+        animation: crt-flicker 0.15s infinite;
+      }
+      .crt-effect::before {
+        content: " ";
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
+        /* Vignette */
+        background: radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(0,0,0,0.75) 100%);
+        z-index: 2001;
+        pointer-events: none;
+      }
+      @keyframes crt-flicker {
+        0%, 100% { opacity: 0.75; }
+        50% { opacity: 0.5; }
+      }
+      /* New Terminal Effect */
+      .terminal-effect {
+        filter: hue-rotate(60deg) brightness(1.2);
+        font-family: monospace !important;
+      }
+      .terminal-effect .CodeMirror, .terminal-effect #stats-panel {
+        text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+      }
+      .terminal-effect::after {
+        content: " ";
+        display: block;
+        position: absolute;
+        top: 0; left: 0; bottom: 0; right: 0;
+        background: linear-gradient(to bottom, rgba(0,0,0,0) 50%, rgba(0,0,0,0.4) 50%);
+        background-size: 100% 3px;
+        z-index: 2000;
+        pointer-events: none;
+      }
+      /* --- New, Improved VHS Effect --- */
+      .vhs-effect {
+        /* Apply a subtle blur and color shift to the whole screen */
+        filter: blur(0.5px) saturate(0.9);
+      }
+      .vhs-effect::before, .vhs-effect::after {
+        content: " ";
+        display: block;
+        position: absolute;
+        top: 0; left: 0; bottom: 0; right: 0;
+        z-index: 2001;
+        pointer-events: none;
+      }
+      .vhs-effect::before {
+        /* Scanlines */
+        background: linear-gradient(to bottom, rgba(0,0,0,0) 50%, rgba(0,0,0,0.2) 50%);
+        background-size: 100% 3px;
+      }
+      .vhs-effect::after {
+        /* Rolling glitch bar */
+        background: linear-gradient(to bottom, rgba(255,0,0,0.5), rgba(0,255,0,0.3), rgba(0,0,255,0.4));
+        height: 10px;
+        opacity: 0;
+        animation: vhs-glitch 5s linear infinite;
+      }
+      @keyframes vhs-glitch {
+        0% {
+          opacity: 0.1;
+          transform: translateY(-100%);
+        }
+        48% {
+          opacity: 0.1;
+        }
+        50% {
+          opacity: 0.8;
+          height: 50px;
+          transform: translateY(40vh);
+        }
+        52% {
+          opacity: 0.1;
+          height: 10px;
+        }
+        100% {
+          opacity: 0.1;
+          transform: translateY(100vh);
+        }
+      }
+      /* --- End Visual Effect Styles --- */
+
       body { font-family: sans-serif; margin: 0; background-color: #222; color: #eee; }
       header {
         display: flex;
@@ -332,6 +436,12 @@
         <select id="resolution-select"></select>
         <select id="zoom-select"></select>
         <button id="toggle-editor-button">Toggle Editor</button>
+        <select id="effect-select" title="Select an editor effect">
+          <option value="none">Editor Effect: None</option>
+          <option value="crt-effect">CRT</option>
+          <option value="vhs-effect">VHS</option>
+          <option value="terminal-effect">Terminal</option>
+        </select>
         <button id="share-button" title="Generate a shareable link for the current shader and settings">🔗 Share</button>
       </div>
       <div id="stats-panel">Initializing...</div>
