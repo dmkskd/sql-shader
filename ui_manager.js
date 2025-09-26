@@ -22,6 +22,8 @@ export const dom = {
     shareButton: document.getElementById('share-button'),
     profileModal: document.getElementById('profile-modal'),
     profileContainer: document.getElementById('profile-container'),
+    profileContentRaw: document.getElementById('profile-content-raw'),
+    profileContentStructured: document.getElementById('profile-content-structured'),
     profileModalClose: document.querySelector('.modal-close-button'),
     zoomInButton: document.getElementById('zoom-in-button'),
     zoomOutButton: document.getElementById('zoom-out-button'),
@@ -99,6 +101,23 @@ export const setupUI = (callbacks) => {
         }
     });
     dom.profileButton.addEventListener('click', onProfile);
+
+    // --- Profiler Tabs Logic ---
+    const profilerTabs = document.querySelectorAll('.profiler-tab');
+    const profilerTabContents = document.querySelectorAll('.profiler-tab-content');
+    profilerTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            profilerTabs.forEach(t => t.classList.remove('active'));
+            profilerTabContents.forEach(c => c.classList.remove('active'));
+
+            tab.classList.add('active');
+            const contentId = `profile-content-${tab.dataset.tab}`;
+            document.getElementById(contentId).classList.add('active');
+
+            // Show/hide zoom controls based on tab
+            dom.zoomInButton.parentElement.style.display = (tab.dataset.tab === 'raw') ? 'block' : 'none';
+        });
+    });
 
     // --- Graph Zoom Logic ---
     let currentGraphZoom = 1.0;

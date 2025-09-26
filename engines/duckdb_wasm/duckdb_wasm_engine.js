@@ -48,46 +48,121 @@ class DuckDBWasmEngine {
    * @returns {Promise<object>} The parsed JSON profile output.
    */
   profile = async (sql, params) => {
-    console.log('[engine.profile] Step 1: Using new EXPLAIN ANALYZE strategy.');
-
+    console.log('[engine.profile] Profiling with stable text-only strategy.');
     // The EXPLAIN ANALYZE command cannot use parameters directly.
     // We must manually substitute the '?' placeholders in the SQL string.
     // This is safe here because the parameters are all numbers controlled by our app.
     let explainedSql = `EXPLAIN ANALYZE ${sql}`;
-    console.log('[engine.profile] Step 2: Substituting parameters into the query.');
     for (const param of params) {
       explainedSql = explainedSql.replace('?', param);
     }
+    
+    // Use the default, stable 'query_tree' profiler output.
+    // This avoids the JSON-related crashes.
+    try {
+      await this.connection.query("PRAGMA enable_profiling = 'query_tree'");
+      const rawResult = await this.connection.query(explainedSql);
+      // The result of EXPLAIN is a table with one row and one column: 'explain_value'.
+      // We access it by getting the column vector first, then the first element.
+      const rawPlan = rawResult.getChild('explain_value').get(0);
+      console.log('[engine.profile] Successfully retrieved text query plan.');
 
-    console.log(`[engine.profile] Step 3: Executing query: ${explainedSql.substring(0, 100)}...`);
-    // We use the main connection, as this is a simple, non-interfering query.
-    const result = await this.connection.query(explainedSql);
-
-    // The result of EXPLAIN ANALYZE is an Arrow Table. The easiest way to get
-    // a human-readable query plan is to call its `toString()` method.
-    const plan = result.toString();
-    console.log('[engine.profile] Step 4: Successfully retrieved query plan. Returning to caller.');
-    return plan;
+      // Now, get the JSON plan for the structured view
+      await this.connection.query("PRAGMA enable_profiling = 'json'");
+      const jsonResult = await this.connection.query(explainedSql);
+      const jsonString = jsonResult.getChild('explain_value').get(0);
+      console.log("--- BEGIN DUCKDB PROFILE JSON ---");
+      console.log(jsonString);
+      console.log("--- END DUCKDB PROFILE JSON ---");
+      const jsonPlan = JSON.parse(jsonString);
+      console.log('[engine.profile] Successfully retrieved JSON query plan.');
+      
+      // Return the raw text for the first tab, and null for the structured one for now.
+      return { raw: rawPlan, json: jsonPlan };
+    } finally {
+      // CRITICAL: Disable profiling to restore normal connection behavior for the render loop.
+      await this.connection.query("PRAGMA disable_profiling");
+      console.log('[engine.profile] Profiling disabled, connection restored to normal state.');
+    }
   };
 
   /**
    * Renders the profile data into an HTML string.
-   * @param {string} profileData The raw query plan text.
-   * @returns {Promise<string>} A string containing formatted HTML.
+   * @param {object} profileData The profile data object from the profile() method.
+   * @param {object} containers The DOM elements to render into.
+   * @returns {Promise<void>}
    */
-  async renderProfile(profileData) {
-    const colorCoded = profileData.replace(/(\(actual time: ([\d.]+)s|\(([\d.]+)s\))/g, (match, _, timeStr1, timeStr2) => {
-        const time = parseFloat(timeStr1 || timeStr2);
-        let colorClass = 'time-good';
-        if (time > 0.1) {
-            colorClass = 'time-hot';
-        } else if (time > 0.01) {
-            colorClass = 'time-warm';
-        }
-        return `<span class="${colorClass}">${match}</span>`;
-    });
+  async renderProfile(profileData, containers) {
+    containers.rawContainer.innerHTML = this.renderRawProfile(profileData.raw);
 
-    return `<pre>${colorCoded}</pre>`;
+    if (profileData.json) {
+      containers.structuredContainer.innerHTML = this.parsePlanToHtml(profileData.json);
+      if (containers.tabs.structured) {
+        containers.tabs.structured.style.display = 'block';
+      }
+    } else if (containers.tabs.structured) {
+        containers.tabs.structured.style.display = 'none';
+    }
+  }
+
+  /**
+   * Renders the raw, color-coded profile data.
+   * @param {string} planText The raw query plan text.
+   * @returns {string} A string containing formatted HTML for the raw view.
+   */
+  renderRawProfile(planText) {
+      const colorCoded = planText.replace(/(\(actual time: ([\d.]+)s|\(([\d.]+)s\))/g, (match, _, timeStr1, timeStr2) => {
+          const time = parseFloat(timeStr1 || timeStr2);
+          let colorClass = 'time-good';
+          if (time > 0.1) {
+              colorClass = 'time-hot';
+          } else if (time > 0.01) {
+              colorClass = 'time-warm';
+          }
+          return `<span class="${colorClass}">${match}</span>`;
+      });
+      return `<pre>${colorCoded}</pre>`;
+  }
+
+  /**
+   * Parses the DuckDB EXPLAIN ANALYZE output into a structured, collapsible HTML view.
+   * @param {object} planNode The root node of the JSON query plan.
+   * @returns {string} An HTML string representing the structured view.
+   */
+  parsePlanToHtml(planNode) {
+    // The actual query plan is nested inside the top-level object and an EXPLAIN_ANALYZE node.
+    const rootNode = planNode?.children?.[0]?.children?.[0];
+    if (!rootNode) return 'No structured plan available.';
+
+    // Recursively build the HTML for the tree
+    function buildHtml(node) {
+        // Use the correct property names from the JSON
+        const time = (node.operator_timing * 1000).toFixed(2); // Convert seconds to ms
+        const rows = node.operator_cardinality;
+        const operatorName = (node.operator_name || 'UNNAMED_NODE').replace(/_/g, ' ');
+
+        let summary = `<strong>${operatorName}</strong> - ${rows} Rows (${time}ms)`;
+
+        // The 'extra_info' field often contains useful details.
+        // It's an object with various properties, so we format it nicely.
+        let infoLines = [];
+        if (node.extra_info && typeof node.extra_info === 'object') {
+            for (const [key, value] of Object.entries(node.extra_info)) {
+                if (Array.isArray(value)) {
+                    infoLines.push(`${key}: ${value.join(', ')}`);
+                } else {
+                    infoLines.push(`${key}: ${value}`);
+                }
+            }
+        }
+        const details = infoLines.filter(line => line).map(line => `<div>${line}</div>`).join('');
+
+        const childrenHtml = (node.children || []).map(buildHtml).join('');
+
+        return `<div class="profiler-node"><details open><summary>${summary}</summary><div style="padding-left: 20px;">${details}${childrenHtml}</div></details></div>`;
+    }
+
+    return buildHtml(rootNode);
   }
 
   /**

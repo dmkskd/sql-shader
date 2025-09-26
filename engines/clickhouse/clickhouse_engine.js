@@ -115,22 +115,27 @@ class ClickHouseEngine {
   /**
    * Renders the profile data into an HTML string. For ClickHouse, this can be a graph.
    * @param {string} profileData The raw query plan text, which might be a DOT graph.
-   * @returns {Promise<string>} A string containing formatted HTML (e.g., an SVG or a <pre> block).
+   * @param {object} containers The DOM elements to render into.
+   * @returns {Promise<void>}
    */
-  async renderProfile(profileData) {
+  async renderProfile(profileData, containers) {
+    let rawHtml;
     if (profileData.trim().startsWith('digraph')) {
       // It's a graph, render it with Mermaid.
       const wipMessage = `<p style="background-color: #444; padding: 10px; border-radius: 3px; border-left: 3px solid #ffc980;"><b>Note:</b> The graphical query plan for ClickHouse is a work in progress. The structure is correct, but performance metrics are not yet integrated into the nodes.</p>`;
       const mermaidGraph = this.dotToMermaid(profileData);
       const { svg } = await mermaid.render('mermaid-graph', mermaidGraph);
-      return wipMessage + svg;
+      rawHtml = wipMessage + svg;
     } else {
       // It's plain text, format it in a <pre> block.
       const colorCoded = profileData.replace(/(Expression|Filter|Sort|Sorting|Join|Projection|ReadFromSystemNumbers)/g, (match) => {
           return `<span class="time-warm">${match}</span>`;
       });
-      return `<pre>${colorCoded}</pre>`;
+      rawHtml = `<pre>${colorCoded}</pre>`;
     }
+    containers.rawContainer.innerHTML = rawHtml;
+    // This engine does not provide a structured view, so hide the tab.
+    containers.tabs.structured.style.display = 'none';
   }
 
   /**

@@ -86,24 +86,39 @@ const main = async (engine) => {
         dom.profileButton.textContent = 'Profiling...';
         try {
             updateInitStatus('Profiling...');
-            const profileData = await engine.profile(editor.getValue(), [
-                resolution.width, resolution.height,
-                stats.elapsedTime, iMouse.x, iMouse.y
-            ]);
+            let profileData;
+            try {
+                profileData = await engine.profile(editor.getValue(), [
+                    resolution.width, resolution.height,
+                    stats.elapsedTime, iMouse.x, iMouse.y
+                ]);
+            } catch (e) {
+                // This specifically catches errors from the profile data generation.
+                throw new Error(`Failed to generate profile data: ${e.message}`);
+            }
 
             // Clear previous content
-            dom.profileContainer.innerHTML = '';
-
-            const profileHtml = await engine.renderProfile(profileData);
-            dom.profileContainer.innerHTML = profileHtml;
+            dom.profileContainer.innerHTML = ''; // Raw view
+            dom.profileContentStructured.innerHTML = ''; // Structured view
+            
+            // Delegate the entire rendering process to the engine.
+            // The engine now has full control over how to display its profile data.
+            await engine.renderProfile(profileData, {
+              rawContainer: dom.profileContainer,
+              structuredContainer: dom.profileContentStructured,
+              tabs: {
+                structured: document.querySelector('.profiler-tab[data-tab="structured"]')
+              }
+            });
 
             dom.profileModal.style.display = 'flex';
             updateInitStatus('Profiling complete.');
             setTimeout(() => updateStatsPanel(stats, resolution), 3000); // Use imported function
         } catch (e) {
+            const errorMessage = `Profiling failed: ${e.message}`;
             console.error("Profiling failed:", e);
-            updateInitStatus(`Profiling failed: ${e.message}`);
-            setTimeout(() => updateStatsPanel(stats, resolution), 3000); // Use imported function
+            updateInitStatus(errorMessage);
+            // Do not update stats panel immediately, let the error message show.
         } finally {
             dom.profileButton.disabled = false;
             dom.profileButton.textContent = 'Profile';

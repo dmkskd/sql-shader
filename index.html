@@ -194,6 +194,36 @@
         font-size: 1.2em;
         font-weight: bold;
       }
+      .profiler-tabs {
+        display: flex;
+        border-bottom: 1px solid #555;
+        margin-bottom: 15px;
+      }
+      .profiler-tab {
+        padding: 10px 15px;
+        cursor: pointer;
+        border: none;
+        background: none;
+        color: #aaa;
+        font-size: 1em;
+      }
+      .profiler-tab.active {
+        color: #fff;
+        border-bottom: 2px solid #ffc980;
+      }
+      .profiler-tab-content {
+        display: none;
+      }
+      .profiler-tab-content.active {
+        display: block;
+      }
+      #profile-container pre {
+        white-space: pre; /* Preserve formatting from EXPLAIN ANALYZE */
+        font-size: 12px; /* Make text a bit smaller to fit more */
+      }
+      /*
+        font-weight: bold;
+      }
       #profile-container pre {
         white-space: pre; /* Preserve formatting from EXPLAIN ANALYZE */
         font-size: 12px; /* Make text a bit smaller to fit more */
@@ -216,6 +246,23 @@
       }
       .time-good {
         color: #80ff80; /* Green for fast/unconcerning */
+      }
+      /* Styles for the structured profiler view */
+      .profiler-node details {
+        border-left: 2px solid #555;
+        padding-left: 20px;
+        margin-left: 20px;
+      }
+      .profiler-node summary {
+        cursor: pointer;
+        padding: 5px;
+        background-color: #3a3a3a;
+        border-radius: 3px;
+        margin-bottom: 5px;
+        font-family: monospace;
+      }
+      .profiler-node summary:hover {
+        background-color: #4a4a4a;
       }
       /* Styles for the settings modal form */
       .settings-form-group {
@@ -287,13 +334,19 @@
       <div class="modal-content">
         <span class="modal-close-button" title="Close">&times;</span>
         <h2>Query Profile</h2>
-        <div class="graph-controls">
-          <button id="zoom-in-button" title="Zoom In">+</button>
-          <button id="zoom-out-button" title="Zoom Out">-</button>
-          <button id="zoom-reset-button" title="Reset Zoom">1:1</button>
+        <div class="profiler-tabs">
+          <button class="profiler-tab active" data-tab="raw">Raw Output</button>
+          <button class="profiler-tab" data-tab="structured">Structured View</button>
+          <div class="graph-controls">
+            <button id="zoom-in-button" title="Zoom In">+</button>
+            <button id="zoom-out-button" title="Zoom Out">-</button>
+            <button id="zoom-reset-button" title="Reset Zoom">1:1</button>
+          </div>
         </div>
-        <!-- The query plan will be inserted here -->
-        <div id="profile-container"></div>
+        <div id="profile-content-raw" class="profiler-tab-content active">
+          <div id="profile-container"></div>
+        </div>
+        <div id="profile-content-structured" class="profiler-tab-content"></div>
       </div>
     </div>
     <div id="settings-modal" class="modal-overlay" style="display: none;">
