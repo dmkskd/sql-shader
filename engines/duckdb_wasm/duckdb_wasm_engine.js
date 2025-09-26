@@ -1,6 +1,7 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { SHADERS } from './duckdb_wasm_shaders.js';
 import * as d3 from 'd3';
+import mermaid from 'mermaid';
 import { flamegraph } from 'd3-flame-graph';
 
 /**
@@ -92,19 +93,24 @@ class DuckDBWasmEngine {
    * @returns {Promise<void>}
    */
   async renderProfile(profileData, containers) {
-    const { rawContainer, structuredContainer, flamegraphContainer, tabs } = containers;
+    const { rawContainer, structuredContainer, flamegraphContainer, graphContainer, tabs } = containers;
     rawContainer.innerHTML = this.renderRawProfile(profileData.raw);
 
     if (profileData.json) {
       structuredContainer.innerHTML = this.parsePlanToHtml(profileData.json);
       this.renderFlamegraph(profileData.json, flamegraphContainer);
+      // Render the graph with the default 'data-flow' (bottom-up) view
+      this.renderMermaidGraph(profileData.json, graphContainer, 'data-flow');
       if (tabs.structured) {
         tabs.structured.style.display = 'block';
-        document.querySelector('.profiler-tab[data-tab="flamegraph"]').style.display = 'block';
+        tabs.flamegraph.style.display = 'block';
+        tabs.graph.style.display = 'block';
       }
+      this.setupGraphDirectionToggle(profileData.json, graphContainer);
     } else if (containers.tabs.structured) {
         tabs.structured.style.display = 'none';
-        document.querySelector('.profiler-tab[data-tab="flamegraph"]').style.display = 'none';
+        tabs.flamegraph.style.display = 'none';
+        tabs.graph.style.display = 'none';
     }
   }
 
@@ -242,6 +248,132 @@ class DuckDBWasmEngine {
       .label(labelHandler); // Use our custom tooltip function
 
     d3.select(container).datum(flamegraphData).call(flamegraphChart);
+  }
+
+  /**
+   * Renders a Mermaid.js graph from the DuckDB JSON query plan.
+   * @param {object} planNode The root node of the JSON query plan.
+   * @param {HTMLElement} container The DOM element to render the chart into.
+   * @param {string} direction The Mermaid graph direction ('TD' or 'BT').
+   */
+  async renderMermaidGraph(planNode, container, direction = 'TD') {
+    const rootNode = planNode?.children?.[0]?.children?.[0];
+    if (!rootNode) return;
+
+    // First, calculate the total time by summing up all operator timings in the tree.
+    let totalQueryTime = 0;
+    function sumTimings(node) {
+        totalQueryTime += node.operator_timing;
+        if (node.children) {
+            node.children.forEach(sumTimings);
+        }
+    }
+    sumTimings(rootNode);
+
+    let mermaidSyntax = 'graph TD;\n'; // Always use Top-Down graph orientation
+    let nodeCounter = 0;
+    const nodeInfoMap = new Map();
+
+    // Define CSS classes for Mermaid node styling based on performance
+    mermaidSyntax += 'classDef timeHot fill:#5c2828,stroke:#ff8080,stroke-width:2px,color:#fff;\n';
+    mermaidSyntax += 'classDef timeWarm fill:#5a4e3a,stroke:#ffc980,stroke-width:2px,color:#fff;\n';
+    mermaidSyntax += 'classDef timeGood fill:#2a4a3a,stroke:#80ff80,stroke-width:2px,color:#fff;\n';
+
+    const jsonToMermaid = (node) => {
+      const nodeId = `n${nodeCounter++}`;
+      const operatorName = (node.operator_name || 'UNNAMED').replace(/_/g, ' ');
+      const timeMs = (node.operator_timing * 1000).toFixed(2);
+      const rows = node.operator_cardinality;
+
+      // Define the node's text content
+      let nodeText = `<strong>${operatorName}</strong><br/>${rows.toLocaleString()} rows<br/>${timeMs} ms`;
+      
+      // Escape quotes for Mermaid syntax
+      nodeText = nodeText.replace(/"/g, '#quot;');
+
+      // Store extra info for the tooltip
+      let extraInfoHtml = '';
+      if (node.extra_info && typeof node.extra_info === 'object') {
+          for (const [key, value] of Object.entries(node.extra_info)) {
+              const valStr = Array.isArray(value) ? value.join(', ') : value;
+              extraInfoHtml += `<strong>${key}:</strong> ${valStr}<br>`;
+          }
+      }
+      if (extraInfoHtml) nodeInfoMap.set(nodeId, extraInfoHtml);
+
+      mermaidSyntax += `    ${nodeId}["${nodeText}"];\n`;
+
+      // Assign a class to the node based on its percentage of total time
+      const timePercent = totalQueryTime > 0 ? ((node.operator_timing / totalQueryTime) * 100) : 0;
+      if (timePercent >= 50) {
+        mermaidSyntax += `    class ${nodeId} timeHot;\n`;
+      } else if (timePercent >= 5) {
+        mermaidSyntax += `    class ${nodeId} timeWarm;\n`;
+      } else {
+        mermaidSyntax += `    class ${nodeId} timeGood;\n`;
+      }
+
+      if (node.children) {
+        node.children.forEach(child => {
+          const childId = jsonToMermaid(child);
+          // Reverse the arrow direction for a top-down logical view
+          if (direction === 'data-flow') { // The default "bottom-up" view
+            mermaidSyntax += `    ${childId} --> ${nodeId};\n`;
+          } else {
+            mermaidSyntax += `    ${nodeId} --> ${childId};\n`; // The flipped "top-down" view
+          }
+        });
+      }
+      return nodeId;
+    };
+
+    jsonToMermaid(rootNode);
+    const { svg } = await mermaid.render('duckdb-mermaid-graph', mermaidSyntax);
+    container.innerHTML = svg;
+
+    // --- Add Tooltip Logic ---
+    const tooltipEl = document.getElementById('graph-tooltip');
+    container.querySelectorAll('.node').forEach(nodeEl => {
+      const nodeId = nodeEl.id;
+      const extraInfo = nodeInfoMap.get(nodeId);
+      if (extraInfo) {
+        nodeEl.addEventListener('mouseover', () => {
+          tooltipEl.innerHTML = extraInfo;
+          tooltipEl.style.display = 'block';
+        });
+        nodeEl.addEventListener('mousemove', (e) => {
+          // Position tooltip near the cursor
+          tooltipEl.style.left = `${e.clientX + 15}px`;
+          tooltipEl.style.top = `${e.clientY + 15}px`;
+        });
+        nodeEl.addEventListener('mouseout', () => {
+          tooltipEl.style.display = 'none';
+        });
+      }
+    });
+  }
+
+  /**
+   * Sets up the event listener for the graph direction toggle button.
+   * @param {object} planNode The root node of the JSON query plan.
+   * @param {HTMLElement} container The DOM element where the chart is rendered.
+   */
+  setupGraphDirectionToggle(planNode, container) {
+    const button = document.getElementById('switch-graph-direction-button');
+    let currentLayout = 'data-flow'; // Default is the "bottom-up" data flow view (leaves at top)
+
+    const updateButtonText = () => {
+      button.textContent = (currentLayout === 'data-flow') ? 'Switch to Top Down' : 'Switch to Bottom Up';
+      button.title = (currentLayout === 'data-flow') ? 'View as a logical plan (root at top)' : 'View as a data flow plan (leaves at top)';
+    };
+
+    const toggle = () => {
+      currentLayout = (currentLayout === 'data-flow') ? 'logical' : 'data-flow';
+      this.renderMermaidGraph(planNode, container, currentLayout);
+      updateButtonText();
+    };
+    updateButtonText(); // Set initial button text
+    button.onclick = toggle; // Use onclick to easily replace the handler on re-profile
   }
 
   /**

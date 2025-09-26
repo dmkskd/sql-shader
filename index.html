@@ -343,10 +343,12 @@
         <div class="profiler-tabs">
           <button class="profiler-tab active" data-tab="raw">Raw Output</button>
           <button class="profiler-tab" data-tab="structured">Structured Output</button>
+          <button class="profiler-tab" data-tab="graph">Graph View</button>
           <button class="profiler-tab" data-tab="flamegraph">FlameGraph</button>
           <div class="graph-controls">
             <button id="expand-all-button" title="Expand All Nodes">Expand All</button>
             <button id="collapse-all-button" title="Collapse All Nodes">Collapse All</button>
+            <button id="switch-graph-direction-button" title="Switch Graph Direction">Switch Direction</button>
             <button id="zoom-in-button" title="Zoom In">+</button>
             <button id="zoom-out-button" title="Zoom Out">-</button>
             <button id="zoom-reset-button" title="Reset Zoom">1:1</button>
@@ -356,8 +358,10 @@
           <div id="profile-container"></div>
         </div>
         <div id="profile-content-structured" class="profiler-tab-content"></div>
+        <div id="profile-content-graph" class="profiler-tab-content"></div>
         <div id="profile-content-flamegraph" class="profiler-tab-content"></div>
-        <div id="flamegraph-tooltip" class="d3-flame-graph-tip" style="position: absolute; display: none; z-index: 1001;"></div>
+        <div id="graph-tooltip" style="position: fixed; display: none; background: #2a2a2a; padding: 10px; border: 1px solid #777; border-radius: 3px; pointer-events: none; z-index: 1002; max-width: 400px; font-family: monospace; font-size: 12px;"></div>
+        <div id="flamegraph-tooltip" class="d3-flame-graph-tip" style="position: fixed; z-index: 1001;"></div>
       </div>
     </div>
     <div id="settings-modal" class="modal-overlay" style="display: none;">

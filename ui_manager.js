@@ -25,12 +25,14 @@ export const dom = {
     profileContentRaw: document.getElementById('profile-content-raw'),
     profileContentStructured: document.getElementById('profile-content-structured'),
     profileContentFlamegraph: document.getElementById('profile-content-flamegraph'),
+    profileContentGraph: document.getElementById('profile-content-graph'),
     profileModalClose: document.querySelector('.modal-close-button'),
     zoomInButton: document.getElementById('zoom-in-button'),
     zoomOutButton: document.getElementById('zoom-out-button'),
     zoomResetButton: document.getElementById('zoom-reset-button'),
     expandAllButton: document.getElementById('expand-all-button'),
     collapseAllButton: document.getElementById('collapse-all-button'),
+    switchGraphDirectionButton: document.getElementById('switch-graph-direction-button'),
     settingsButton: document.getElementById('settings-button'),
     settingsModal: document.getElementById('settings-modal'),
     settingsModalClose: document.querySelector('#settings-modal .modal-close-button'),
@@ -119,12 +121,15 @@ export const setupUI = (callbacks) => {
 
             // Show/hide zoom controls based on tab
             const isRawView = tab.dataset.tab === 'raw';
+            const isGraphView = tab.dataset.tab === 'graph';
             const isStructuredView = tab.dataset.tab === 'structured';
 
             // Visibility for Mermaid graph zoom controls
-            dom.zoomInButton.style.display = isRawView ? 'inline-block' : 'none';
-            dom.zoomOutButton.style.display = isRawView ? 'inline-block' : 'none';
-            dom.zoomResetButton.style.display = isRawView ? 'inline-block' : 'none';
+            const showZoom = (isRawView && dom.engineSelect.value === 'clickhouse') || isGraphView;
+            dom.zoomInButton.style.display = showZoom ? 'inline-block' : 'none';
+            dom.zoomOutButton.style.display = showZoom ? 'inline-block' : 'none';
+            dom.zoomResetButton.style.display = showZoom ? 'inline-block' : 'none';
+            dom.switchGraphDirectionButton.style.display = isGraphView ? 'inline-block' : 'none';
 
             // Visibility for Tree view controls
             dom.expandAllButton.style.display = isStructuredView ? 'inline-block' : 'none';

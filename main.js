@@ -107,9 +107,11 @@ const main = async (engine) => {
                 rawContainer: dom.profileContainer,
                 structuredContainer: dom.profileContentStructured,
                 flamegraphContainer: dom.profileContentFlamegraph,
+                graphContainer: dom.profileContentGraph,
                 tabs: {
                     structured: document.querySelector('.profiler-tab[data-tab="structured"]'),
-                    flamegraph: document.querySelector('.profiler-tab[data-tab="flamegraph"]')
+                    flamegraph: document.querySelector('.profiler-tab[data-tab="flamegraph"]'),
+                    graph: document.querySelector('.profiler-tab[data-tab="graph"]')
                 }
             });
 
