@@ -1,5 +1,6 @@
 import { createClient } from '@clickhouse/client-web';
 import { Table, Float32, makeTable } from '@apache/arrow';
+import mermaid from 'mermaid';
 import { SHADERS } from './clickhouse_shaders.js';
 
 /**
@@ -109,6 +110,52 @@ class ClickHouseEngine {
     const plan = rows.map(row => row.explain).join('\n');
     console.log('[engine.profile] Step 3: Successfully retrieved query plan. Returning to caller.');
     return plan;
+  }
+
+  /**
+   * Renders the profile data into an HTML string. For ClickHouse, this can be a graph.
+   * @param {string} profileData The raw query plan text, which might be a DOT graph.
+   * @returns {Promise<string>} A string containing formatted HTML (e.g., an SVG or a <pre> block).
+   */
+  async renderProfile(profileData) {
+    if (profileData.trim().startsWith('digraph')) {
+      // It's a graph, render it with Mermaid.
+      const wipMessage = `<p style="background-color: #444; padding: 10px; border-radius: 3px; border-left: 3px solid #ffc980;"><b>Note:</b> The graphical query plan for ClickHouse is a work in progress. The structure is correct, but performance metrics are not yet integrated into the nodes.</p>`;
+      const mermaidGraph = this.dotToMermaid(profileData);
+      const { svg } = await mermaid.render('mermaid-graph', mermaidGraph);
+      return wipMessage + svg;
+    } else {
+      // It's plain text, format it in a <pre> block.
+      const colorCoded = profileData.replace(/(Expression|Filter|Sort|Sorting|Join|Projection|ReadFromSystemNumbers)/g, (match) => {
+          return `<span class="time-warm">${match}</span>`;
+      });
+      return `<pre>${colorCoded}</pre>`;
+    }
+  }
+
+  /**
+   * Parses a DOT graph string and converts it to Mermaid syntax.
+   * @param {string} dotString The raw DOT graph string.
+   * @returns {string} A Mermaid graph definition string.
+   */
+  dotToMermaid(dotString) {
+    let mermaidString = 'graph LR;\n'; // LR = Left to Right
+    const nodeLabels = new Map();
+
+    const nodeRegex = /(\w+)\s+\[label="([^"]+)"\]/g;
+    let match;
+    while ((match = nodeRegex.exec(dotString)) !== null) {
+      nodeLabels.set(match[1], match[2].replace(/"/g, '&quot;'));
+    }
+
+    const edgeRegex = /^\s*(\w+)\s*->\s*(\w+)/gm;
+    while ((match = edgeRegex.exec(dotString)) !== null) {
+      const [_, fromNode, toNode] = match;
+      const fromLabel = nodeLabels.get(fromNode) || fromNode;
+      const toLabel = nodeLabels.get(toNode) || toNode;
+      mermaidString += `    ${fromNode}["${fromLabel}"] --> ${toNode}["${toLabel}"];\n`;
+    }
+    return mermaidString;
   }
 
   getShaders() {

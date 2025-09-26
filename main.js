@@ -1,4 +1,4 @@
-import { dom, setupUI, updateInitStatus, updateStatsPanel, colorCodeQueryPlan, openSettingsModal } from './ui_manager.js';
+import { dom, setupUI, updateInitStatus, updateStatsPanel, openSettingsModal } from './ui_manager.js';
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 
@@ -7,7 +7,7 @@ console.log('Executing main.js - Debug Version: 1.4.0');
 const APP_VERSION = '1.1.0';
 
 const main = async (engine) => {
-  // Initialize Mermaid once with settings that are robust for secure environments.
+  // Initialize Mermaid once. It's used by the ClickHouse engine for profiling.
   mermaid.initialize({
     startOnLoad: false,
     theme: 'dark',
@@ -72,34 +72,6 @@ const main = async (engine) => {
       iMouse.y = resolution.height / 2;
     };
 
-    /**
-     * Parses a DOT graph string from ClickHouse and converts it to Mermaid syntax.
-     * @param {string} dotString The raw DOT graph string.
-     * @returns {string} A Mermaid graph definition string.
-     */
-    const dotToMermaid = (dotString) => {
-      let mermaidString = 'graph LR;\n'; // LR = Left to Right
-      const nodeLabels = new Map();
-
-      // First pass: find all node labels using a more reliable regex
-      const nodeRegex = /(\w+)\s+\[label="([^"]+)"\]/g;
-      let match;
-      while ((match = nodeRegex.exec(dotString)) !== null) {
-        nodeLabels.set(match[1], match[2].replace(/"/g, '&quot;'));
-      }
-
-      // Second pass: build the connections using the labels from the map
-      const edgeRegex = /^\s*(\w+)\s*->\s*(\w+)/gm;
-      while ((match = edgeRegex.exec(dotString)) !== null) {
-        const fromNode = match[1];
-        const toNode = match[2];
-        const fromLabel = nodeLabels.get(fromNode) || fromNode;
-        const toLabel = nodeLabels.get(toNode) || toNode;
-        mermaidString += `    ${fromNode}["${fromLabel}"] --> ${toNode}["${toLabel}"];\n`;
-      }
-      return mermaidString;
-    };
-
     const shaderManager = new ShaderManager(engine, editor, updateCanvasSizeAndResolution);
 
     // --- Final Initialization Steps ---
@@ -122,18 +94,8 @@ const main = async (engine) => {
             // Clear previous content
             dom.profileContainer.innerHTML = '';
 
-            if (dom.engineSelect.value === 'clickhouse' && profileData.trim().startsWith('digraph')) {
-                // For ClickHouse DOT output, render it as an SVG graph.
-                const wipMessage = `<p style="background-color: #444; padding: 10px; border-radius: 3px; border-left: 3px solid #ffc980;"><b>Note:</b> The graphical query plan for ClickHouse is a work in progress. The structure is correct, but performance metrics are not yet integrated into the nodes.</p>`;
-                updateInitStatus('Rendering query plan with Mermaid...');
-                const mermaidGraph = dotToMermaid(profileData);
-                const { svg } = await mermaid.render('mermaid-graph', mermaidGraph);
-                dom.profileContainer.innerHTML = wipMessage + svg;
-            } else {
-                // For other formats, use the color-coding approach.
-                const formattedPlan = colorCodeQueryPlan(profileData);
-                dom.profileContainer.innerHTML = `<pre>${formattedPlan}</pre>`;
-            }
+            const profileHtml = await engine.renderProfile(profileData);
+            dom.profileContainer.innerHTML = profileHtml;
 
             dom.profileModal.style.display = 'flex';
             updateInitStatus('Profiling complete.');

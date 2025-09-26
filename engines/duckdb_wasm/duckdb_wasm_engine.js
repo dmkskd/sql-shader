@@ -71,6 +71,26 @@ class DuckDBWasmEngine {
   };
 
   /**
+   * Renders the profile data into an HTML string.
+   * @param {string} profileData The raw query plan text.
+   * @returns {Promise<string>} A string containing formatted HTML.
+   */
+  async renderProfile(profileData) {
+    const colorCoded = profileData.replace(/(\(actual time: ([\d.]+)s|\(([\d.]+)s\))/g, (match, _, timeStr1, timeStr2) => {
+        const time = parseFloat(timeStr1 || timeStr2);
+        let colorClass = 'time-good';
+        if (time > 0.1) {
+            colorClass = 'time-hot';
+        } else if (time > 0.01) {
+            colorClass = 'time-warm';
+        }
+        return `<span class="${colorClass}">${match}</span>`;
+    });
+
+    return `<pre>${colorCoded}</pre>`;
+  }
+
+  /**
    * @returns {Array<{name: string, sql: string}>}
    */
   getShaders() {

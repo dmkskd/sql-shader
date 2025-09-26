@@ -69,30 +69,6 @@ export const updateErrorPanel = (stats) => {
     }
 };
 
-export const colorCodeQueryPlan = (planText) => {
-    const selectedEngine = dom.engineSelect.value;
-
-    if (selectedEngine === 'duckdb_wasm') {
-        return planText.replace(/(\(actual time: ([\d.]+)s|\(([\d.]+)s\))/g, (match, _, timeStr1, timeStr2) => {
-            const time = parseFloat(timeStr1 || timeStr2);
-            let colorClass = 'time-good';
-            if (time > 0.1) {
-                colorClass = 'time-hot';
-            } else if (time > 0.01) {
-                colorClass = 'time-warm';
-            }
-            return `<span class="${colorClass}">${match}</span>`;
-        });
-    } else if (selectedEngine === 'clickhouse') {
-        // Fallback for non-graph ClickHouse EXPLAIN formats
-        return planText.replace(/(Expression|Filter|Sort|Sorting|Join|Projection|ReadFromSystemNumbers)/g, (match) => {
-            return `<span class="time-warm">${match}</span>`;
-        });
-    } else {
-        return planText;
-    }
-};
-
 /**
  * Sets up all UI event listeners and initial states.
  */
