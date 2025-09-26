@@ -195,16 +195,41 @@ class DuckDBWasmEngine {
     const rootNode = planNode?.children?.[0]?.children?.[0];
     if (!rootNode) return;
 
+    // Calculate total time to use for percentages in tooltips
+    let totalQueryTime = 0;
+    function sumTimings(node) {
+        totalQueryTime += node.operator_timing;
+        if (node.children) node.children.forEach(sumTimings);
+    }
+    sumTimings(rootNode);
+
+    // Create a color scale from "cold" (green) to "hot" (red) based on time.
+    // We use a sqrt scale to better differentiate the smaller values.
+    const maxTime = rootNode.operator_timing * 1000;
+    const colorScale = d3.scaleSequential(d3.interpolateRgb("hsl(120, 50%, 35%)", "hsl(0, 80%, 45%)")).domain([0, Math.sqrt(maxTime)]);
+
+
     // Convert DuckDB plan to the format d3-flame-graph expects
     function transformToFlamegraphData(node) {
       return {
         name: (node.operator_name || 'UNNAMED').replace(/_/g, ' '),
         value: node.operator_timing * 1000, // Use milliseconds for value
-        children: (node.children || []).map(transformToFlamegraphData)
+        children: (node.children || []).map(transformToFlamegraphData),
+        original: node, // Keep a reference to the original node for tooltips
       };
     }
 
     const flamegraphData = transformToFlamegraphData(rootNode);
+
+    // Define a function to create rich HTML tooltips
+    const labelHandler = (d) => {
+      const node = d.data.original;
+      const timeMs = (node.operator_timing * 1000).toFixed(2);
+      const percent = totalQueryTime > 0 ? ((node.operator_timing / totalQueryTime) * 100).toFixed(1) : 0;
+      return `<strong>${d.data.name}</strong><br>
+              Time: ${timeMs}ms (${percent}%)<br>
+              Rows: ${node.operator_cardinality.toLocaleString()}`;
+    };
 
     // Clear previous chart and render the new one
     container.innerHTML = '';
@@ -212,7 +237,9 @@ class DuckDBWasmEngine {
       .width(container.clientWidth)
       .cellHeight(18)
       .transitionDuration(300)
-      .selfValue(false); // Value is inclusive of children
+      .selfValue(false) // Value is inclusive of children
+      .setColorMapper(d => colorScale(Math.sqrt(d.data.value))) // Color by execution time
+      .label(labelHandler); // Use our custom tooltip function
 
     d3.select(container).datum(flamegraphData).call(flamegraphChart);
   }
