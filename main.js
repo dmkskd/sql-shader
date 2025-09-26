@@ -104,12 +104,23 @@ const main = async (engine) => {
             // Delegate the entire rendering process to the engine.
             // The engine now has full control over how to display its profile data.
             await engine.renderProfile(profileData, {
-              rawContainer: dom.profileContainer,
-              structuredContainer: dom.profileContentStructured,
-              tabs: {
-                structured: document.querySelector('.profiler-tab[data-tab="structured"]')
-              }
+                rawContainer: dom.profileContainer,
+                structuredContainer: dom.profileContentStructured,
+                flamegraphContainer: dom.profileContentFlamegraph,
+                tabs: {
+                    structured: document.querySelector('.profiler-tab[data-tab="structured"]'),
+                    flamegraph: document.querySelector('.profiler-tab[data-tab="flamegraph"]')
+                }
             });
+
+            // The FlameGraph must be rendered only when its tab is visible.
+            // We set up a one-time listener to render it on the first click.
+            const flamegraphTab = document.querySelector('.profiler-tab[data-tab="flamegraph"]');
+            const renderFlamegraphOnFirstClick = () => {
+                engine.renderFlamegraph(profileData.json, dom.profileContentFlamegraph);
+                flamegraphTab.removeEventListener('click', renderFlamegraphOnFirstClick);
+            };
+            flamegraphTab.addEventListener('click', renderFlamegraphOnFirstClick);
 
             dom.profileModal.style.display = 'flex';
             updateInitStatus('Profiling complete.');

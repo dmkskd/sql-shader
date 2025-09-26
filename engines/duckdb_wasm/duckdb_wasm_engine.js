@@ -1,5 +1,7 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { SHADERS } from './duckdb_wasm_shaders.js';
+import * as d3 from 'd3';
+import { flamegraph } from 'd3-flame-graph';
 
 /**
  * Implements the Engine interface for DuckDB-WASM.
@@ -71,9 +73,6 @@ class DuckDBWasmEngine {
       await this.connection.query("PRAGMA enable_profiling = 'json'");
       const jsonResult = await this.connection.query(explainedSql);
       const jsonString = jsonResult.getChild('explain_value').get(0);
-      console.log("--- BEGIN DUCKDB PROFILE JSON ---");
-      console.log(jsonString);
-      console.log("--- END DUCKDB PROFILE JSON ---");
       const jsonPlan = JSON.parse(jsonString);
       console.log('[engine.profile] Successfully retrieved JSON query plan.');
       
@@ -93,15 +92,19 @@ class DuckDBWasmEngine {
    * @returns {Promise<void>}
    */
   async renderProfile(profileData, containers) {
-    containers.rawContainer.innerHTML = this.renderRawProfile(profileData.raw);
+    const { rawContainer, structuredContainer, flamegraphContainer, tabs } = containers;
+    rawContainer.innerHTML = this.renderRawProfile(profileData.raw);
 
     if (profileData.json) {
-      containers.structuredContainer.innerHTML = this.parsePlanToHtml(profileData.json);
-      if (containers.tabs.structured) {
-        containers.tabs.structured.style.display = 'block';
+      structuredContainer.innerHTML = this.parsePlanToHtml(profileData.json);
+      this.renderFlamegraph(profileData.json, flamegraphContainer);
+      if (tabs.structured) {
+        tabs.structured.style.display = 'block';
+        document.querySelector('.profiler-tab[data-tab="flamegraph"]').style.display = 'block';
       }
     } else if (containers.tabs.structured) {
-        containers.tabs.structured.style.display = 'none';
+        tabs.structured.style.display = 'none';
+        document.querySelector('.profiler-tab[data-tab="flamegraph"]').style.display = 'none';
     }
   }
 
@@ -134,14 +137,32 @@ class DuckDBWasmEngine {
     const rootNode = planNode?.children?.[0]?.children?.[0];
     if (!rootNode) return 'No structured plan available.';
 
+    // First, calculate the total time by summing up all operator timings in the tree.
+    // This is more accurate than assuming the root node's time is the total.
+    let totalQueryTime = 0;
+    function sumTimings(node) {
+        totalQueryTime += node.operator_timing;
+        if (node.children) {
+            node.children.forEach(sumTimings);
+        }
+    }
+    sumTimings(rootNode);
+
     // Recursively build the HTML for the tree
     function buildHtml(node) {
         // Use the correct property names from the JSON
-        const time = (node.operator_timing * 1000).toFixed(2); // Convert seconds to ms
+        const timeMs = (node.operator_timing * 1000).toFixed(2); // Convert seconds to ms
         const rows = node.operator_cardinality;
         const operatorName = (node.operator_name || 'UNNAMED_NODE').replace(/_/g, ' ');
+        const timePercent = totalQueryTime > 0 ? ((node.operator_timing / totalQueryTime) * 100) : 0;
 
-        let summary = `<strong>${operatorName}</strong> - ${rows} Rows (${time}ms)`;
+        let percentColorClass = 'time-good'; // < 5%
+        if (timePercent >= 50) {
+            percentColorClass = 'time-hot'; // >= 50%
+        } else if (timePercent >= 5) {
+            percentColorClass = 'time-warm'; // >= 5% and < 50%
+        }
+        let summary = `<strong>${operatorName}</strong> - ${rows} Rows (${timeMs}ms) <span class="${percentColorClass}" style="font-weight: bold;">[${timePercent.toFixed(1)}%]</span>`;
 
         // The 'extra_info' field often contains useful details.
         // It's an object with various properties, so we format it nicely.
@@ -163,6 +184,37 @@ class DuckDBWasmEngine {
     }
 
     return buildHtml(rootNode);
+  }
+
+  /**
+   * Renders a FlameGraph from the DuckDB JSON query plan.
+   * @param {object} planNode The root node of the JSON query plan.
+   * @param {HTMLElement} container The DOM element to render the chart into.
+   */
+  renderFlamegraph(planNode, container) {
+    const rootNode = planNode?.children?.[0]?.children?.[0];
+    if (!rootNode) return;
+
+    // Convert DuckDB plan to the format d3-flame-graph expects
+    function transformToFlamegraphData(node) {
+      return {
+        name: (node.operator_name || 'UNNAMED').replace(/_/g, ' '),
+        value: node.operator_timing * 1000, // Use milliseconds for value
+        children: (node.children || []).map(transformToFlamegraphData)
+      };
+    }
+
+    const flamegraphData = transformToFlamegraphData(rootNode);
+
+    // Clear previous chart and render the new one
+    container.innerHTML = '';
+    const flamegraphChart = flamegraph()
+      .width(container.clientWidth)
+      .cellHeight(18)
+      .transitionDuration(300)
+      .selfValue(false); // Value is inclusive of children
+
+    d3.select(container).datum(flamegraphData).call(flamegraphChart);
   }
 
   /**

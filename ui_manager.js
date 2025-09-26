@@ -24,10 +24,13 @@ export const dom = {
     profileContainer: document.getElementById('profile-container'),
     profileContentRaw: document.getElementById('profile-content-raw'),
     profileContentStructured: document.getElementById('profile-content-structured'),
+    profileContentFlamegraph: document.getElementById('profile-content-flamegraph'),
     profileModalClose: document.querySelector('.modal-close-button'),
     zoomInButton: document.getElementById('zoom-in-button'),
     zoomOutButton: document.getElementById('zoom-out-button'),
     zoomResetButton: document.getElementById('zoom-reset-button'),
+    expandAllButton: document.getElementById('expand-all-button'),
+    collapseAllButton: document.getElementById('collapse-all-button'),
     settingsButton: document.getElementById('settings-button'),
     settingsModal: document.getElementById('settings-modal'),
     settingsModalClose: document.querySelector('#settings-modal .modal-close-button'),
@@ -115,9 +118,23 @@ export const setupUI = (callbacks) => {
             document.getElementById(contentId).classList.add('active');
 
             // Show/hide zoom controls based on tab
-            dom.zoomInButton.parentElement.style.display = (tab.dataset.tab === 'raw') ? 'block' : 'none';
+            const isRawView = tab.dataset.tab === 'raw';
+            const isStructuredView = tab.dataset.tab === 'structured';
+
+            // Visibility for Mermaid graph zoom controls
+            dom.zoomInButton.style.display = isRawView ? 'inline-block' : 'none';
+            dom.zoomOutButton.style.display = isRawView ? 'inline-block' : 'none';
+            dom.zoomResetButton.style.display = isRawView ? 'inline-block' : 'none';
+
+            // Visibility for Tree view controls
+            dom.expandAllButton.style.display = isStructuredView ? 'inline-block' : 'none';
+            dom.collapseAllButton.style.display = isStructuredView ? 'inline-block' : 'none';
         });
     });
+
+    // --- Tree View Controls ---
+    dom.expandAllButton.addEventListener('click', () => dom.profileContentStructured.querySelectorAll('details').forEach(d => d.open = true));
+    dom.collapseAllButton.addEventListener('click', () => dom.profileContentStructured.querySelectorAll('details').forEach(d => d.open = false));
 
     // --- Graph Zoom Logic ---
     let currentGraphZoom = 1.0;
