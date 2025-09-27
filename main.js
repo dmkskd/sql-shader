@@ -1,4 +1,4 @@
-import { dom, setupUI, updateInitStatus, updateStatsPanel, openSettingsModal } from './ui_manager.js';
+import { dom, setupUI, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal } from './ui_manager.js';
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 
@@ -98,31 +98,64 @@ const main = async (engine) => {
             }
 
             // Clear previous content
-            dom.profileContainer.innerHTML = ''; // Raw view
-            dom.profileContentStructured.innerHTML = ''; // Structured view
+            dom.profileContentRawPlan.innerHTML = '';
+            dom.profileContentStructuredPlan.innerHTML = '';
+
+            // --- Tooltip Cleanup ---
+            // The d3-flame-graph library has stateful tooltips that can cause issues on re-render.
+            // It appends the tooltip to the body, so we must manually find and destroy any old instances.
+            const oldTooltip = document.querySelector('body > #flamegraph-tooltip');
+            if (oldTooltip) {
+                console.log('[Debug] Found and removed orphaned flamegraph tooltip from body.');
+                oldTooltip.remove();
+            }
+            // Now, recreate the tooltip element in its container for the next render.
+            const tooltipContainer = document.getElementById('flamegraph-tooltip-container');
+            tooltipContainer.innerHTML = ''; // Destroy the old tooltip
+            const newTooltip = document.createElement('div');
+            newTooltip.id = 'flamegraph-tooltip';
+            tooltipContainer.appendChild(newTooltip);
             
             // Delegate the entire rendering process to the engine.
             // The engine now has full control over how to display its profile data.
             await engine.renderProfile(profileData, {
-                rawContainer: dom.profileContainer,
-                structuredContainer: dom.profileContentStructured,
+                rawPlanContainer: dom.profileContentRawPlan,
+                structuredPlanContainer: dom.profileContentStructuredPlan,
+                graphPlanContainer: dom.profileContentGraphPlan,
                 flamegraphContainer: dom.profileContentFlamegraph,
-                graphContainer: dom.profileContentGraph,
+                querySummaryContainer: dom.profileContentQuerySummary,
                 tabs: {
-                    structured: document.querySelector('.profiler-tab[data-tab="structured"]'),
+                    rawPlan: document.querySelector('.profiler-tab[data-tab="raw-plan"]'),
+                    structuredPlan: document.querySelector('.profiler-tab[data-tab="structured-plan"]'),
+                    graphPlan: document.querySelector('.profiler-tab[data-tab="graph-plan"]'),
                     flamegraph: document.querySelector('.profiler-tab[data-tab="flamegraph"]'),
-                    graph: document.querySelector('.profiler-tab[data-tab="graph"]')
+                    querySummary: document.querySelector('.profiler-tab[data-tab="query-summary"]'),
                 }
             });
 
-            // The FlameGraph must be rendered only when its tab is visible.
+            // --- DuckDB FlameGraph On-Demand Rendering ---
+            // The FlameGraph must be rendered only when its tab is visible to get the correct width.
             // We set up a one-time listener to render it on the first click.
+            // This is specific to DuckDB as ClickHouse's engine handles its own rendering.
             const flamegraphTab = document.querySelector('.profiler-tab[data-tab="flamegraph"]');
-            const renderFlamegraphOnFirstClick = () => {
-                engine.renderFlamegraph(profileData.json, dom.profileContentFlamegraph);
-                flamegraphTab.removeEventListener('click', renderFlamegraphOnFirstClick);
-            };
-            flamegraphTab.addEventListener('click', renderFlamegraphOnFirstClick);
+            // Remove any old listener before adding a new one to prevent memory leaks and bugs.
+            if (window.renderFlamegraphOnFirstClick) {
+                flamegraphTab.removeEventListener('click', window.renderFlamegraphOnFirstClick);
+            }
+
+            if (engine.constructor.name === 'DuckDBWasmEngine') {
+                // Store the listener in the global scope so we can remove it next time.
+                window.renderFlamegraphOnFirstClick = () => {
+                    // Use requestAnimationFrame to ensure rendering happens AFTER the tab is visible.
+                    // This guarantees that the container has a valid clientWidth.
+                    requestAnimationFrame(() => {
+                        console.log(`[Debug] Rendering flame graph in container with width: ${dom.profileContentFlamegraph.clientWidth}px`);
+                        engine.renderFlamegraph(profileData.json, dom.profileContentFlamegraph);
+                        flamegraphTab.removeEventListener('click', window.renderFlamegraphOnFirstClick);
+                    });
+                };
+                flamegraphTab.addEventListener('click', window.renderFlamegraphOnFirstClick);
+            }
 
             dom.profileModal.style.display = 'flex';
             updateInitStatus('Profiling complete.');
@@ -250,16 +283,6 @@ const main = async (engine) => {
             updateCanvasSizeAndResolution();
         }
     }
-
-    editor.on('change', async () => {
-        localStorage.setItem(LOCAL_STORAGE_KEY, editor.getValue());
-        localStorage.setItem(SHADER_SELECT_KEY, dom.shaderSelect.value);
-        if (shaderManager.applyPerformanceHints(editor.getValue(), RESOLUTIONS, ZOOM_LEVELS)) {
-            updateCanvasSizeAndResolution();
-        }
-        clearTimeout(shaderManager.debounceTimer);
-        shaderManager.debounceTimer = setTimeout(() => shaderManager.updateShader(false, stats), 300);
-    });
 
     console.log('[Init] UI setup complete.');
 
@@ -409,6 +432,18 @@ const main = async (engine) => {
     };
 
     requestAnimationFrame(renderFrame); // Start the animation
+
+    // Attach the editor's change listener only AFTER the initial setup is complete.
+    // This prevents a race condition where a change event fires before the engine is ready.
+    editor.on('change', async () => {
+        localStorage.setItem(LOCAL_STORAGE_KEY, editor.getValue());
+        localStorage.setItem(SHADER_SELECT_KEY, dom.shaderSelect.value);
+        if (shaderManager.applyPerformanceHints(editor.getValue(), RESOLUTIONS, ZOOM_LEVELS)) {
+            updateCanvasSizeAndResolution();
+        }
+        clearTimeout(shaderManager.debounceTimer);
+        shaderManager.debounceTimer = setTimeout(() => shaderManager.updateShader(false, stats), 300);
+    });
   } catch (e) {
     console.error(e);
     dom.statsPanel.textContent = `FATAL ERROR: ${e.message}`;
@@ -421,7 +456,18 @@ const main = async (engine) => {
 const initializeEngine = async () => {
     // First, set up the UI and all its event listeners to ensure the application is responsive.
     // This is a temporary measure until the full main() function is called.
-    setupUI({});
+    setupUI({
+        onShaderSelect: () => {},
+        onResolutionChange: () => {},
+        onZoomChange: () => {},
+        onProfile: () => {},
+        onPlayToggle: () => {},
+        onRestart: () => {},
+        onToggleEditor: () => {},
+        onResizeEnd: () => {},
+        onClearState: () => {},
+        onShare: () => {},
+    });
 
     const engineSelect = document.getElementById('engine-select');    
     const urlParams = new URLSearchParams(window.location.search);

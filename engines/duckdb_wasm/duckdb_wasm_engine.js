@@ -93,24 +93,32 @@ class DuckDBWasmEngine {
    * @returns {Promise<void>}
    */
   async renderProfile(profileData, containers) {
-    const { rawContainer, structuredContainer, flamegraphContainer, graphContainer, tabs } = containers;
-    rawContainer.innerHTML = this.renderRawProfile(profileData.raw);
+    const { rawPlanContainer, structuredPlanContainer, graphPlanContainer, flamegraphContainer, querySummaryContainer, tabs } = containers;
+    rawPlanContainer.innerHTML = this.renderRawProfile(profileData.raw);
+    tabs.rawPlan.style.display = 'block';
 
     if (profileData.json) {
-      structuredContainer.innerHTML = this.parsePlanToHtml(profileData.json);
-      this.renderFlamegraph(profileData.json, flamegraphContainer);
+      structuredPlanContainer.innerHTML = this.parsePlanToHtml(profileData.json);
+      // The flamegraph is now rendered on-demand by a listener in main.js
+      // to ensure the container is visible and has a width.
+      // this.renderFlamegraph(profileData.json, flamegraphContainer);
       // Render the graph with the default 'data-flow' (bottom-up) view
-      this.renderMermaidGraph(profileData.json, graphContainer, 'data-flow');
-      if (tabs.structured) {
-        tabs.structured.style.display = 'block';
-        tabs.flamegraph.style.display = 'block';
-        tabs.graph.style.display = 'block';
-      }
-      this.setupGraphDirectionToggle(profileData.json, graphContainer);
-    } else if (containers.tabs.structured) {
-        tabs.structured.style.display = 'none';
+      this.renderMermaidGraph(profileData.json, graphPlanContainer, 'data-flow');
+      
+      // Show DuckDB-specific tabs
+      tabs.structuredPlan.style.display = 'block';
+      tabs.flamegraph.style.display = 'block';
+      tabs.graphPlan.style.display = 'block';
+      
+      // Hide ClickHouse-specific tabs
+      tabs.querySummary.style.display = 'none';
+
+      this.setupGraphDirectionToggle(profileData.json, graphPlanContainer);
+    } else if (containers.tabs.structuredPlan) {
+        tabs.structuredPlan.style.display = 'none';
         tabs.flamegraph.style.display = 'none';
-        tabs.graph.style.display = 'none';
+        tabs.graphPlan.style.display = 'none';
+        tabs.querySummary.style.display = 'none';
     }
   }
 

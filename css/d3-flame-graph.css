@@ -1,0 +1,24 @@
+.d3-flame-graph rect {
+  stroke: #EEEEEE;
+  fill-opacity: .8;
+}
+
+.d3-flame-graph rect:hover {
+  stroke: #474747;
+  stroke-width: 1.5;
+  fill-opacity: 1;
+}
+
+.d3-flame-graph-label {
+  pointer-events: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  font-size: 12px;
+  font-family: Verdana;
+  margin-left: 4px;
+  margin-right: 4px;
+  line-height: 1.5;
+  padding: 0 0 0;
+  font-weight: 400;
+}

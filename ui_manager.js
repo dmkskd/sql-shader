@@ -22,11 +22,11 @@ export const dom = {
     toggleEditorButton: document.getElementById('toggle-editor-button'),
     shareButton: document.getElementById('share-button'),
     profileModal: document.getElementById('profile-modal'),
-    profileContainer: document.getElementById('profile-container'),
-    profileContentRaw: document.getElementById('profile-content-raw'),
-    profileContentStructured: document.getElementById('profile-content-structured'),
+    profileContentRawPlan: document.getElementById('profile-content-raw-plan'),
+    profileContentStructuredPlan: document.getElementById('profile-content-structured-plan'),
+    profileContentGraphPlan: document.getElementById('profile-content-graph-plan'),
     profileContentFlamegraph: document.getElementById('profile-content-flamegraph'),
-    profileContentGraph: document.getElementById('profile-content-graph'),
+    profileContentQuerySummary: document.getElementById('profile-content-query-summary'),
     profileModalClose: document.querySelector('.modal-close-button'),
     zoomInButton: document.getElementById('zoom-in-button'),
     zoomOutButton: document.getElementById('zoom-out-button'),
@@ -117,16 +117,15 @@ export const setupUI = (callbacks) => {
             profilerTabContents.forEach(c => c.classList.remove('active'));
 
             tab.classList.add('active');
-            const contentId = `profile-content-${tab.dataset.tab}`;
+            const contentId = `profile-content-${tab.dataset.tab}`; // e.g., profile-content-raw-plan
             document.getElementById(contentId).classList.add('active');
 
             // Show/hide zoom controls based on tab
-            const isRawView = tab.dataset.tab === 'raw';
-            const isGraphView = tab.dataset.tab === 'graph';
-            const isStructuredView = tab.dataset.tab === 'structured';
+            const isGraphView = tab.dataset.tab === 'graph-plan' || tab.dataset.tab === 'graph'; // Support old and new
+            const isStructuredView = tab.dataset.tab === 'structured-plan' || tab.dataset.tab === 'structured';
 
             // Visibility for Mermaid graph zoom controls
-            const showZoom = (isRawView && dom.engineSelect.value === 'clickhouse') || isGraphView;
+            const showZoom = isGraphView; // Only for DuckDB graph view for now
             dom.zoomInButton.style.display = showZoom ? 'inline-block' : 'none';
             dom.zoomOutButton.style.display = showZoom ? 'inline-block' : 'none';
             dom.zoomResetButton.style.display = showZoom ? 'inline-block' : 'none';
@@ -139,14 +138,15 @@ export const setupUI = (callbacks) => {
     });
 
     // --- Tree View Controls ---
-    dom.expandAllButton.addEventListener('click', () => dom.profileContentStructured.querySelectorAll('details').forEach(d => d.open = true));
-    dom.collapseAllButton.addEventListener('click', () => dom.profileContentStructured.querySelectorAll('details').forEach(d => d.open = false));
+    dom.expandAllButton.addEventListener('click', () => document.querySelector('.profiler-tab-content.active').querySelectorAll('details').forEach(d => d.open = true));
+    dom.collapseAllButton.addEventListener('click', () => document.querySelector('.profiler-tab-content.active').querySelectorAll('details').forEach(d => d.open = false));
 
     // --- Graph Zoom Logic ---
     let currentGraphZoom = 1.0;
     const zoomStep = 0.2;
     const updateGraphZoom = () => {
-        const svg = dom.profileContainer.querySelector('svg');
+        const activeGraphContainer = document.getElementById('profile-content-graph-plan');
+        const svg = activeGraphContainer.querySelector('svg');
         if (svg) {
             svg.style.transform = `scale(${currentGraphZoom})`;
             svg.style.transformOrigin = 'top left';

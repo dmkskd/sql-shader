@@ -11,7 +11,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
     <!-- FlameGraph CSS -->
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/d3-flame-graph@4.1.3/dist/d3-flame-graph.css">
+    <link rel="stylesheet" type="text/css" href="css/d3-flame-graph.css">
 
     <style>
       /* --- Visual Effect Styles --- */
@@ -451,10 +451,11 @@
         <span class="modal-close-button" title="Close">&times;</span>
         <h2>Query Profile</h2>
         <div class="profiler-tabs">
-          <button class="profiler-tab active" data-tab="raw">Raw Output</button>
-          <button class="profiler-tab" data-tab="structured">Structured Output</button>
-          <button class="profiler-tab" data-tab="graph">Graph View</button>
+          <button class="profiler-tab active" data-tab="raw-plan">Raw Plan</button>
+          <button class="profiler-tab" data-tab="structured-plan">Structured Plan</button>
+          <button class="profiler-tab" data-tab="graph-plan">Graph Plan</button>
           <button class="profiler-tab" data-tab="flamegraph">FlameGraph</button>
+          <button class="profiler-tab" data-tab="query-summary">Query Summary</button>
           <div class="graph-controls">
             <button id="expand-all-button" title="Expand All Nodes">Expand All</button>
             <button id="collapse-all-button" title="Collapse All Nodes">Collapse All</button>
@@ -464,14 +465,16 @@
             <button id="zoom-reset-button" title="Reset Zoom">1:1</button>
           </div>
         </div>
-        <div id="profile-content-raw" class="profiler-tab-content active">
-          <div id="profile-container"></div>
-        </div>
-        <div id="profile-content-structured" class="profiler-tab-content"></div>
-        <div id="profile-content-graph" class="profiler-tab-content"></div>
+        <div id="profile-content-raw-plan" class="profiler-tab-content active"></div>
+        <div id="profile-content-structured-plan" class="profiler-tab-content"></div>
+        <div id="profile-content-graph-plan" class="profiler-tab-content"></div>
         <div id="profile-content-flamegraph" class="profiler-tab-content"></div>
+        <div id="profile-content-query-summary" class="profiler-tab-content"></div>
         <div id="graph-tooltip" style="position: fixed; display: none; background: #2a2a2a; padding: 10px; border: 1px solid #777; border-radius: 3px; pointer-events: none; z-index: 1002; max-width: 400px; font-family: monospace; font-size: 12px;"></div>
-        <div id="flamegraph-tooltip" class="d3-flame-graph-tip" style="position: fixed; z-index: 1001;"></div>
+        <!-- The tooltip is wrapped in a container so we can easily destroy and recreate it to prevent state bugs -->
+        <div id="flamegraph-tooltip-container">
+          <div id="flamegraph-tooltip" class="d3-flame-graph-tip" style="position: fixed; z-index: 1001; display: none;"></div>
+        </div>
       </div>
     </div>
     <div id="settings-modal" class="modal-overlay" style="display: none;">
