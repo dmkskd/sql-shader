@@ -101,8 +101,8 @@ const main = async (engine) => {
             }
 
             // Clear previous content
-            dom.profileContentRawPlan.innerHTML = '';
-            dom.profileContentStructuredPlan.innerHTML = '';
+            const profilerContentContainer = document.getElementById('profiler-content-container');
+            profilerContentContainer.innerHTML = 'Loading profile...';
 
             // --- Tooltip Cleanup ---
             // The d3-flame-graph library has stateful tooltips that can cause issues on re-render.
@@ -121,50 +121,7 @@ const main = async (engine) => {
             
             // Delegate the entire rendering process to the engine.
             // The engine now has full control over how to display its profile data.
-            await engine.renderProfile(profileData, {
-                rawPlanContainer: dom.profileContentRawPlan,
-                structuredPlanContainer: dom.profileContentStructuredPlan,
-                // Pass the container under both names to support both engines.
-                pipelinePlanContainer: dom.profileContentPipelinePlan, // For ClickHouse
-                graphPlanContainer: dom.profileContentPipelinePlan,    // For DuckDB
-                traceLogContainer: dom.profileContentTraceLog,
-                flamegraphContainer: dom.profileContentFlamegraph,
-                querySummaryContainer: dom.profileContentQuerySummary,
-                tabs: {
-                    rawPlan: document.querySelector('.profiler-tab[data-tab="raw-plan"]'),
-                    structuredPlan: document.querySelector('.profiler-tab[data-tab="structured-plan"]'),
-                    // Pass the tab under both names.
-                    pipelinePlan: document.querySelector('.profiler-tab[data-tab="pipeline-plan"]'), // For ClickHouse
-                    graphPlan: document.querySelector('.profiler-tab[data-tab="pipeline-plan"]'),    // For DuckDB
-                    traceLog: document.querySelector('.profiler-tab[data-tab="trace-log"]'),
-                    flamegraph: document.querySelector('.profiler-tab[data-tab="flamegraph"]'),
-                    querySummary: document.querySelector('.profiler-tab[data-tab="query-summary"]'),
-                }
-            });
-
-            // --- DuckDB FlameGraph On-Demand Rendering ---
-            // The FlameGraph must be rendered only when its tab is visible to get the correct width.
-            // We set up a one-time listener to render it on the first click.
-            // This is specific to DuckDB as ClickHouse's engine handles its own rendering.
-            const flamegraphTab = document.querySelector('.profiler-tab[data-tab="flamegraph"]');
-            // Remove any old listener before adding a new one to prevent memory leaks and bugs.
-            if (window.renderFlamegraphOnFirstClick) {
-                flamegraphTab.removeEventListener('click', window.renderFlamegraphOnFirstClick);
-            }
-
-            if (engine.constructor.name === 'DuckDBWasmEngine') {
-                // Store the listener in the global scope so we can remove it next time.
-                window.renderFlamegraphOnFirstClick = () => {
-                    // Use requestAnimationFrame to ensure rendering happens AFTER the tab is visible.
-                    // This guarantees that the container has a valid clientWidth.
-                    requestAnimationFrame(() => {
-                        console.log(`[Debug] Rendering flame graph in container with width: ${dom.profileContentFlamegraph.clientWidth}px`);
-                        engine.renderFlamegraph(profileData.json, dom.profileContentFlamegraph);
-                        flamegraphTab.removeEventListener('click', window.renderFlamegraphOnFirstClick);
-                    });
-                };
-                flamegraphTab.addEventListener('click', window.renderFlamegraphOnFirstClick);
-            }
+            await engine.renderProfile(profileData, profilerContentContainer);
 
             dom.profileModal.style.display = 'flex';
             updateInitStatus('Profiling complete.');
@@ -525,6 +482,19 @@ const initializeEngine = async () => {
         document.getElementById('stats-panel').textContent = errorMessage;
     }
 };
+
+// --- Service Worker Hot-Fix ---
+// This addresses a potential race condition where a stale service worker
+// serves JS files without the correct Content-Type, causing a SyntaxError.
+// This code forces the worker to unregister and the page to reload if needed.
+if (window.navigator && navigator.serviceWorker) {
+  navigator.serviceWorker.getRegistration().then(reg => {
+    if (reg && !navigator.serviceWorker.controller) {
+      console.warn('Stale service worker detected. Forcing deregistration and reload.');
+      reg.unregister().then(() => window.location.reload());
+    }
+  });
+}
 
 // We must attach the engine-switching listener immediately on script load.
 const engineSelect = document.getElementById('engine-select');

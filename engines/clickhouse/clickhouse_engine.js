@@ -231,15 +231,11 @@ class ClickHouseEngine {
    * Renders the multi-faceted profile data into the modal.
    * @param {object} profileData The data object from the profile() method.
    * @param {object} containers The DOM elements to render into.
+   * @param {HTMLElement} mainContainer The single container element for the profiler UI.
    * @returns {Promise<void>}
    */
-  async renderProfile(profileData, containers) {
-    const { rawPlanContainer, structuredPlanContainer, pipelinePlanContainer, flamegraphContainer, traceLogContainer, querySummaryContainer, tabs } = containers;
+  async renderProfile(profileData, mainContainer) {
 
-    // --- Tab 1: Raw Plan ---
-    // Truly raw, un-parsed text output
-    const rawHeaderText = `<h3>Raw Plan Output</h3><p>Generated via: <code>EXPLAIN actions = 1, indexes = 1</code></p>`;
-    rawPlanContainer.innerHTML = `${rawHeaderText}<pre>${profileData.actionsPlan || 'No data.'}</pre>`;
 
     // --- Tab 2: Structured Plan ---
     // The parsed, collapsible, and highlighted version of the actions plan
@@ -271,88 +267,167 @@ class ClickHouseEngine {
     }
     // In case the file ends while inside an actions block
     if (inActionsBlock) formattedHtml += `</pre></details>`;
-    const structuredHeaderText = `<h3>Structured Plan View</h3><p>Generated via: <code>EXPLAIN actions = 1, indexes = 1</code></p>`;
-    structuredPlanContainer.innerHTML = `${structuredHeaderText}<pre>${formattedHtml}</pre>`;
 
     // --- Tab 3: Query Summary (from system.query_log) ---
+    let querySummaryContent;
     if (profileData.queryLog && !profileData.queryLog.error) {
-      let summaryHtml = `<h3>Query Summary</h3><p>Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code></p>`;
-      summaryHtml += `<p><strong>Query Time:</strong> ${(profileData.queryLog.query_duration_ms / 1000).toFixed(4)}s</p>`;
-      summaryHtml += `<p><strong>Memory Usage:</strong> ${(profileData.queryLog.memory_usage / 1024 / 1024).toFixed(2)} MB</p>`;
-      summaryHtml += `<p><strong>Rows Read:</strong> ${profileData.queryLog.read_rows.toLocaleString()}</p>`;
-      summaryHtml += `<p><strong>Bytes Read:</strong> ${(profileData.queryLog.read_bytes / 1024 / 1024).toFixed(2)} MB</p>`;
-      querySummaryContainer.innerHTML = summaryHtml;
-      tabs.querySummary.style.display = 'block';
+      querySummaryContent = `<p><strong>Query Time:</strong> ${(profileData.queryLog.query_duration_ms / 1000).toFixed(4)}s</p>
+                             <p><strong>Memory Usage:</strong> ${(profileData.queryLog.memory_usage / 1024 / 1024).toFixed(2)} MB</p>
+                             <p><strong>Rows Read:</strong> ${profileData.queryLog.read_rows.toLocaleString()}</p>
+                             <p><strong>Bytes Read:</strong> ${(profileData.queryLog.read_bytes / 1024 / 1024).toFixed(2)} MB</p>`;
     } else {
-      let errorMessage = `<h3>Query Summary</h3><p>No query log data found. Ensure query logging is enabled on your server.</p>`;
+      querySummaryContent = `<p>No query log data found. Ensure query logging is enabled on your server.</p>`;
       if (profileData.queryLog && profileData.queryLog.error) {
-        errorMessage += `<pre>${JSON.stringify(profileData.queryLog, null, 2)}</pre>`;
+        querySummaryContent += `<pre>${JSON.stringify(profileData.queryLog, null, 2)}</pre>`;
       }
-      querySummaryContainer.innerHTML = errorMessage;
-      tabs.querySummary.style.display = 'block';
     }
 
     // --- Tab 4: Pipeline Plan (from EXPLAIN PIPELINE) ---
-    const pipelineHeaderText = `<h3>Pipeline Plan</h3><p>Generated via: <code>EXPLAIN PIPELINE graph = 1</code></p>`;
+    let pipelinePlanContent;
     if (profileData.pipelineGraph && profileData.pipelineGraph.trim().startsWith('digraph')) {
       const mermaidGraph = this.dotToMermaid(profileData.pipelineGraph);
       const { svg } = await mermaid.render('ch-mermaid-graph', mermaidGraph);
-      pipelinePlanContainer.innerHTML = pipelineHeaderText + svg;
-      tabs.pipelinePlan.style.display = 'block';
+      pipelinePlanContent = svg;
     } else {
-      pipelinePlanContainer.innerHTML = `${pipelineHeaderText}<p>Could not generate graph.</p><pre>${profileData.pipelineGraph || 'No data.'}</pre>`;
-      tabs.pipelinePlan.style.display = 'block';
+      pipelinePlanContent = `<p>Could not generate graph.</p><pre>${profileData.pipelineGraph || 'No data.'}</pre>`;
     }
 
     // --- Tab 5 & 6: FlameGraph and Trace Log (from system.trace_log) ---
+    let traceLogContent;
     if (profileData.traceLog && profileData.traceLog.length > 0) {
-      // Remove any old listener before adding a new one.
-      if (window.renderClickHouseFlamegraph) {
-        tabs.flamegraph.removeEventListener('click', window.renderClickHouseFlamegraph);
-      }
-
-      // Defer rendering until the tab is clicked to ensure the container is visible and has a width.
-      window.renderClickHouseFlamegraph = () => {
-        requestAnimationFrame(() => {
-          console.log(`[Debug] Rendering ClickHouse flame graph in container with width: ${flamegraphContainer.clientWidth}px`);
-          this.renderFlamegraph(profileData.traceLog, flamegraphContainer);
-          // Remove the listener so it only runs once.
-          tabs.flamegraph.removeEventListener('click', window.renderClickHouseFlamegraph);
-        });
-      };
-      // Add the one-time listener.
-      tabs.flamegraph.addEventListener('click', window.renderClickHouseFlamegraph);
-
       // Render the raw trace log data into a table for the new panel
-      let traceLogHtml = `<h3>Trace Log</h3><p>Generated via: <code>SELECT ... FROM system.trace_log</code></p>`;
-      traceLogHtml += '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
-      traceLogHtml += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Stack Trace</th><th style="width: 10%;">Samples</th></tr></thead>';
-      traceLogHtml += '<tbody>';
+      traceLogContent = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
+      traceLogContent += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Stack Trace</th><th style="width: 10%;">Samples</th></tr></thead>';
+      traceLogContent += '<tbody>';
       // Sort by most frequent samples first
       const sortedTraces = [...profileData.traceLog].sort((a, b) => b.value - a.value);
       for (const row of sortedTraces) {
         const stackHtml = row.trace.join('<br>&#8627; '); // Use a right-angle arrow for stack levels
-        traceLogHtml += `<tr style="border-bottom: 1px solid #444;"><td style="padding: 5px 0;">${stackHtml}</td><td>${row.value}</td></tr>`;
+        traceLogContent += `<tr style="border-bottom: 1px solid #444;"><td style="padding: 5px 0;">${stackHtml}</td><td>${row.value}</td></tr>`;
       }
-      traceLogHtml += '</tbody></table>';
-      traceLogContainer.innerHTML = traceLogHtml;
-
-      tabs.flamegraph.style.display = 'block';
-      tabs.traceLog.style.display = 'block';
-    } else {
-      const noDataMessage = `<h3>CPU FlameGraph / Trace Log</h3><p>Generated via: <code>SELECT ... FROM system.trace_log</code></p><p>No CPU trace data found. Ensure profiling is enabled on your server and that the query is long enough to be sampled.</p>`;
-      flamegraphContainer.innerHTML = noDataMessage;
-      traceLogContainer.innerHTML = noDataMessage;
-      tabs.flamegraph.style.display = 'block';
-      tabs.traceLog.style.display = 'block';
+      traceLogContent += '</tbody></table>';
     }
 
-    // Show all the ClickHouse-specific tabs
-    tabs.rawPlan.style.display = 'block';
-    tabs.structuredPlan.style.display = 'block';
-    // Hide the generic 'graph' and 'structured' tabs from DuckDB
-    if (document.querySelector('.profiler-tab[data-tab="graph"]')) document.querySelector('.profiler-tab[data-tab="graph"]').style.display = 'none';
-    if (document.querySelector('.profiler-tab[data-tab="structured"]')) document.querySelector('.profiler-tab[data-tab="structured"]').style.display = 'none';
+    // --- Dynamically build the HTML for the profiler ---
+    const tabsConfig = [
+      { id: 'raw-plan', title: 'Raw Plan', content: `<pre>${profileData.actionsPlan || 'No data.'}</pre>`, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
+      { id: 'structured-plan', title: 'Structured Plan', content: `<pre>${formattedHtml}</pre>`, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
+      { id: 'pipeline-plan', title: 'Pipeline Plan', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>' },
+      { id: 'flamegraph', title: 'FlameGraph', content: '', header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
+      { id: 'trace-log', title: 'Trace Log', content: traceLogContent, header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
+      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
+    ];
+
+    let tabsHtml = '<div class="profiler-tabs">';
+    let contentHtml = '';
+
+    tabsConfig.forEach((tab, index) => {
+      const activeClass = index === 0 ? 'active' : '';
+      tabsHtml += `<button class="profiler-tab ${activeClass}" data-tab="${tab.id}">${tab.title}</button>`;
+      contentHtml += `<div id="profile-content-${tab.id}" class="profiler-tab-content ${activeClass}">
+                        <h3>${tab.title}</h3>
+                        <p>${tab.header}</p>`;
+      // Add tree-view controls specifically for the structured plan tab
+      if (tab.id === 'structured-plan') {
+        contentHtml += `<div class="graph-controls" style="display: none;" data-for-tab="structured-plan">
+                          <button id="ch-expand-all-button" title="Expand All Nodes">Expand All</button>
+                          <button id="ch-collapse-all-button" title="Collapse All Nodes">Collapse All</button>
+                       </div>`;
+      }
+      if (tab.id === 'pipeline-plan') {
+        contentHtml += `<div class="graph-controls" style="display: none;" data-for-tab="pipeline-plan">
+                          <button id="ch-zoom-in-button" title="Zoom In">+</button>
+                          <button id="ch-zoom-out-button" title="Zoom Out">-</button>
+                          <button id="ch-zoom-reset-button" title="Reset Zoom">1:1</button>
+                       </div>`;
+      }
+      contentHtml += `  <div class="tab-inner-content">${tab.content || ''}</div>
+                      </div>`;
+    });
+    tabsHtml += '</div>';
+
+    mainContainer.innerHTML = tabsHtml + contentHtml;
+
+    // --- Post-render logic for dynamic content ---
+
+    // Re-attach tab switching logic
+    const profilerTabs = mainContainer.querySelectorAll('.profiler-tab');
+    const profilerTabContents = mainContainer.querySelectorAll('.profiler-tab-content');
+    profilerTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        profilerTabs.forEach(t => t.classList.remove('active'));
+        profilerTabContents.forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        const contentId = `#profile-content-${tab.dataset.tab}`;
+        const activeContent = mainContainer.querySelector(contentId);
+        activeContent.classList.add('active');
+
+        // Show/hide the tree controls based on the active tab
+        mainContainer.querySelectorAll('.graph-controls').forEach(controls => {
+            const isForActiveTab = controls.dataset.forTab === tab.dataset.tab;
+            controls.style.display = isForActiveTab ? 'inline-block' : 'none';
+        });
+      });
+    });
+
+    // On-demand rendering for the flame graph
+    if (profileData.traceLog && profileData.traceLog.length > 0) {
+      const flamegraphTab = mainContainer.querySelector('.profiler-tab[data-tab="flamegraph"]');
+      const flamegraphContainer = mainContainer.querySelector('#profile-content-flamegraph .tab-inner-content');
+
+      const renderFlamegraphOnFirstClick = () => {
+        requestAnimationFrame(() => {
+          console.log(`[Debug] Rendering ClickHouse flame graph in container with width: ${flamegraphContainer.clientWidth}px`);
+          flamegraphContainer.innerHTML = ''; // Clear before rendering
+          this.renderFlamegraph(profileData.traceLog, flamegraphContainer);
+          flamegraphTab.removeEventListener('click', renderFlamegraphOnFirstClick);
+        });
+      };
+      flamegraphTab.addEventListener('click', renderFlamegraphOnFirstClick);
+    } else {
+        const flamegraphContainer = mainContainer.querySelector('#profile-content-flamegraph');
+        if (flamegraphContainer) {
+            flamegraphContainer.querySelector('.tab-inner-content').innerHTML = '<p>No CPU trace data found. Ensure profiling is enabled on your server and that the query is long enough to be sampled.</p>';
+        }
+        const traceLogContainer = mainContainer.querySelector('#profile-content-trace-log');
+        if (traceLogContainer) {
+            traceLogContainer.querySelector('.tab-inner-content').innerHTML = '<p>No CPU trace data found.</p>';
+        }
+    }
+
+    // Add event listeners for the newly created tree-view buttons
+    const expandBtn = mainContainer.querySelector('#ch-expand-all-button');
+    if (expandBtn) {
+        expandBtn.addEventListener('click', () => mainContainer.querySelector('#profile-content-structured-plan').querySelectorAll('details').forEach(d => d.open = true));
+        mainContainer.querySelector('#ch-collapse-all-button').addEventListener('click', () => mainContainer.querySelector('#profile-content-structured-plan').querySelectorAll('details').forEach(d => d.open = false));
+    }
+
+    // Add event listeners for the newly created graph-view buttons
+    const zoomInBtn = mainContainer.querySelector('#ch-zoom-in-button');
+    if (zoomInBtn) {
+        let currentGraphZoom = 1.0;
+        const zoomStep = 0.2;
+        const pipelineContainer = mainContainer.querySelector('#profile-content-pipeline-plan .tab-inner-content');
+        const updateGraphZoom = () => {
+            const svg = pipelineContainer.querySelector('svg');
+            if (svg) {
+                svg.style.transform = `scale(${currentGraphZoom})`;
+                svg.style.transformOrigin = 'top left';
+            }
+        };
+        zoomInBtn.addEventListener('click', () => {
+            currentGraphZoom += zoomStep;
+            updateGraphZoom();
+        });
+        mainContainer.querySelector('#ch-zoom-out-button').addEventListener('click', () => {
+            currentGraphZoom = Math.max(0.2, currentGraphZoom - zoomStep);
+            updateGraphZoom();
+        });
+        mainContainer.querySelector('#ch-zoom-reset-button').addEventListener('click', () => {
+            currentGraphZoom = 1.0;
+            updateGraphZoom();
+        });
+    }
   }
 
   /**
@@ -390,7 +465,7 @@ class ClickHouseEngine {
 
     console.log('[Debug] Flamegraph data structure:', JSON.stringify(root, null, 2));
 
-    container.innerHTML = '';
+    // container.innerHTML = ''; // Container is now managed by the caller
     // Create a color scale from "cold" (green) to "hot" (red) based on sample count.
     // We use a sqrt scale to better differentiate the smaller values.
     const colorScale = d3.scaleSequential(d3.interpolateRgb("hsl(120, 50%, 35%)", "hsl(0, 80%, 45%)")).domain([0, Math.sqrt(root.value)]);

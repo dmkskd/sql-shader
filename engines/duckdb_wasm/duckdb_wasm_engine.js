@@ -100,36 +100,73 @@ class DuckDBWasmEngine {
    * @param {object} containers The DOM elements to render into.
    * @returns {Promise<void>}
    */
-  async renderProfile(profileData, containers) {
-    const { rawPlanContainer, structuredPlanContainer, graphPlanContainer, flamegraphContainer, querySummaryContainer, tabs } = containers;
-    const rawHeaderText = `<h3>Raw Plan Output</h3><p>Generated via: <code>EXPLAIN ANALYZE</code> with <code>PRAGMA enable_profiling = 'query_tree'</code></p>`;
-    rawPlanContainer.innerHTML = rawHeaderText + this.renderRawProfile(profileData.raw);
-    tabs.rawPlan.style.display = 'block';
+  async renderProfile(profileData, mainContainer) {
+    const tabsConfig = [
+      { id: 'raw-plan', title: 'Raw Plan', content: this.renderRawProfile(profileData.raw), header: "Generated via: <code>EXPLAIN ANALYZE</code> with <code>PRAGMA enable_profiling = 'query_tree'</code>" },
+    ];
 
     if (profileData.json) {
-      const structuredHeaderText = `<h3>Structured Plan View</h3><p>Generated from the JSON output of <code>EXPLAIN ANALYZE</code></p>`;
-      structuredPlanContainer.innerHTML = structuredHeaderText + this.parsePlanToHtml(profileData.json);
+      tabsConfig.push(
+        { id: 'structured-plan', title: 'Structured Plan', content: this.parsePlanToHtml(profileData.json), header: "Generated from the JSON output of <code>EXPLAIN ANALYZE</code>" },
+        { id: 'graph-plan', title: 'Graph Plan', content: '', header: "Generated from the JSON output of <code>EXPLAIN ANALYZE</code>" },
+        { id: 'flamegraph', title: 'FlameGraph', content: '', header: "Generated from the timing information in the JSON output of <code>EXPLAIN ANALYZE</code>" }
+      );
+    }
 
-      // The flamegraph is now rendered on-demand by a listener in main.js
-      // to ensure the container is visible and has a width.
-      // this.renderFlamegraph(profileData.json, flamegraphContainer);
-      // Render the graph with the default 'data-flow' (bottom-up) view
+    let tabsHtml = '<div class="profiler-tabs">';
+    let contentHtml = '';
+
+    tabsConfig.forEach((tab, index) => {
+      const activeClass = index === 0 ? 'active' : '';
+      tabsHtml += `<button class="profiler-tab ${activeClass}" data-tab="${tab.id}">${tab.title}</button>`;
+      contentHtml += `<div id="profile-content-${tab.id}" class="profiler-tab-content ${activeClass}">
+                        <h3>${tab.title}</h3>
+                        <p>${tab.header}</p>`;
+      if (tab.id === 'graph-plan') {
+        contentHtml += `<div class="graph-controls" data-for-tab="graph-plan"><button id="ddb-switch-graph-direction-button" title="Switch Graph Direction">Switch Direction</button></div>`;
+      }
+      contentHtml += `  <div class="tab-inner-content">${tab.content || ''}</div>
+                      </div>`;
+    });
+    tabsHtml += '</div>';
+
+    mainContainer.innerHTML = tabsHtml + contentHtml;
+
+    // --- Post-render logic for dynamic content ---
+
+    // Re-attach tab switching logic
+    const profilerTabs = mainContainer.querySelectorAll('.profiler-tab');
+    const profilerTabContents = mainContainer.querySelectorAll('.profiler-tab-content');
+    profilerTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        profilerTabs.forEach(t => t.classList.remove('active'));
+        profilerTabContents.forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        const activeContent = mainContainer.querySelector(`#profile-content-${tab.dataset.tab}`);
+        activeContent.classList.add('active');
+      });
+    });
+
+    if (profileData.json) {
+      const graphPlanContainer = mainContainer.querySelector('#profile-content-graph-plan .tab-inner-content');
+      const flamegraphContainer = mainContainer.querySelector('#profile-content-flamegraph .tab-inner-content');
+
+      // Render the graph plan
       this.renderMermaidGraph(profileData.json, graphPlanContainer, 'data-flow');
-      
-      // Show DuckDB-specific tabs
-      tabs.structuredPlan.style.display = 'block';
-      tabs.flamegraph.style.display = 'block';
-      tabs.graphPlan.style.display = 'block';
-      
-      // Hide ClickHouse-specific tabs
-      tabs.querySummary.style.display = 'none';
-
       this.setupGraphDirectionToggle(profileData.json, graphPlanContainer);
-    } else if (containers.tabs.structuredPlan) {
-        tabs.structuredPlan.style.display = 'none';
-        tabs.flamegraph.style.display = 'none';
-        tabs.graphPlan.style.display = 'none';
-        tabs.querySummary.style.display = 'none';
+
+      // Set up on-demand rendering for the flame graph
+      const flamegraphTab = mainContainer.querySelector('.profiler-tab[data-tab="flamegraph"]');
+      if (flamegraphTab) {
+        const renderFlamegraphOnFirstClick = () => {
+          requestAnimationFrame(() => {
+            console.log(`[Debug] Rendering DuckDB flame graph in container with width: ${flamegraphContainer.clientWidth}px`);
+            this.renderFlamegraph(profileData.json, flamegraphContainer);
+            flamegraphTab.removeEventListener('click', renderFlamegraphOnFirstClick);
+          });
+        };
+        flamegraphTab.addEventListener('click', renderFlamegraphOnFirstClick);
+      }
     }
   }
 
@@ -221,7 +258,7 @@ class DuckDBWasmEngine {
     if (!rootNode) return;
 
     const flamegraphHeaderText = `<h3>CPU FlameGraph</h3><p>Generated from the timing information in the JSON output of <code>EXPLAIN ANALYZE</code></p>`;
-    container.innerHTML = flamegraphHeaderText;
+    // container.innerHTML = flamegraphHeaderText; // This is now handled by the main render function
 
     // Calculate total time to use for percentages in tooltips
     let totalQueryTime = 0;
@@ -260,7 +297,7 @@ class DuckDBWasmEngine {
     };
 
     // Clear previous chart and render the new one
-    // container.innerHTML = ''; // Header is now added, so we append.
+    container.innerHTML = ''; // Clear the container before rendering the chart
     const flamegraphChart = d3_flame_graph.flamegraph()
       .width(container.clientWidth)
       .cellHeight(18)
@@ -282,8 +319,7 @@ class DuckDBWasmEngine {
     const rootNode = planNode?.children?.[0]?.children?.[0];
     if (!rootNode) return;
 
-    const graphHeaderText = `<h3>Query Graph</h3><p>Generated from the JSON output of <code>EXPLAIN ANALYZE</code></p>`;
-    container.innerHTML = graphHeaderText;
+    container.innerHTML = ''; // Clear the container before rendering
 
     // First, calculate the total time by summing up all operator timings in the tree.
     let totalQueryTime = 0;
@@ -354,7 +390,7 @@ class DuckDBWasmEngine {
 
     jsonToMermaid(rootNode);
     const { svg } = await mermaid.render('duckdb-mermaid-graph', mermaidSyntax);
-    container.innerHTML += svg; // Append the graph after the header
+    container.innerHTML = svg;
 
     // --- Add Tooltip Logic ---
     const tooltipEl = document.getElementById('graph-tooltip');
@@ -384,7 +420,7 @@ class DuckDBWasmEngine {
    * @param {HTMLElement} container The DOM element where the chart is rendered.
    */
   setupGraphDirectionToggle(planNode, container) {
-    const button = document.getElementById('switch-graph-direction-button');
+    const button = document.getElementById('ddb-switch-graph-direction-button');
     let currentLayout = 'data-flow'; // Default is the "bottom-up" data flow view (leaves at top)
 
     const updateButtonText = () => {

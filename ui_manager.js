@@ -155,34 +155,6 @@ export const setupUI = (callbacks) => {
         });
     });
 
-    // --- Tree View Controls ---
-    dom.expandAllButton.addEventListener('click', () => document.querySelector('.profiler-tab-content.active').querySelectorAll('details').forEach(d => d.open = true));
-    dom.collapseAllButton.addEventListener('click', () => document.querySelector('.profiler-tab-content.active').querySelectorAll('details').forEach(d => d.open = false));
-
-    // --- Graph Zoom Logic ---
-    let currentGraphZoom = 1.0;
-    const zoomStep = 0.2;
-    const updateGraphZoom = () => {
-        const activeGraphContainer = document.getElementById('profile-content-pipeline-plan');
-        const svg = activeGraphContainer.querySelector('svg');
-        if (svg) {
-            svg.style.transform = `scale(${currentGraphZoom})`;
-            svg.style.transformOrigin = 'top left';
-        }
-    };
-    dom.zoomInButton.addEventListener('click', () => {
-        currentGraphZoom += zoomStep;
-        updateGraphZoom();
-    });
-    dom.zoomOutButton.addEventListener('click', () => {
-        currentGraphZoom = Math.max(0.2, currentGraphZoom - zoomStep); // Prevent zooming out too much
-        updateGraphZoom();
-    });
-    dom.zoomResetButton.addEventListener('click', () => {
-        currentGraphZoom = 1.0;
-        updateGraphZoom();
-    });
-
     const closeSettingsModal = () => dom.settingsModal.style.display = 'none';
     dom.settingsButton.addEventListener('click', openSettingsModal);
     dom.settingsModalClose.addEventListener('click', closeSettingsModal);
