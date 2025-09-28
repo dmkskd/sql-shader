@@ -2,7 +2,8 @@ import * as duckdb from '@duckdb/duckdb-wasm';
 import { SHADERS } from './duckdb_wasm_shaders.js';
 import * as d3 from 'd3';
 import mermaid from 'mermaid';
-import { flamegraph } from 'd3-flame-graph';
+// Use a namespace import to robustly handle this non-standard module.
+import * as d3_flame_graph from 'd3-flame-graph';
 
 /**
  * Implements the Engine interface for DuckDB-WASM.
@@ -14,6 +15,9 @@ class DuckDBWasmEngine {
   }
 
   /**
+   * Initializes the DuckDB-WASM instance, worker, and database connection.
+   * This is a required method for the engine interface.
+   * @param {function(string): void} statusCallback A function to report progress updates.
    * @returns {Promise<void>}
    */
   async initialize(statusCallback) {
@@ -38,6 +42,8 @@ class DuckDBWasmEngine {
 
   /**
    * @param {string} sql
+   * This is a required method for the engine interface.
+   * @returns {Promise<import('@duckdb/duckdb-wasm').PreparedStatement>} A handle to the prepared query.
    * @returns {Promise<any>} A handle to the prepared query.
    */
   async prepare(sql) {
@@ -45,8 +51,9 @@ class DuckDBWasmEngine {
   }
 
   /**
-   * Runs a query with profiling enabled and returns the structured profile data.
+   * Runs a query with profiling enabled and returns the raw and JSON profile data.
    * @param {string} sql The raw SQL of the shader to profile.
+   * This is a required method for the engine interface.
    * @param {Array<any>} params The parameters for the query.
    * @returns {Promise<object>} The parsed JSON profile output.
    */
@@ -87,8 +94,9 @@ class DuckDBWasmEngine {
   };
 
   /**
-   * Renders the profile data into an HTML string.
+   * Renders the multi-faceted profile data into the modal.
    * @param {object} profileData The profile data object from the profile() method.
+   * This is a required method for the engine interface.
    * @param {object} containers The DOM elements to render into.
    * @returns {Promise<void>}
    */
@@ -241,13 +249,13 @@ class DuckDBWasmEngine {
       const timeMs = (node.operator_timing * 1000).toFixed(2);
       const percent = totalQueryTime > 0 ? ((node.operator_timing / totalQueryTime) * 100).toFixed(1) : 0;
       return `<strong>${d.data.name}</strong><br>
-              Time: ${timeMs}ms (${percent}%)<br>
+              Time: ${timeMs} ms (${percent}%)<br>
               Rows: ${node.operator_cardinality.toLocaleString()}`;
     };
 
     // Clear previous chart and render the new one
     container.innerHTML = '';
-    const flamegraphChart = flamegraph()
+    const flamegraphChart = d3_flame_graph.flamegraph()
       .width(container.clientWidth)
       .cellHeight(18)
       .transitionDuration(300)
@@ -385,6 +393,8 @@ class DuckDBWasmEngine {
   }
 
   /**
+   * Returns the list of example shaders available for this engine.
+   * This is a required method for the engine interface.
    * @returns {Array<{name: string, sql: string}>}
    */
   getShaders() {

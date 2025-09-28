@@ -2,7 +2,8 @@ import { createClient } from '@clickhouse/client-web';
 import { Table, Float32, makeTable } from '@apache/arrow';
 import mermaid from 'mermaid';
 import * as d3 from 'd3';
-import { flamegraph } from 'd3-flame-graph';
+// Use a namespace import to robustly handle this non-standard module.
+import * as d3_flame_graph from 'd3-flame-graph';
 import { SHADERS } from './clickhouse_shaders.js';
 
 /**
@@ -13,12 +14,17 @@ class ClickHouseEngine {
     this.client = null;
   }
 
+  /**
+   * Initializes the ClickHouse client and pings the server to ensure connectivity.
+   * @param {function(string): void} statusCallback A function to report progress updates.
+   * @returns {Promise<void>}
+   */
   async initialize(statusCallback) {
     statusCallback('Initializing ClickHouse engine...');
 
     // Default connection details. These can be overridden by URL parameters
     // e.g., http://localhost:8000/?ch_host=...&ch_port=...
-    const storedSettings = JSON.parse(localStorage.getItem('clickhouse-settings')) || {};
+    const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
     const urlParams = new URLSearchParams(window.location.search);
 
     // Priority: 1. Stored Settings, 2. URL Params, 3. Defaults
@@ -46,6 +52,12 @@ class ClickHouseEngine {
     }
   }
 
+  /**
+   * "Prepares" a query by returning an object that can execute it.
+   * For the HTTP client, this is a lightweight operation.
+   * @param {string} sql The SQL query string.
+   * @returns {Promise<{query: function(...any): Promise<Table>}>} An object with a `query` method.
+   */
   async prepare(sql) {
     // For the ClickHouse HTTP client, there's no "prepare" step.
     // We return an object that holds the SQL and can execute it.
@@ -54,6 +66,12 @@ class ClickHouseEngine {
     };
   }
 
+  /**
+   * Executes a "prepared" query with the given parameters.
+   * @param {string} sql The SQL query string from the prepare step.
+   * @param {Array<any>} params The parameters for the query.
+   * @returns {Promise<Table>} An Apache Arrow Table containing the result.
+   */
   async executeQuery(sql, params) {
     // New Strategy: Manually substitute parameters to avoid client library issues.
     let finalSql = sql
@@ -88,6 +106,12 @@ class ClickHouseEngine {
     });
   }
 
+  /**
+   * Runs the query with profiling enabled and collects various performance metrics.
+   * @param {string} sql The raw SQL of the shader to profile.
+   * @param {Array<any>} params The parameters for the query.
+   * @returns {Promise<object>} A data object containing plans, logs, and traces.
+   */
   async profile(sql, params) {
     console.log('[engine.profile] Starting advanced ClickHouse profiling...');
     const cleanedSql = sql.replace(/{[^}]+}/g, '1');
@@ -124,21 +148,50 @@ class ClickHouseEngine {
       .replace('{mx:Float64}', params[3])
       .replace('{my:Float64}', params[4]);
 
+    console.log(`[Debug] 1. Running main query with query_id: ${queryId}`);
+    console.log(finalSql);
+
     try {
-      await this.client.query({ query: finalSql, query_id: queryId, format: 'JSONEachRow' });
+      // Execute the query. We rely on the server-side user profile to have the
+      // correct profiling settings enabled, as sending them from the client is
+      // being rejected by the server.
+      await this.client.query({
+        query: finalSql,
+        query_id: queryId,
+        format: 'JSONEachRow',
+      });
     } catch (e) {
       console.warn('Shader query failed during profiling, but attempting to fetch logs anyway.', e);
     }
 
-    // Give ClickHouse a moment to flush the logs
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // Force ClickHouse to flush its log buffers to the system tables.
+    // This is more reliable than waiting with a timeout and ensures the logs are available.
+    try {
+      await this.client.command({ query: 'SYSTEM FLUSH LOGS' });
+      console.log('[engine.tracing] Flushed system logs successfully.');
+    } catch (e) {
+      console.warn('Failed to execute SYSTEM FLUSH LOGS, falling back to a timeout. This might happen due to user permissions.', e);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Use a slightly longer fallback timeout
+    }
 
     // 4. Get system.query_log entry
     try {
-      const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
-      const queryLogResultSet = await this.client.query({ query: queryLogQuery, format: 'JSONEachRow' });
-      const queryLogData = await queryLogResultSet.json();
-      profileData.queryLog = queryLogData[0];
+      // Retry mechanism to handle potential log flush delays.
+      const maxRetries = 5;
+      const retryDelay = 200; // ms
+      let queryLogData = [];
+
+      for (let i = 0; i < maxRetries; i++) {
+        const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
+        const queryLogResultSet = await this.client.query({ query: queryLogQuery, format: 'JSONEachRow' });
+        queryLogData = await queryLogResultSet.json();
+        if (queryLogData.length > 0) {
+          console.log(`[engine.tracing] Found query_log entry after ${i + 1} attempt(s).`);
+          break; // Found it, exit the loop.
+        }
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
+      profileData.queryLog = queryLogData[0]; // Will be undefined if not found, which is handled below.
     } catch (e) {
       console.error('Failed to query system.query_log:', e);
       profileData.queryLog = { error: `Failed to query system.query_log: ${e.message}` };
@@ -146,9 +199,32 @@ class ClickHouseEngine {
 
     // 5. Get system.trace_log entries for FlameGraph
     try {
-      const traceLogQuery = `SELECT trace, count() as value FROM system.trace_log WHERE query_id = '${queryId}' AND trace_type = 'CPU' GROUP BY trace`;
-      const traceLogResultSet = await this.client.query({ query: traceLogQuery, format: 'JSONEachRow' });
-      profileData.traceLog = await traceLogResultSet.json();
+      // Use a more efficient query to get demangled function names directly from the server.
+      // This avoids the complex two-step address resolution process.
+      const traceQuery = `
+        SELECT
+          arrayStringConcat(arrayMap(x -> demangle(addressToSymbol(x)), trace), ';') AS stack,
+          count() AS value
+        FROM system.trace_log
+        WHERE query_id = '${queryId}' AND trace_type = 'CPU'
+        GROUP BY trace
+      `;
+      const queryPayload = {
+        query: traceQuery,
+        format: 'JSONEachRow',
+        clickhouse_settings: {
+          allow_introspection_functions: 1,
+        },
+      };
+      console.log('[Debug] 2. Fetching resolved stack traces with payload:', JSON.stringify(queryPayload, null, 2));
+      const traceResultSet = await this.client.query(queryPayload);
+      const resolvedTraces = await traceResultSet.json();
+
+      // Process the result: split the stack string back into an array for the flame graph.
+      profileData.traceLog = resolvedTraces.map(row => ({
+        trace: row.stack.split(';'),
+        value: row.value,
+      }));
     } catch (e) {
       console.error('Failed to query system.trace_log:', e);
       profileData.traceLog = [];
@@ -236,7 +312,23 @@ class ClickHouseEngine {
 
     // --- Tab 5: FlameGraph (from system.trace_log) ---
     if (profileData.traceLog && profileData.traceLog.length > 0) {
-      this.renderFlamegraph(profileData.traceLog, flamegraphContainer);
+      // Remove any old listener before adding a new one.
+      if (window.renderClickHouseFlamegraph) {
+        tabs.flamegraph.removeEventListener('click', window.renderClickHouseFlamegraph);
+      }
+
+      // Defer rendering until the tab is clicked to ensure the container is visible and has a width.
+      window.renderClickHouseFlamegraph = () => {
+        requestAnimationFrame(() => {
+          console.log(`[Debug] Rendering ClickHouse flame graph in container with width: ${flamegraphContainer.clientWidth}px`);
+          this.renderFlamegraph(profileData.traceLog, flamegraphContainer);
+          // Remove the listener so it only runs once.
+          tabs.flamegraph.removeEventListener('click', window.renderClickHouseFlamegraph);
+        });
+      };
+      // Add the one-time listener.
+      tabs.flamegraph.addEventListener('click', window.renderClickHouseFlamegraph);
+
       tabs.flamegraph.style.display = 'block';
     } else {
       flamegraphContainer.innerHTML = '<p>No CPU trace data found. Ensure `query_profiler_cpu_time_period_ns` is set on your server and that the query is long enough to be sampled.</p>';
@@ -269,33 +361,41 @@ class ClickHouseEngine {
       let currentNode = root;
       const stack = row.trace.reverse(); // Build stack from bottom up
       stack.forEach(address => {
-        let childNode = currentNode.children.find(c => c.name === address);
+        const functionName = address || 'unknown';
+        let childNode = currentNode.children.find(c => c.name === functionName);
         if (!childNode) {
-          childNode = { name: address, value: 0, children: [], original: { value: 0 } };
+          childNode = { name: functionName, value: 0, children: [], original: { value: 0 } };
           currentNode.children.push(childNode);
         }
+        // The value of a parent is the sum of its children. We add the sample
+        // value to every node in the stack to correctly aggregate total time.
+        childNode.value += row.value;
         currentNode = childNode;
       });
-      currentNode.value += row.value;
-      currentNode.original.value += row.value;
     });
     root.value = totalValue;
     root.original.value = totalValue;
 
+    console.log('[Debug] Flamegraph data structure:', JSON.stringify(root, null, 2));
+
     container.innerHTML = '';
+    // Create a color scale from "cold" (green) to "hot" (red) based on sample count.
+    // We use a sqrt scale to better differentiate the smaller values.
+    const colorScale = d3.scaleSequential(d3.interpolateRgb("hsl(120, 50%, 35%)", "hsl(0, 80%, 45%)")).domain([0, Math.sqrt(root.value)]);
+
     // Define a function to create rich HTML tooltips
     const labelHandler = (d) => {
       const percent = totalValue > 0 ? ((d.data.value / totalValue) * 100).toFixed(2) : 0;
+      // Assuming a 1ms sample interval (1,000,000 ns), samples are roughly equivalent to milliseconds.
+      const estimatedMs = d.data.value;
       return `<strong>${d.data.name}</strong><br>
-              Samples: ${d.data.value.toLocaleString()} (${percent}%)`;
+              Time (est.): ${estimatedMs.toLocaleString()} ms (${percent}%)<br>Samples: ${d.data.value.toLocaleString()}`;
     };
 
-    const flamegraphChart = flamegraph()
+    const flamegraphChart = d3_flame_graph.flamegraph()
       .width(container.clientWidth)
       .cellHeight(18)
-      .selfValue(true) // In ClickHouse traces, the value is per-function, not cumulative
-      .setColorMapper(d => d.highlight ? "#E600E6" : "#606060") // Simple highlight or grey
-      .html(true) // Enable HTML in tooltips
+      .setColorMapper(d => colorScale(Math.sqrt(d.data.value))) // Color by sample count
       .label(labelHandler); // Use our custom tooltip function
 
     d3.select(container).datum(root).call(flamegraphChart);
@@ -326,6 +426,10 @@ class ClickHouseEngine {
     return mermaidString;
   }
 
+  /**
+   * Returns the list of example shaders available for this engine.
+   * @returns {Array<{name: string, sql: string}>}
+   */
   getShaders() {
     return SHADERS;
   }

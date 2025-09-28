@@ -5,6 +5,7 @@ import { ShaderManager } from './shader_manager.js';
 console.log('Executing main.js - Debug Version: 1.4.0');
 
 const APP_VERSION = '1.1.0';
+const STORAGE_PREFIX = 'pixelql.';
 
 const main = async (engine) => {
   // Initialize Mermaid once. It's used by the ClickHouse engine for profiling.
@@ -32,8 +33,10 @@ const main = async (engine) => {
 
   // Initialize all UI components
   try {
-    const LOCAL_STORAGE_KEY = 'duckdb-shader-sql';
-    const SHADER_SELECT_KEY = 'duckdb-shader-select-index';
+    // Use engine-specific keys to prevent loading incompatible shaders after switching engines.
+    const engineName = dom.engineSelect.value;
+    const LOCAL_STORAGE_KEY = `${STORAGE_PREFIX}sql-for-${engineName}`;
+    const SHADER_SELECT_KEY = `${STORAGE_PREFIX}shader-index-for-${engineName}`;
     const RESOLUTIONS = [
       { name: 'Tiny (64x48)', width: 64, height: 48 },
       { name: 'Small (320x240)', width: 320, height: 240 },
@@ -211,11 +214,18 @@ const main = async (engine) => {
         },
         onClearState: () => {
             console.log('Clearing all items from localStorage...');
-            localStorage.removeItem('duckdb-shader-sql');
-            localStorage.removeItem('duckdb-shader-select-index');
-            localStorage.removeItem('selected-engine');
-            localStorage.removeItem('clickhouse-settings');
-            alert('Local state has been cleared. The application will now reload.');
+            const keysToRemove = [];
+            // Find all keys that belong to this application using the prefix.
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith(STORAGE_PREFIX)) {
+                    keysToRemove.push(key);
+                }
+            }
+            keysToRemove.forEach(key => {
+                localStorage.removeItem(key);
+            });
+            alert('All application state has been cleared. The page will now reload.');
             window.location.reload();
         },
         onShare: () => {
@@ -436,8 +446,13 @@ const main = async (engine) => {
     // Attach the editor's change listener only AFTER the initial setup is complete.
     // This prevents a race condition where a change event fires before the engine is ready.
     editor.on('change', async () => {
-        localStorage.setItem(LOCAL_STORAGE_KEY, editor.getValue());
-        localStorage.setItem(SHADER_SELECT_KEY, dom.shaderSelect.value);
+        // Dynamically determine the correct storage key at the moment of saving.
+        // This prevents saving a shader to the wrong engine's storage slot after switching.
+        const currentEngineName = dom.engineSelect.value;
+        const currentLocalStorageKey = `${STORAGE_PREFIX}sql-for-${currentEngineName}`;
+        const currentShaderSelectKey = `${STORAGE_PREFIX}shader-index-for-${currentEngineName}`;
+        localStorage.setItem(currentLocalStorageKey, editor.getValue());
+        localStorage.setItem(currentShaderSelectKey, dom.shaderSelect.value);
         if (shaderManager.applyPerformanceHints(editor.getValue(), RESOLUTIONS, ZOOM_LEVELS)) {
             updateCanvasSizeAndResolution();
         }
@@ -477,14 +492,14 @@ const initializeEngine = async () => {
         // If a shared link is used, its engine parameter takes top priority.
         selectedEngine = urlParams.get('engine');
     } else {
-        selectedEngine = localStorage.getItem('selected-engine') || engineSelect.value;
+        selectedEngine = localStorage.getItem(`${STORAGE_PREFIX}selected-engine`) || engineSelect.value;
     }
     // Ensure the dropdown visually matches the engine being loaded.
     engineSelect.value = selectedEngine;
 
     // If switching to ClickHouse for the first time, show the settings modal.
     if (selectedEngine === 'clickhouse') {
-        const hasConfiguredClickHouse = !!localStorage.getItem('clickhouse-settings');
+        const hasConfiguredClickHouse = !!localStorage.getItem(`${STORAGE_PREFIX}clickhouse-settings`);
         if (!hasConfiguredClickHouse) {
             openSettingsModal();
             // Stop further execution. The user will save settings and the page will reload.
@@ -510,11 +525,13 @@ const engineSelect = document.getElementById('engine-select');
 if (engineSelect) {
     engineSelect.addEventListener('change', (event) => {
         const newEngine = event.target.value;
-        localStorage.setItem('selected-engine', newEngine);
+        localStorage.setItem(`${STORAGE_PREFIX}selected-engine`, newEngine);
 
         // When manually switching engines, clear any URL parameters to start fresh.
         // The page will reload and use the 'selected-engine' from localStorage.
-        window.location.href = window.location.origin + window.location.pathname;
+        // This prevents a shared link's engine from overriding the user's manual selection.
+        const url = new URL(window.location.href);
+        window.location.href = url.origin + url.pathname;
     });
 }
 initializeEngine();

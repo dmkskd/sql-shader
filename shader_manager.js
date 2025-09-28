@@ -6,9 +6,6 @@
 
 import { dom, updateErrorPanel, updateInitStatus } from './ui_manager.js';
 
-const LOCAL_STORAGE_KEY = 'duckdb-shader-sql';
-const SHADER_SELECT_KEY = 'duckdb-shader-select-index';
-
 export class ShaderManager {
     constructor(engine, editor, onHintChange) {
         this.engine = engine;
@@ -24,10 +21,18 @@ export class ShaderManager {
         this.debounceTimer = null;
     }
 
+    /**
+     * Retrieves the list of example shaders from the current engine.
+     * This is part of the engine interface contract.
+     * @returns {Array<{name: string, sql: string}>}
+     */
     getShaders() {
         return this.engine.getShaders();
     }
 
+    /**
+     * Loads a specific shader into the editor by its index.
+     */
     loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS) {
         const shader = this.getShaders()[shaderIndex];
         if (!shader) return;
@@ -40,6 +45,11 @@ export class ShaderManager {
         }
     }
 
+    /**
+     * Parses performance hints (like @run: resolution=...) from the SQL comment block
+     * and applies them to the UI controls.
+     * @returns {boolean} True if any UI settings were changed.
+     */
     applyPerformanceHints(sql, RESOLUTIONS, ZOOM_LEVELS) {
         let settingsChanged = false;
         const runHintMatch = sql.match(/--\s*@run:\s*(.*)/);
@@ -94,6 +104,12 @@ export class ShaderManager {
         return settingsChanged;
     }
 
+    /**
+     * Compiles the current SQL in the editor by calling the engine's `prepare` method.
+     * This is a critical part of the engine interface contract.
+     * @param {boolean} isInitialCompile - True if this is the first compile on page load.
+     * @param {object} stats - The global stats object to update with prepare time.
+     */
     async updateShader(isInitialCompile = false, stats) {
         const sql = this.editor.getValue();
         if (!this.engineReady) return false;

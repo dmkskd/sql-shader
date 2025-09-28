@@ -56,7 +56,9 @@ export const updateInitStatus = (message) => {
 
 export const updateStatsPanel = (stats, resolution) => {
     let statsText = `FPS: ${stats.fps.toFixed(1)} | Prepare: ${stats.prepareTime.toFixed(2)}ms | Query: ${stats.queryTime.toFixed(2)}ms | Resolution: ${resolution.width}x${resolution.height} | Time: ${stats.elapsedTime.toFixed(2)}s`;
-    if (stats.pixelR !== null) {
+    // Use `!= null` to check for both `null` and `undefined` in a single, safe check.
+    // This prevents a race condition when resizing the canvas.
+    if (stats.pixelR != null) {
         statsText += ` | Pixel (${stats.pixelX}, ${stats.pixelY}): R=${stats.pixelR.toFixed(3)} G=${stats.pixelG.toFixed(3)} B=${stats.pixelB.toFixed(3)}`;
     }
     dom.statsPanel.textContent = statsText;
@@ -96,7 +98,16 @@ export const setupUI = (callbacks) => {
     } = callbacks;
 
     // Profiler Modal
-    const closeModal = () => dom.profileModal.style.display = 'none';
+    const closeModal = () => {
+        dom.profileModal.style.display = 'none';
+
+        // --- CRITICAL CLEANUP ---
+        // The d3-flame-graph library's tooltip (`d3-tip`) appends the tooltip element to the document body.
+        // If we don't manually remove it when the modal closes, it becomes an invisible overlay
+        // that blocks clicks on the header. This is the definitive fix for that issue.
+        const orphanedTooltip = document.querySelector('body > #flamegraph-tooltip');
+        if (orphanedTooltip) orphanedTooltip.remove();
+    };
     dom.profileModalClose.addEventListener('click', closeModal);
     dom.profileModal.addEventListener('click', (e) => {
         if (e.target === dom.profileModal) closeModal();
@@ -177,7 +188,7 @@ export const setupUI = (callbacks) => {
             username: document.getElementById('ch-user').value,
             password: document.getElementById('ch-password').value,
         };
-        localStorage.setItem('clickhouse-settings', JSON.stringify(settings));
+        localStorage.setItem('pixelql.clickhouse-settings', JSON.stringify(settings));
         window.location.reload();
     });
 
@@ -263,7 +274,7 @@ export const setupUI = (callbacks) => {
 export const openSettingsModal = () => {
     const selectedEngine = dom.engineSelect.value;
     if (selectedEngine === 'clickhouse') {
-        const storedSettings = JSON.parse(localStorage.getItem('clickhouse-settings')) || {};
+        const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
         document.getElementById('ch-url').value = storedSettings.url || '';
         document.getElementById('ch-user').value = storedSettings.username || '';
         document.getElementById('ch-password').value = storedSettings.password || '';
