@@ -654,12 +654,18 @@ export class ClickHouseProfiler {
    */
   getClassName(name) {
     if (!name) return 'unknown';
-    const parts = name.split('::');
-    if (parts.length > 1) {
-      // Return everything except the last part (the method name)
-      return parts.slice(0, -1).join('::');
+
+    // Step 1: Isolate the function signature from its arguments by finding the first '('.
+    const openParenIndex = name.indexOf('(');
+    const signature = (openParenIndex !== -1) ? name.substring(0, openParenIndex) : name;
+
+    // Step 2: On the signature without arguments, find the last '::'.
+    const lastSeparatorIndex = signature.lastIndexOf('::');
+    if (lastSeparatorIndex > 0) {
+      // Step 3: Return the substring before the last '::' which is the full class/namespace.
+      return signature.substring(0, lastSeparatorIndex);
     }
-    return name; // Not a class method, return as is
+    return signature; // Not a class method (or no namespace), return the signature.
   }
 
   /**

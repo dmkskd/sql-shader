@@ -55,18 +55,22 @@ async function runTests() {
     function checkNode(node) {
       if (!testPassed || !node) return; // Stop checking if a failure was found or node is null
 
-      // After grouping, the node's `name` property is updated to be the group name.
+      // Get the class name of the current (parent) node from its original, un-simplified name.
       const parentClass = profiler.getClassName(node.original.fullName);
 
       // Check all of its children.
       (node.children || []).forEach(child => {
         const childClass = profiler.getClassName(child.original.fullName);
 
+        // --- DEBUGGING LOG ---
+        console.log(`[Test Debug] Comparing Parent Class: "${parentClass}" WITH Child Class: "${childClass}"`);
+
         // If a child belongs to the same class as its parent, the test fails.
         // If the parent's group name is the same as the child's class, it's a failure.
         if (parentClass !== 'root' && parentClass === childClass) {
           testPassed = false;
           failureReason = `Node "${parentClass}" has a child of the same class: "${childClass}"`;
+          console.error(`[Test Debug] FAILURE DETECTED! Parent Class: ${parentClass}, Child Class: ${childClass}`);
         }
         // Continue checking down the tree.
         checkNode(child);
