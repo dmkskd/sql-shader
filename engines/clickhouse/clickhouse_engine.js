@@ -153,13 +153,17 @@ class ClickHouseEngine {
 
     try {
       // Execute the query. We rely on the server-side user profile to have the
-      // correct profiling settings enabled, as sending them from the client is
-      // being rejected by the server.
-      await this.client.query({
+      // correct profiling settings enabled, but we also explicitly enable server-side trace logging.
+      const mainQueryResultSet = await this.client.query({
         query: finalSql,
         query_id: queryId,
         format: 'JSONEachRow',
+        clickhouse_settings: {
+          send_logs_level: 'trace', // Enable server-side trace logging to be sent to the client
+        },
       });
+      profileData.serverTraceLog = mainQueryResultSet.logs;
+      console.log(`[Debug] Captured ${profileData.serverTraceLog ? profileData.serverTraceLog.length : 0} server trace log entries streamed from the main query execution.`);
     } catch (e) {
       console.warn('Shader query failed during profiling, but attempting to fetch logs anyway.', e);
     }
@@ -208,8 +212,10 @@ class ClickHouseEngine {
           }
         }
 
-        // If we have both, we can stop waiting
-        if (profileData.queryLog && profileData.traceLog && profileData.traceLog.length > 0) {
+        // If we have all the data we need, we can stop waiting
+        // We no longer poll for query_thread_log.
+        const hasAllLogs = profileData.queryLog && profileData.traceLog && profileData.traceLog.length > 0;
+        if (hasAllLogs) {
           break;
         }
 
@@ -221,6 +227,7 @@ class ClickHouseEngine {
 
     // Add final status logging after polling is complete.
     console.log(`[Debug] Polling finished. Query Log found: ${!!profileData.queryLog}`);
+    console.log(`[Debug] Polling finished. Server Trace Log entries found: ${profileData.serverTraceLog ? profileData.serverTraceLog.length : 0}`);
     console.log(`[Debug] Polling finished. Trace Log entries found: ${profileData.traceLog ? profileData.traceLog.length : 0}`);
 
     console.log('[engine.profile] Profiling data collection complete.');
@@ -286,26 +293,30 @@ class ClickHouseEngine {
     let pipelinePlanContent;
     if (profileData.pipelineGraph && profileData.pipelineGraph.trim().startsWith('digraph')) {
       const mermaidGraph = this.dotToMermaid(profileData.pipelineGraph);
-      const { svg } = await mermaid.render('ch-mermaid-graph', mermaidGraph);
-      pipelinePlanContent = svg;
+      // We render the graph inside the post-render logic to attach event listeners.
+      // For now, we just prepare the content.
+      pipelinePlanContent = '';
     } else {
       pipelinePlanContent = `<p>Could not generate graph.</p><pre>${profileData.pipelineGraph || 'No data.'}</pre>`;
     }
 
-    // --- Tab 5 & 6: FlameGraph and Trace Log (from system.trace_log) ---
-    let traceLogContent;
-    if (profileData.traceLog && profileData.traceLog.length > 0) {
-      // Render the raw trace log data into a table for the new panel
-      traceLogContent = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
-      traceLogContent += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Stack Trace</th><th style="width: 10%;">Samples</th></tr></thead>';
-      traceLogContent += '<tbody>';
-      // Sort by most frequent samples first
-      const sortedTraces = [...profileData.traceLog].sort((a, b) => b.value - a.value);
-      for (const row of sortedTraces) {
-        const stackHtml = row.trace.join('<br>&#8627; '); // Use a right-angle arrow for stack levels
-        traceLogContent += `<tr style="border-bottom: 1px solid #444;"><td style="padding: 5px 0;">${stackHtml}</td><td>${row.value}</td></tr>`;
+    // --- Tab 6: Server Trace Log (from send_logs_level='trace') ---
+    let serverTraceLogContent;
+    if (profileData.serverTraceLog && profileData.serverTraceLog.length > 0) {
+      serverTraceLogContent = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
+      serverTraceLogContent += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Time</th><th>Source</th><th>Level</th><th>Message</th></tr></thead>';
+      serverTraceLogContent += '<tbody>';
+      for (const log of profileData.serverTraceLog) {
+        serverTraceLogContent += `<tr style="border-bottom: 1px solid #444; padding: 3px 0;">
+                                    <td style="white-space: nowrap;">${new Date(log.time).toISOString()}</td>
+                                    <td>${log.source}</td>
+                                    <td>${log.level}</td>
+                                    <td style="white-space: pre-wrap;">${log.message}</td>
+                                  </tr>`;
       }
-      traceLogContent += '</tbody></table>';
+      serverTraceLogContent += '</tbody></table>';
+    } else {
+      serverTraceLogContent = '<p>No server trace logs were sent. This may be disabled by the server configuration.</p>';
     }
 
     // --- Dynamically build the HTML for the profiler ---
@@ -314,7 +325,8 @@ class ClickHouseEngine {
       { id: 'structured-plan', title: 'Structured Plan', content: `<pre>${formattedHtml}</pre>`, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
       { id: 'pipeline-plan', title: 'Pipeline Plan', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>' },
       { id: 'flamegraph', title: 'FlameGraph', content: '', header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
-      { id: 'trace-log', title: 'Trace Log', content: traceLogContent, header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
+      { id: 'call-graph', title: 'Call Graph', content: '', header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.' },
+      { id: 'trace-log', title: 'Trace Log', content: serverTraceLogContent, header: "Server logs streamed to the client by setting <code>send_logs_level = 'trace'</code>" },
       { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
     ];
 
@@ -339,6 +351,14 @@ class ClickHouseEngine {
                           <button id="ch-zoom-in-button" title="Zoom In">+</button>
                           <button id="ch-zoom-out-button" title="Zoom Out">-</button>
                           <button id="ch-zoom-reset-button" title="Reset Zoom">1:1</button>
+                       </div>`;
+      }
+      if (tab.id === 'call-graph') {
+        contentHtml += `<div class="graph-controls" style="display: none;" data-for-tab="call-graph">
+                          <button id="cg-zoom-in-button" title="Zoom In">+</button>
+                          <button id="cg-zoom-out-button" title="Zoom Out">-</button>
+                          <button id="cg-zoom-reset-button" title="Reset Zoom">1:1</button>
+                          <button id="cg-switch-direction-button" title="Switch Graph Direction">Switch Direction</button>
                        </div>`;
       }
       contentHtml += `  <div class="tab-inner-content">${tab.content || ''}</div>
@@ -395,6 +415,22 @@ class ClickHouseEngine {
         }
     }
 
+    // Render the Call Graph from the flame graph data
+    if (profileData.traceLog && profileData.traceLog.length > 0) {
+        const callGraphContainer = mainContainer.querySelector('#profile-content-call-graph .tab-inner-content');
+        this.renderCallGraph(profileData.traceLog, callGraphContainer, 'TD'); // Initial render is Top-Down
+        this.setupCallGraphControls(profileData.traceLog, callGraphContainer);
+    } else {
+        const flamegraphContainer = mainContainer.querySelector('#profile-content-flamegraph');
+        if (flamegraphContainer) {
+            flamegraphContainer.querySelector('.tab-inner-content').innerHTML = '<p>No CPU trace data found. Ensure profiling is enabled on your server and that the query is long enough to be sampled.</p>';
+        }
+        const traceLogContainer = mainContainer.querySelector('#profile-content-trace-log');
+        if (traceLogContainer) {
+            traceLogContainer.querySelector('.tab-inner-content').innerHTML = '<p>No CPU trace data found.</p>';
+        }
+    }
+
     // Add event listeners for the newly created tree-view buttons
     const expandBtn = mainContainer.querySelector('#ch-expand-all-button');
     if (expandBtn) {
@@ -402,11 +438,18 @@ class ClickHouseEngine {
         mainContainer.querySelector('#ch-collapse-all-button').addEventListener('click', () => mainContainer.querySelector('#profile-content-structured-plan').querySelectorAll('details').forEach(d => d.open = false));
     }
 
+    // Render the Pipeline Plan graph and set up its controls
+    if (profileData.pipelineGraph && profileData.pipelineGraph.trim().startsWith('digraph')) {
+      const pipelineContainer = mainContainer.querySelector('#profile-content-pipeline-plan .tab-inner-content');
+      this.renderPipelineGraph(profileData.pipelineGraph, pipelineContainer);
+    }
+
+
     // Add event listeners for the newly created graph-view buttons
     const zoomInBtn = mainContainer.querySelector('#ch-zoom-in-button');
     if (zoomInBtn) {
         let currentGraphZoom = 1.0;
-        const zoomStep = 0.2;
+        const zoomStep = 0.4; // Increased for more aggressive zoom
         const pipelineContainer = mainContainer.querySelector('#profile-content-pipeline-plan .tab-inner-content');
         const updateGraphZoom = () => {
             const svg = pipelineContainer.querySelector('svg');
@@ -428,6 +471,130 @@ class ClickHouseEngine {
             updateGraphZoom();
         });
     }
+
+    // Add event listeners for the newly created call-graph-view buttons
+    const cgZoomInBtn = mainContainer.querySelector('#cg-zoom-in-button');
+    if (cgZoomInBtn) {
+        let currentGraphZoom = 1.0;
+        const zoomStep = 0.6; // Make zoom even more aggressive
+        const callGraphContainer = mainContainer.querySelector('#profile-content-call-graph .tab-inner-content');
+        const updateGraphZoom = () => {
+            const svg = callGraphContainer.querySelector('svg');
+            if (svg) {
+                svg.style.transform = `scale(${currentGraphZoom})`;
+                svg.style.transformOrigin = 'top left';
+            }
+        };
+        cgZoomInBtn.addEventListener('click', () => {
+            currentGraphZoom += zoomStep;
+            updateGraphZoom();
+        });
+        mainContainer.querySelector('#cg-zoom-out-button').addEventListener('click', () => {
+            currentGraphZoom = Math.max(0.2, currentGraphZoom - zoomStep);
+            updateGraphZoom();
+        });
+        mainContainer.querySelector('#cg-zoom-reset-button').addEventListener('click', () => {
+            currentGraphZoom = 1.0;
+            updateGraphZoom();
+        });
+    }
+  }
+
+  /**
+   * Renders the Pipeline graph and sets up its interactive features.
+   * @param {string} dotString The raw DOT graph string from EXPLAIN.
+   * @param {HTMLElement} container The container to render into.
+   * @param {Set<string>} [nodesToRender=null] An optional set of node IDs to filter the graph.
+   */
+  async renderPipelineGraph(dotString, container, nodesToRender = null) {
+    const mermaidGraph = this.dotToMermaid(dotString, nodesToRender);
+    const { svg } = await mermaid.render('ch-mermaid-graph', mermaidGraph);
+    container.innerHTML = svg;
+    this.setupPipelineGraphZoom(dotString, container);
+  }
+
+  /**
+   * Sets up zoom and selection controls for the Pipeline graph.
+   * @param {string} dotString The original DOT string for re-rendering.
+   * @param {HTMLElement} container The container holding the SVG graph.
+   */
+  setupPipelineGraphZoom(dotString, container) {
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    // Force enable mouse events on the SVG
+    svg.style.pointerEvents = 'auto';
+
+    // --- Box Selection Logic ---
+    let selectionBox = document.getElementById('graph-selection-box');
+    if (!selectionBox) {
+      selectionBox = document.createElement('div');
+      selectionBox.id = 'graph-selection-box';
+      selectionBox.style.position = 'absolute';
+      selectionBox.style.border = '1px dashed #ffc980';
+      selectionBox.style.backgroundColor = 'rgba(255, 201, 128, 0.2)';
+      selectionBox.style.pointerEvents = 'none';
+      selectionBox.style.display = 'none';
+      document.body.appendChild(selectionBox);
+    }
+
+    let isDragging = false;
+    let startX, startY;
+
+    // Attach the listener to the SVG itself, as it's the element that receives the initial events.
+    // The container div might not receive them if the SVG covers it completely.
+    svg.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.node')) return; // Don't start drag if clicking on a node itself
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      selectionBox.style.left = `${startX}px`;
+      selectionBox.style.top = `${startY}px`;
+      selectionBox.style.width = '0px';
+      selectionBox.style.height = '0px';
+      selectionBox.style.display = 'block';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const currentX = e.clientX;
+      const currentY = e.clientY;
+      const width = currentX - startX;
+      const height = currentY - startY;
+
+      selectionBox.style.width = `${Math.abs(width)}px`;
+      selectionBox.style.height = `${Math.abs(height)}px`;
+      selectionBox.style.left = `${width > 0 ? startX : currentX}px`;
+      selectionBox.style.top = `${height > 0 ? startY : currentY}px`;
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      selectionBox.style.display = 'none';
+
+      const selectionRect = selectionBox.getBoundingClientRect();
+      if (selectionRect.width < 10 || selectionRect.height < 10) return;
+
+      const selectedNodeIds = new Set();
+      svg.querySelectorAll('.node').forEach(nodeEl => {
+        const nodeRect = nodeEl.getBoundingClientRect();
+        if (selectionRect.left < nodeRect.right && selectionRect.right > nodeRect.left &&
+            selectionRect.top < nodeRect.bottom && selectionRect.bottom > nodeRect.top) {
+          selectedNodeIds.add(nodeEl.id);
+        }
+      });
+
+      if (selectedNodeIds.size > 0) {
+        this.renderPipelineGraph(dotString, container, selectedNodeIds);
+      }
+    });
+
+    // Double-click to reset zoom
+    svg.addEventListener('dblclick', () => {
+      this.renderPipelineGraph(dotString, container, null);
+    });
   }
 
   /**
@@ -489,26 +656,328 @@ class ClickHouseEngine {
   }
 
   /**
+   * Simplifies a C++ function name by removing template arguments for better display.
+   * @param {string} name The full function name.
+   * @returns {string} The simplified function name.
+   */
+  simplifyFunctionName(name) {
+    if (!name) return 'unknown';
+    // This function is designed to aggressively shorten complex C++ function names.
+    let simplified = name;
+
+    // 1. Remove all template arguments <...>
+    simplified = simplified.replace(/<[^<>]*>/g, '()');
+
+    // 2. Remove lambda definitions and operator() calls
+    simplified = simplified.replace(/::'lambda'.*/, '');
+    simplified = simplified.replace(/::operator\(\).*/, '');
+
+    // 3. Truncate if still too long
+    if (simplified.length > 60) {
+        simplified = simplified.substring(0, 57) + '...';
+    }
+
+    return simplified.replace(/std::__1::/g, 'std::');
+  }
+
+  /**
+   * Renders a Mermaid.js call graph from the ClickHouse trace log data.
+   * @param {Array<object>} traceLog The data from system.trace_log.
+   * @param {HTMLElement} container The DOM element to render the chart into.
+   */
+  async renderCallGraph(traceLog, container, direction = 'TD') {
+    if (!traceLog || traceLog.length === 0) {
+      container.innerHTML = '<p>No data to render call graph.</p>';
+      return;
+    }
+
+    console.log(`[Debug] Building aggregated call graph from ${traceLog.length} unique stacks.`);
+    container.innerHTML = ''; // Clear container before rendering
+    // First, build the same hierarchical data structure as the flame graph.
+    const root = { name: "Total CPU Time", value: 0, children: [] };
+    let totalValue = 0;
+    traceLog.forEach(row => {
+      totalValue += row.value;
+      let currentNode = root;
+      const stack = row.trace.reverse();
+      stack.forEach(fullName => {
+        const functionName = this.simplifyFunctionName(fullName);
+        let childNode = currentNode.children.find(c => c.name === functionName);
+        if (!childNode) {
+          childNode = { name: functionName, value: 0, children: [], fullName: fullName };
+          currentNode.children.push(childNode);
+        }
+        childNode.value += row.value;
+        currentNode = childNode;
+      });
+    });
+    root.value = totalValue;
+
+    // --- NEW: Aggregation Logic ---
+    const aggregatedNodes = new Map();
+    const aggregatedEdges = new Map();
+
+    function processNode(node, parentName = null) {
+        const simplifiedName = node.name;
+
+        // Aggregate node value
+        if (!aggregatedNodes.has(simplifiedName)) {
+            aggregatedNodes.set(simplifiedName, { value: 0, fullName: node.fullName });
+        }
+        aggregatedNodes.get(simplifiedName).value += node.value;
+
+        // Aggregate edge
+        if (parentName) {
+            const edgeKey = `${parentName}|${simplifiedName}`;
+            aggregatedEdges.set(edgeKey, (aggregatedEdges.get(edgeKey) || 0) + node.value);
+        }
+
+        (node.children || []).forEach(child => processNode(child, simplifiedName));
+    }
+    processNode(root);
+
+    // --- Convert aggregated data to Mermaid syntax ---
+    let mermaidSyntax = `graph ${direction};\n`;
+    mermaidSyntax += 'classDef timeHot fill:#5c2828,stroke:#ff8080,stroke-width:2px,color:#fff;\n';
+    mermaidSyntax += 'classDef timeWarm fill:#5a4e3a,stroke:#ffc980,stroke-width:2px,color:#fff;\n';
+    mermaidSyntax += 'classDef timeGood fill:#2a4a3a,stroke:#80ff80,stroke-width:2px,color:#fff;\n';
+
+    // Create a unique ID for each function name
+    const nameToId = new Map();
+    let nodeIdCounter = 0;
+    for (const name of aggregatedNodes.keys()) {
+        nameToId.set(name, `n${nodeIdCounter++}`);
+    }
+
+    // Generate node definitions
+    for (const [name, data] of aggregatedNodes.entries()) {
+      const nodeId = nameToId.get(name);
+      const percent = totalValue > 0 ? ((data.value / totalValue) * 100) : 0;
+      let nodeText = `<div title='${data.fullName || name}'><strong>${name}</strong><br/>${data.value.toLocaleString()} samples<br/>${percent.toFixed(1)}%</div>`;
+      nodeText = nodeText.replace(/"/g, '#quot;');
+      mermaidSyntax += `    ${nodeId}["${nodeText}"];\n`;
+
+      if (percent >= 50) {
+        mermaidSyntax += `    class ${nodeId} timeHot;\n`;
+      } else if (percent >= 5) {
+        mermaidSyntax += `    class ${nodeId} timeWarm;\n`;
+      } else {
+        mermaidSyntax += `    class ${nodeId} timeGood;\n`;
+      }
+    }
+
+    // Generate edge definitions
+    for (const [edgeKey, value] of aggregatedEdges.entries()) {
+        const [parentName, childName] = edgeKey.split('|');
+        const parentId = nameToId.get(parentName);
+        const childId = nameToId.get(childName);
+        if (parentId && childId) {
+            mermaidSyntax += `    ${parentId} --> ${childId};\n`;
+        }
+    }
+
+    console.log(`[Debug] Mermaid diagram size: ${mermaidSyntax.length} characters`);
+
+    const { svg } = await mermaid.render('ch-call-graph', mermaidSyntax);
+    container.innerHTML = svg;
+
+    // --- Add Tooltip Logic for the Call Graph ---
+    const tooltipEl = document.createElement('div');
+    tooltipEl.id = 'ch-call-graph-tooltip';
+    tooltipEl.style.position = 'fixed';
+    tooltipEl.style.display = 'none';
+    tooltipEl.style.background = '#2a2a2a';
+    tooltipEl.style.padding = '10px';
+    tooltipEl.style.border = '1px solid #777';
+    tooltipEl.style.borderRadius = '3px';
+    tooltipEl.style.pointerEvents = 'none';
+    tooltipEl.style.zIndex = '1003'; // Ensure it's on top
+    container.appendChild(tooltipEl);
+
+    container.querySelectorAll('.node').forEach(nodeEl => {
+      nodeEl.addEventListener('mousemove', (e) => {
+        const title = nodeEl.querySelector('div')?.title;
+        if (title) {
+          tooltipEl.innerHTML = `<strong>Full Name:</strong><br>${title}`;
+          tooltipEl.style.display = 'block';
+          tooltipEl.style.left = `${e.clientX + 15}px`;
+          tooltipEl.style.top = `${e.clientY + 15}px`;
+        }
+      });
+      nodeEl.addEventListener('mouseout', () => {
+        tooltipEl.style.display = 'none';
+      });
+    });
+
+    this.setupSelectionZoom(container, traceLog, direction);
+  }
+
+  /**
+   * Sets up the event listeners for the Call Graph controls (zoom, direction).
+   * @param {Array<object>} traceLog The raw trace log data needed for re-rendering.
+   * @param {HTMLElement} container The container for the call graph.
+   */
+  setupCallGraphControls(traceLog, container) {
+    const button = document.getElementById('cg-switch-direction-button');
+    if (!button) return;
+
+    let currentLayout = 'TD'; // Top-Down
+
+    const updateButtonText = () => {
+      button.textContent = (currentLayout === 'TD') ? 'Switch to Bottom Up' : 'Switch to Top Down';
+    };
+
+    // Remove any old listener before adding a new one to prevent conflicts on re-profiling.
+    if (button.handler) {
+      button.removeEventListener('click', button.handler);
+    }
+
+    button.handler = () => {
+      currentLayout = (currentLayout === 'TD') ? 'BT' : 'TD';
+      this.renderCallGraph(traceLog, container, currentLayout);
+      updateButtonText();
+    };
+
+    updateButtonText();
+    button.addEventListener('click', button.handler);
+  }
+
+  /**
+   * Sets up the drag-to-select zoom functionality for a Mermaid graph.
+   * @param {HTMLElement} container The container holding the SVG graph.
+   * @param {Array<object>} traceLog The raw trace log data for re-rendering.
+   * @param {string} direction The current graph direction ('TD' or 'BT').
+   */
+  setupSelectionZoom(container, traceLog, direction) {
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    // Force enable mouse events on the SVG, as Mermaid may disable them by default.
+    svg.style.pointerEvents = 'auto';
+
+    // Create a selection box element if it doesn't exist
+    let selectionBox = document.getElementById('graph-selection-box');
+    if (!selectionBox) {
+      selectionBox = document.createElement('div');
+      selectionBox.id = 'graph-selection-box';
+      selectionBox.style.position = 'absolute';
+      selectionBox.style.border = '1px dashed #ffc980';
+      selectionBox.style.backgroundColor = 'rgba(255, 201, 128, 0.2)';
+      selectionBox.style.pointerEvents = 'none';
+      selectionBox.style.display = 'none';
+      document.body.appendChild(selectionBox);
+    }
+
+    let isDragging = false;
+    let startX, startY;
+
+    container.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      selectionBox.style.left = `${startX}px`;
+      selectionBox.style.top = `${startY}px`;
+      selectionBox.style.width = '0px';
+      selectionBox.style.height = '0px';
+      selectionBox.style.display = 'block';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const currentX = e.clientX;
+      const currentY = e.clientY;
+      const width = currentX - startX;
+      const height = currentY - startY;
+
+      selectionBox.style.width = `${Math.abs(width)}px`;
+      selectionBox.style.height = `${Math.abs(height)}px`;
+      selectionBox.style.left = `${width > 0 ? startX : currentX}px`;
+      selectionBox.style.top = `${height > 0 ? startY : currentY}px`;
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      selectionBox.style.display = 'none';
+
+      const selectionRect = selectionBox.getBoundingClientRect();
+      if (selectionRect.width < 10 || selectionRect.height < 10) return; // Ignore tiny selections
+
+      const selectedNodeNames = new Set();
+      svg.querySelectorAll('.node').forEach(nodeEl => {
+        const nodeRect = nodeEl.getBoundingClientRect();
+        // Check for intersection
+        if (
+          selectionRect.left < nodeRect.right &&
+          selectionRect.right > nodeRect.left &&
+          selectionRect.top < nodeRect.bottom &&
+          selectionRect.bottom > nodeRect.top
+        ) {
+          // The node's name is stored in the title of the inner div
+          const title = nodeEl.querySelector('div[title]')?.title;
+          if (title) selectedNodeNames.add(title);
+        }
+      });
+
+      if (selectedNodeNames.size > 0) {
+        const filteredTraceLog = traceLog.filter(row => row.trace.some(funcName => selectedNodeNames.has(funcName)));
+        this.renderCallGraph(filteredTraceLog, container, direction);
+      }
+    });
+
+    // Add a double-click listener to reset the zoom
+    svg.addEventListener('dblclick', () => {
+      this.renderCallGraph(traceLog, container, direction);
+    });
+  }
+
+  /**
    * Parses a DOT graph string and converts it to Mermaid syntax.
    * @param {string} dotString The raw DOT graph string.
+   * @param {Set<string>} [nodesToRender=null] An optional set of node IDs to filter the graph.
    * @returns {string} A Mermaid graph definition string.
    */
-  dotToMermaid(dotString) {
+  dotToMermaid(dotString, nodesToRender = null) {
     let mermaidString = 'graph LR;\n'; // LR = Left to Right
     const nodeLabels = new Map();
+    const edges = [];
 
     const nodeRegex = /(\w+)\s+\[label="([^"]+)"\]/g;
     let match;
     while ((match = nodeRegex.exec(dotString)) !== null) {
       nodeLabels.set(match[1], match[2].replace(/"/g, '&quot;'));
     }
-
+    
     const edgeRegex = /^\s*(\w+)\s*->\s*(\w+)/gm;
     while ((match = edgeRegex.exec(dotString)) !== null) {
-      const [_, fromNode, toNode] = match;
+      edges.push({ from: match[1], to: match[2] });
+    }
+
+    let finalNodes = nodesToRender ? new Set(nodesToRender) : new Set(nodeLabels.keys());
+
+    // If filtering, add direct neighbors to make the graph more useful
+    if (nodesToRender) {
+      edges.forEach(edge => {
+        if (nodesToRender.has(edge.from)) finalNodes.add(edge.to);
+        if (nodesToRender.has(edge.to)) finalNodes.add(edge.from);
+      });
+    }
+
+    edges.forEach(({ from: fromNode, to: toNode }) => {
+      if (finalNodes.has(fromNode) && finalNodes.has(toNode)) {
       const fromLabel = nodeLabels.get(fromNode) || fromNode;
       const toLabel = nodeLabels.get(toNode) || toNode;
       mermaidString += `    ${fromNode}["${fromLabel}"] --> ${toNode}["${toLabel}"];\n`;
+      }
+    });
+
+    // If no edges were added (e.g., single selected node), define the node itself.
+    if (mermaidString.split('\n').length <= 2 && finalNodes.size > 0) {
+        finalNodes.forEach(nodeId => {
+            const label = nodeLabels.get(nodeId) || nodeId;
+            mermaidString += `    ${nodeId}["${label}"];\n`;
+        });
     }
     return mermaidString;
   }

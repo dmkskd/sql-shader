@@ -8,13 +8,7 @@ const APP_VERSION = '1.1.0';
 const STORAGE_PREFIX = 'pixelql.';
 
 const main = async (engine) => {
-  // Initialize Mermaid once. It's used by the ClickHouse engine for profiling.
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: 'dark',
-    securityLevel: 'loose', // Forces rendering with native SVG <text> instead of <foreignObject>
-  });
-  dom.versionSpan.textContent = `v${APP_VERSION}`;
+  dom.versionSpan.textContent = `v${APP_VERSION}`; // Mermaid is now initialized in index.html
 
   updateInitStatus('Initializing...');
 

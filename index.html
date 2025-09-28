@@ -529,6 +529,24 @@
         }
       }
     </script>
+    <!--
+      Initialize Mermaid immediately after the import map is defined.
+      This ensures that the configuration is set before any other module
+      (like main.js) can import and use the library, preventing race conditions.
+    -->
+    <script type="module">
+      import mermaid from 'mermaid';
+      // The `maxEdges` and `maxTextSize` are secure configs that must be set
+      // this way, before any other rendering calls are made.
+      mermaid.initialize({
+        securityLevel: 'loose',
+        theme: 'dark',
+        startOnLoad: false,
+        secure: ['maxTextSize', 'maxEdges'],
+        maxTextSize: 3000000, // Increased limit for large graph definitions
+        maxEdges: 5000,       // Increased limit for the number of edges in a graph
+      });
+    </script>
     <!-- Load the main application logic from an external file -->
     <script type="module" src="main.js"></script>
   </body>
