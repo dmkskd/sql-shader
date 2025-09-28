@@ -102,11 +102,14 @@ class DuckDBWasmEngine {
    */
   async renderProfile(profileData, containers) {
     const { rawPlanContainer, structuredPlanContainer, graphPlanContainer, flamegraphContainer, querySummaryContainer, tabs } = containers;
-    rawPlanContainer.innerHTML = this.renderRawProfile(profileData.raw);
+    const rawHeaderText = `<h3>Raw Plan Output</h3><p>Generated via: <code>EXPLAIN ANALYZE</code> with <code>PRAGMA enable_profiling = 'query_tree'</code></p>`;
+    rawPlanContainer.innerHTML = rawHeaderText + this.renderRawProfile(profileData.raw);
     tabs.rawPlan.style.display = 'block';
 
     if (profileData.json) {
-      structuredPlanContainer.innerHTML = this.parsePlanToHtml(profileData.json);
+      const structuredHeaderText = `<h3>Structured Plan View</h3><p>Generated from the JSON output of <code>EXPLAIN ANALYZE</code></p>`;
+      structuredPlanContainer.innerHTML = structuredHeaderText + this.parsePlanToHtml(profileData.json);
+
       // The flamegraph is now rendered on-demand by a listener in main.js
       // to ensure the container is visible and has a width.
       // this.renderFlamegraph(profileData.json, flamegraphContainer);
@@ -217,6 +220,9 @@ class DuckDBWasmEngine {
     const rootNode = planNode?.children?.[0]?.children?.[0];
     if (!rootNode) return;
 
+    const flamegraphHeaderText = `<h3>CPU FlameGraph</h3><p>Generated from the timing information in the JSON output of <code>EXPLAIN ANALYZE</code></p>`;
+    container.innerHTML = flamegraphHeaderText;
+
     // Calculate total time to use for percentages in tooltips
     let totalQueryTime = 0;
     function sumTimings(node) {
@@ -254,7 +260,7 @@ class DuckDBWasmEngine {
     };
 
     // Clear previous chart and render the new one
-    container.innerHTML = '';
+    // container.innerHTML = ''; // Header is now added, so we append.
     const flamegraphChart = d3_flame_graph.flamegraph()
       .width(container.clientWidth)
       .cellHeight(18)
@@ -275,6 +281,9 @@ class DuckDBWasmEngine {
   async renderMermaidGraph(planNode, container, direction = 'TD') {
     const rootNode = planNode?.children?.[0]?.children?.[0];
     if (!rootNode) return;
+
+    const graphHeaderText = `<h3>Query Graph</h3><p>Generated from the JSON output of <code>EXPLAIN ANALYZE</code></p>`;
+    container.innerHTML = graphHeaderText;
 
     // First, calculate the total time by summing up all operator timings in the tree.
     let totalQueryTime = 0;
@@ -345,7 +354,7 @@ class DuckDBWasmEngine {
 
     jsonToMermaid(rootNode);
     const { svg } = await mermaid.render('duckdb-mermaid-graph', mermaidSyntax);
-    container.innerHTML = svg;
+    container.innerHTML += svg; // Append the graph after the header
 
     // --- Add Tooltip Logic ---
     const tooltipEl = document.getElementById('graph-tooltip');

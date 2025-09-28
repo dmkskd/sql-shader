@@ -119,6 +119,12 @@ export const setupUI = (callbacks) => {
     });
     dom.profileButton.addEventListener('click', onProfile);
 
+    // Set the initial name for the graph plan tab based on the selected engine.
+    const graphPlanTab = document.querySelector('.profiler-tab[data-tab="pipeline-plan"]');
+    if (graphPlanTab && dom.engineSelect.value === 'duckdb_wasm') {
+        graphPlanTab.textContent = 'Graph Plan';
+    }
+
     // --- Profiler Tabs Logic ---
     const profilerTabs = document.querySelectorAll('.profiler-tab');
     const profilerTabContents = document.querySelectorAll('.profiler-tab-content');
