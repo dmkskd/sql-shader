@@ -127,7 +127,7 @@
         background-color: #1a1a1a;
         border-bottom: 1px solid #444;
         font-size: 1.2em;
-        z-index: 1001; /* Ensure header is above any hidden modals */
+        z-index: 1002; /* Ensure header is above any hidden modals AND their tooltips */
         font-weight: bold;
         flex-shrink: 0; /* Prevent header from shrinking */
       }
@@ -454,7 +454,7 @@
         <div class="profiler-tabs">
           <button class="profiler-tab active" data-tab="raw-plan">Raw Plan</button>
           <button class="profiler-tab" data-tab="structured-plan">Structured Plan</button>
-          <button class="profiler-tab" data-tab="graph-plan">Graph Plan</button>
+          <button class="profiler-tab" data-tab="pipeline-plan">Pipeline Plan</button>
           <button class="profiler-tab" data-tab="flamegraph">FlameGraph</button>
           <button class="profiler-tab" data-tab="query-summary">Query Summary</button>
           <div class="graph-controls">
@@ -468,7 +468,7 @@
         </div>
         <div id="profile-content-raw-plan" class="profiler-tab-content active"></div>
         <div id="profile-content-structured-plan" class="profiler-tab-content"></div>
-        <div id="profile-content-graph-plan" class="profiler-tab-content"></div>
+        <div id="profile-content-pipeline-plan" class="profiler-tab-content"></div>
         <div id="profile-content-flamegraph" class="profiler-tab-content"></div>
         <div id="profile-content-query-summary" class="profiler-tab-content"></div>
         <div id="graph-tooltip" style="position: fixed; display: none; background: #2a2a2a; padding: 10px; border: 1px solid #777; border-radius: 3px; pointer-events: none; z-index: 1002; max-width: 400px; font-family: monospace; font-size: 12px;"></div>

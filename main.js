@@ -124,13 +124,17 @@ const main = async (engine) => {
             await engine.renderProfile(profileData, {
                 rawPlanContainer: dom.profileContentRawPlan,
                 structuredPlanContainer: dom.profileContentStructuredPlan,
-                graphPlanContainer: dom.profileContentGraphPlan,
+                // Pass the container under both names to support both engines.
+                pipelinePlanContainer: dom.profileContentPipelinePlan, // For ClickHouse
+                graphPlanContainer: dom.profileContentPipelinePlan,    // For DuckDB
                 flamegraphContainer: dom.profileContentFlamegraph,
                 querySummaryContainer: dom.profileContentQuerySummary,
                 tabs: {
                     rawPlan: document.querySelector('.profiler-tab[data-tab="raw-plan"]'),
                     structuredPlan: document.querySelector('.profiler-tab[data-tab="structured-plan"]'),
-                    graphPlan: document.querySelector('.profiler-tab[data-tab="graph-plan"]'),
+                    // Pass the tab under both names.
+                    pipelinePlan: document.querySelector('.profiler-tab[data-tab="pipeline-plan"]'), // For ClickHouse
+                    graphPlan: document.querySelector('.profiler-tab[data-tab="pipeline-plan"]'),    // For DuckDB
                     flamegraph: document.querySelector('.profiler-tab[data-tab="flamegraph"]'),
                     querySummary: document.querySelector('.profiler-tab[data-tab="query-summary"]'),
                 }

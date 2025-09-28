@@ -24,7 +24,7 @@ export const dom = {
     profileModal: document.getElementById('profile-modal'),
     profileContentRawPlan: document.getElementById('profile-content-raw-plan'),
     profileContentStructuredPlan: document.getElementById('profile-content-structured-plan'),
-    profileContentGraphPlan: document.getElementById('profile-content-graph-plan'),
+    profileContentPipelinePlan: document.getElementById('profile-content-pipeline-plan'),
     profileContentFlamegraph: document.getElementById('profile-content-flamegraph'),
     profileContentQuerySummary: document.getElementById('profile-content-query-summary'),
     profileModalClose: document.querySelector('.modal-close-button'),
@@ -132,7 +132,7 @@ export const setupUI = (callbacks) => {
             document.getElementById(contentId).classList.add('active');
 
             // Show/hide zoom controls based on tab
-            const isGraphView = tab.dataset.tab === 'graph-plan' || tab.dataset.tab === 'graph'; // Support old and new
+            const isGraphView = tab.dataset.tab === 'pipeline-plan' || tab.dataset.tab === 'graph-plan' || tab.dataset.tab === 'graph';
             const isStructuredView = tab.dataset.tab === 'structured-plan' || tab.dataset.tab === 'structured';
 
             // Visibility for Mermaid graph zoom controls
@@ -156,7 +156,7 @@ export const setupUI = (callbacks) => {
     let currentGraphZoom = 1.0;
     const zoomStep = 0.2;
     const updateGraphZoom = () => {
-        const activeGraphContainer = document.getElementById('profile-content-graph-plan');
+        const activeGraphContainer = document.getElementById('profile-content-pipeline-plan');
         const svg = activeGraphContainer.querySelector('svg');
         if (svg) {
             svg.style.transform = `scale(${currentGraphZoom})`;

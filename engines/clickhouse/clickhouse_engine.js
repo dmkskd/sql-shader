@@ -174,61 +174,54 @@ class ClickHouseEngine {
       await new Promise(resolve => setTimeout(resolve, 500)); // Use a slightly longer fallback timeout
     }
 
-    // 4. Get system.query_log entry
-    try {
-      // Retry mechanism to handle potential log flush delays.
-      const maxRetries = 5;
-      const retryDelay = 200; // ms
-      let queryLogData = [];
+    // 4. Poll for both query_log and trace_log entries in a single loop.
+    // This is more robust against race conditions where one log flushes before the other.
+    const maxRetries = 8;
+    const retryDelay = 250; // ms
 
+    try {
       for (let i = 0; i < maxRetries; i++) {
-        const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
-        const queryLogResultSet = await this.client.query({ query: queryLogQuery, format: 'JSONEachRow' });
-        queryLogData = await queryLogResultSet.json();
-        if (queryLogData.length > 0) {
-          console.log(`[engine.tracing] Found query_log entry after ${i + 1} attempt(s).`);
-          break; // Found it, exit the loop.
+        // Attempt to fetch query_log if we don't have it yet
+        if (!profileData.queryLog) {
+          const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
+          const queryLogResultSet = await this.client.query({ query: queryLogQuery, format: 'JSONEachRow' });
+          const queryLogData = await queryLogResultSet.json();
+          if (queryLogData.length > 0) {
+            profileData.queryLog = queryLogData[0];
+            console.log(`[engine.tracing] Found query_log entry after ${i + 1} attempt(s).`);
+          }
         }
+
+        // Attempt to fetch trace_log if we don't have it yet
+        if (!profileData.traceLog || profileData.traceLog.length === 0) {
+          const traceQuery = `
+            SELECT arrayStringConcat(arrayMap(x -> demangle(addressToSymbol(x)), trace), ';') AS stack, count() AS value
+            FROM system.trace_log
+            WHERE query_id = '${queryId}' AND trace_type = 'CPU'
+            GROUP BY trace
+          `;
+          const traceResultSet = await this.client.query({ query: traceQuery.trim(), format: 'JSONEachRow', clickhouse_settings: { allow_introspection_functions: 1 } });
+          const resolvedTraces = await traceResultSet.json();
+          if (resolvedTraces.length > 0) {
+            profileData.traceLog = resolvedTraces.map(row => ({ trace: row.stack.split(';'), value: row.value }));
+            console.log(`[engine.tracing] Found trace_log entries after ${i + 1} attempt(s).`);
+          }
+        }
+
+        // If we have both, we can stop waiting
+        if (profileData.queryLog && profileData.traceLog && profileData.traceLog.length > 0) {
+          break;
+        }
+
         await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
-      profileData.queryLog = queryLogData[0]; // Will be undefined if not found, which is handled below.
     } catch (e) {
-      console.error('Failed to query system.query_log:', e);
-      profileData.queryLog = { error: `Failed to query system.query_log: ${e.message}` };
+      console.error('Failed during log polling:', e);
     }
 
-    // 5. Get system.trace_log entries for FlameGraph
-    try {
-      // Use a more efficient query to get demangled function names directly from the server.
-      // This avoids the complex two-step address resolution process.
-      const traceQuery = `
-        SELECT
-          arrayStringConcat(arrayMap(x -> demangle(addressToSymbol(x)), trace), ';') AS stack,
-          count() AS value
-        FROM system.trace_log
-        WHERE query_id = '${queryId}' AND trace_type = 'CPU'
-        GROUP BY trace
-      `;
-      const queryPayload = {
-        query: traceQuery,
-        format: 'JSONEachRow',
-        clickhouse_settings: {
-          allow_introspection_functions: 1,
-        },
-      };
-      console.log('[Debug] 2. Fetching resolved stack traces with payload:', JSON.stringify(queryPayload, null, 2));
-      const traceResultSet = await this.client.query(queryPayload);
-      const resolvedTraces = await traceResultSet.json();
-
-      // Process the result: split the stack string back into an array for the flame graph.
-      profileData.traceLog = resolvedTraces.map(row => ({
-        trace: row.stack.split(';'),
-        value: row.value,
-      }));
-    } catch (e) {
-      console.error('Failed to query system.trace_log:', e);
-      profileData.traceLog = [];
-    }
+    // Add final status logging after polling is complete.
+    console.log(`[Debug] Polling finished. Query Log found: ${!!profileData.queryLog}`);
+    console.log(`[Debug] Polling finished. Trace Log entries found: ${profileData.traceLog ? profileData.traceLog.length : 0}`);
 
     console.log('[engine.profile] Profiling data collection complete.');
     return profileData;
@@ -241,7 +234,7 @@ class ClickHouseEngine {
    * @returns {Promise<void>}
    */
   async renderProfile(profileData, containers) {
-    const { rawPlanContainer, structuredPlanContainer, graphPlanContainer, flamegraphContainer, querySummaryContainer, tabs } = containers;
+    const { rawPlanContainer, structuredPlanContainer, pipelinePlanContainer, flamegraphContainer, querySummaryContainer, tabs } = containers;
 
     // --- Tab 1: Raw Plan ---
     // Truly raw, un-parsed text output
@@ -283,7 +276,7 @@ class ClickHouseEngine {
 
     // --- Tab 3: Query Summary (from system.query_log) ---
     if (profileData.queryLog && !profileData.queryLog.error) {
-      let summaryHtml = '<h3>Query Summary</h3>';
+      let summaryHtml = `<h3>Query Summary</h3><p>Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code></p>`;
       summaryHtml += `<p><strong>Query Time:</strong> ${(profileData.queryLog.query_duration_ms / 1000).toFixed(4)}s</p>`;
       summaryHtml += `<p><strong>Memory Usage:</strong> ${(profileData.queryLog.memory_usage / 1024 / 1024).toFixed(2)} MB</p>`;
       summaryHtml += `<p><strong>Rows Read:</strong> ${profileData.queryLog.read_rows.toLocaleString()}</p>`;
@@ -291,7 +284,7 @@ class ClickHouseEngine {
       querySummaryContainer.innerHTML = summaryHtml;
       tabs.querySummary.style.display = 'block';
     } else {
-      let errorMessage = `<p>No query log data found. Ensure query logging is enabled on your server.</p>`;
+      let errorMessage = `<h3>Query Summary</h3><p>No query log data found. Ensure query logging is enabled on your server.</p>`;
       if (profileData.queryLog && profileData.queryLog.error) {
         errorMessage += `<pre>${JSON.stringify(profileData.queryLog, null, 2)}</pre>`;
       }
@@ -299,15 +292,16 @@ class ClickHouseEngine {
       tabs.querySummary.style.display = 'block';
     }
 
-    // --- Tab 4: Graph Plan (from EXPLAIN PIPELINE) ---
+    // --- Tab 4: Pipeline Plan (from EXPLAIN PIPELINE) ---
+    const pipelineHeaderText = `<h3>Pipeline Plan</h3><p>Generated via: <code>EXPLAIN PIPELINE graph = 1</code></p>`;
     if (profileData.pipelineGraph && profileData.pipelineGraph.trim().startsWith('digraph')) {
       const mermaidGraph = this.dotToMermaid(profileData.pipelineGraph);
       const { svg } = await mermaid.render('ch-mermaid-graph', mermaidGraph);
-      graphPlanContainer.innerHTML = svg;
-      tabs.graphPlan.style.display = 'block';
+      pipelinePlanContainer.innerHTML = pipelineHeaderText + svg;
+      tabs.pipelinePlan.style.display = 'block';
     } else {
-      graphPlanContainer.innerHTML = `<p>Could not generate graph.</p><pre>${profileData.pipelineGraph || 'No data.'}</pre>`;
-      tabs.graphPlan.style.display = 'block';
+      pipelinePlanContainer.innerHTML = `${pipelineHeaderText}<p>Could not generate graph.</p><pre>${profileData.pipelineGraph || 'No data.'}</pre>`;
+      tabs.pipelinePlan.style.display = 'block';
     }
 
     // --- Tab 5: FlameGraph (from system.trace_log) ---
@@ -331,7 +325,7 @@ class ClickHouseEngine {
 
       tabs.flamegraph.style.display = 'block';
     } else {
-      flamegraphContainer.innerHTML = '<p>No CPU trace data found. Ensure `query_profiler_cpu_time_period_ns` is set on your server and that the query is long enough to be sampled.</p>';
+      flamegraphContainer.innerHTML = `<h3>CPU FlameGraph</h3><p>Generated via: <code>SELECT ... FROM system.trace_log</code></p><p>No CPU trace data found. Ensure profiling is enabled on your server and that the query is long enough to be sampled.</p>`;
       tabs.flamegraph.style.display = 'block';
     }
 
