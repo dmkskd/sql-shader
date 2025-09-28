@@ -234,7 +234,7 @@ class ClickHouseEngine {
    * @returns {Promise<void>}
    */
   async renderProfile(profileData, containers) {
-    const { rawPlanContainer, structuredPlanContainer, pipelinePlanContainer, flamegraphContainer, querySummaryContainer, tabs } = containers;
+    const { rawPlanContainer, structuredPlanContainer, pipelinePlanContainer, flamegraphContainer, traceLogContainer, querySummaryContainer, tabs } = containers;
 
     // --- Tab 1: Raw Plan ---
     // Truly raw, un-parsed text output
@@ -304,7 +304,7 @@ class ClickHouseEngine {
       tabs.pipelinePlan.style.display = 'block';
     }
 
-    // --- Tab 5: FlameGraph (from system.trace_log) ---
+    // --- Tab 5 & 6: FlameGraph and Trace Log (from system.trace_log) ---
     if (profileData.traceLog && profileData.traceLog.length > 0) {
       // Remove any old listener before adding a new one.
       if (window.renderClickHouseFlamegraph) {
@@ -323,10 +323,28 @@ class ClickHouseEngine {
       // Add the one-time listener.
       tabs.flamegraph.addEventListener('click', window.renderClickHouseFlamegraph);
 
+      // Render the raw trace log data into a table for the new panel
+      let traceLogHtml = `<h3>Trace Log</h3><p>Generated via: <code>SELECT ... FROM system.trace_log</code></p>`;
+      traceLogHtml += '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
+      traceLogHtml += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Stack Trace</th><th style="width: 10%;">Samples</th></tr></thead>';
+      traceLogHtml += '<tbody>';
+      // Sort by most frequent samples first
+      const sortedTraces = [...profileData.traceLog].sort((a, b) => b.value - a.value);
+      for (const row of sortedTraces) {
+        const stackHtml = row.trace.join('<br>&#8627; '); // Use a right-angle arrow for stack levels
+        traceLogHtml += `<tr style="border-bottom: 1px solid #444;"><td style="padding: 5px 0;">${stackHtml}</td><td>${row.value}</td></tr>`;
+      }
+      traceLogHtml += '</tbody></table>';
+      traceLogContainer.innerHTML = traceLogHtml;
+
       tabs.flamegraph.style.display = 'block';
+      tabs.traceLog.style.display = 'block';
     } else {
-      flamegraphContainer.innerHTML = `<h3>CPU FlameGraph</h3><p>Generated via: <code>SELECT ... FROM system.trace_log</code></p><p>No CPU trace data found. Ensure profiling is enabled on your server and that the query is long enough to be sampled.</p>`;
+      const noDataMessage = `<h3>CPU FlameGraph / Trace Log</h3><p>Generated via: <code>SELECT ... FROM system.trace_log</code></p><p>No CPU trace data found. Ensure profiling is enabled on your server and that the query is long enough to be sampled.</p>`;
+      flamegraphContainer.innerHTML = noDataMessage;
+      traceLogContainer.innerHTML = noDataMessage;
       tabs.flamegraph.style.display = 'block';
+      tabs.traceLog.style.display = 'block';
     }
 
     // Show all the ClickHouse-specific tabs

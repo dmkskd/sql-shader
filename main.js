@@ -127,6 +127,7 @@ const main = async (engine) => {
                 // Pass the container under both names to support both engines.
                 pipelinePlanContainer: dom.profileContentPipelinePlan, // For ClickHouse
                 graphPlanContainer: dom.profileContentPipelinePlan,    // For DuckDB
+                traceLogContainer: dom.profileContentTraceLog,
                 flamegraphContainer: dom.profileContentFlamegraph,
                 querySummaryContainer: dom.profileContentQuerySummary,
                 tabs: {
@@ -135,6 +136,7 @@ const main = async (engine) => {
                     // Pass the tab under both names.
                     pipelinePlan: document.querySelector('.profiler-tab[data-tab="pipeline-plan"]'), // For ClickHouse
                     graphPlan: document.querySelector('.profiler-tab[data-tab="pipeline-plan"]'),    // For DuckDB
+                    traceLog: document.querySelector('.profiler-tab[data-tab="trace-log"]'),
                     flamegraph: document.querySelector('.profiler-tab[data-tab="flamegraph"]'),
                     querySummary: document.querySelector('.profiler-tab[data-tab="query-summary"]'),
                 }

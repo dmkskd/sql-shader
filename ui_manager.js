@@ -26,6 +26,7 @@ export const dom = {
     profileContentStructuredPlan: document.getElementById('profile-content-structured-plan'),
     profileContentPipelinePlan: document.getElementById('profile-content-pipeline-plan'),
     profileContentFlamegraph: document.getElementById('profile-content-flamegraph'),
+    profileContentTraceLog: document.getElementById('profile-content-trace-log'),
     profileContentQuerySummary: document.getElementById('profile-content-query-summary'),
     profileModalClose: document.querySelector('.modal-close-button'),
     zoomInButton: document.getElementById('zoom-in-button'),
