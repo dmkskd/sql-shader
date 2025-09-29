@@ -101,12 +101,12 @@ export class ClickHouseProfiler {
         // Attempt to fetch query_log if we don't have it yet
         if (!profileData.queryLog) {
           const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
-          console.log('[Profiler] Executing Query Summary query:', queryLogQuery);
+          console.log("[Profiler] Executing query for 'Query Summary' and 'Events' tabs:", queryLogQuery);
           const queryLogResultSet = await this.client.query({ query: queryLogQuery, format: 'JSONEachRow' });
           const queryLogData = await queryLogResultSet.json();
           if (queryLogData.length > 0) {
             profileData.queryLog = queryLogData[0];
-            console.log(`[Profiler] Found Query Summary data in system.query_log after ${i + 1} attempt(s).`);
+            console.log(`[Profiler] Found data for 'Query Summary' and 'Events' tabs in system.query_log after ${i + 1} attempt(s).`);
           }
         }
 
@@ -206,8 +206,8 @@ export class ClickHouseProfiler {
     // --- Tab 3: Query Summary (from system.query_log) ---
     let querySummaryContent;
     if (profileData.queryLog && !profileData.queryLog.error) {
-      querySummaryContent = `<p><strong>Query Time:</strong> ${(profileData.queryLog.query_duration_ms / 1000).toFixed(4)}s</p>
-                             <p><strong>Memory Usage:</strong> ${(profileData.queryLog.memory_usage / 1024 / 1024).toFixed(2)} MB</p>
+      querySummaryContent = `<p><strong>Server-Side Execution Time:</strong> ${profileData.queryLog.query_duration_ms.toLocaleString()} ms</p>
+                             <p><strong>Peak Memory Usage:</strong> ${(profileData.queryLog.memory_usage / 1024 / 1024).toFixed(2)} MB</p>
                              <p><strong>Rows Read:</strong> ${profileData.queryLog.read_rows.toLocaleString()}</p>
                              <p><strong>Bytes Read:</strong> ${(profileData.queryLog.read_bytes / 1024 / 1024).toFixed(2)} MB</p>`;
     } else {
@@ -215,6 +215,59 @@ export class ClickHouseProfiler {
       if (profileData.queryLog && profileData.queryLog.error) {
         querySummaryContent += `<pre>${JSON.stringify(profileData.queryLog, null, 2)}</pre>`;
       }
+    }
+
+    // --- Tab 5: Profile Events (from system.query_log) ---
+    let eventsContent;
+    if (profileData.queryLog && profileData.queryLog.ProfileEvents) {
+      // Helper function to categorize events for better organization.
+      const getEventCategory = (eventName) => {
+        if (eventName.includes('Time') || eventName.endsWith('Microseconds') || eventName.endsWith('Nanoseconds')) return 'Time & Duration';
+        if (eventName.includes('CPU') || eventName.includes('Profiler')) return 'CPU & Profiling';
+        if (eventName.includes('Read') || eventName.includes('Write') || eventName.includes('Network') || eventName.includes('IO') || eventName.includes('File')) return 'I/O & Network';
+        if (eventName.includes('Memory') || eventName.includes('Alloc') || eventName.includes('Bytes')) return 'Memory & Data Transfer';
+        if (eventName.includes('Lock') || eventName.includes('Concurrency') || eventName.includes('ThreadPool')) return 'Concurrency & Locking';
+        if (eventName.includes('Function') || eventName.includes('Expression') || eventName.includes('Join') || eventName.includes('Sort')) return 'Execution & Functions';
+        if (eventName.includes('Query') || eventName.includes('Select') || eventName.includes('Initial')) return 'Query Lifecycle';
+        return 'Other';
+      };
+
+      const categorizedEvents = new Map();
+      for (const [eventName, count] of Object.entries(profileData.queryLog.ProfileEvents)) {
+        const category = getEventCategory(eventName);
+        if (!categorizedEvents.has(category)) {
+          categorizedEvents.set(category, []);
+        }
+        categorizedEvents.get(category).push({ name: eventName, count });
+      }
+
+      // Sort categories for a consistent order.
+      const sortedCategories = Array.from(categorizedEvents.keys()).sort();
+
+      eventsContent = '';
+      for (const category of sortedCategories) {
+        const events = categorizedEvents.get(category);
+        // Sort events within each category by count, descending.
+        events.sort((a, b) => b.count - a.count);
+
+        eventsContent += `<details open style="margin-bottom: 10px;">
+                            <summary style="font-weight: bold; cursor: pointer; font-size: 1.1em;">${category} (${events.length})</summary>
+                            <table style="width: 100%; max-width: 800px; border-collapse: collapse; font-family: monospace; font-size: 12px; margin-left: 20px;">
+                              <thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Event Name</th><th style="text-align: right;">Count</th></tr></thead>
+                              <tbody>`;
+
+        for (const { name, count } of events) {
+          eventsContent += `<tr style="border-bottom: 1px solid #444; padding: 3px 0;">
+                              <td>${name}</td>
+                              <td style="text-align: right;">${count.toLocaleString()}</td>
+                            </tr>`;
+        }
+        eventsContent += `    </tbody>
+                            </table>
+                          </details>`;
+      }
+    } else {
+      eventsContent = '<p>No ProfileEvents data found in the query log.</p>';
     }
 
     // --- Tab 4: Pipeline Plan (from EXPLAIN PIPELINE) ---
@@ -232,8 +285,31 @@ export class ClickHouseProfiler {
     let serverTextLogContent;
     if (profileData.serverTextLog && profileData.serverTextLog.length > 0) {
       serverTextLogContent = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
-      serverTextLogContent += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Timestamp</th><th>Source</th><th>Thread</th><th>Level</th><th>Message</th></tr></thead>';
+      serverTextLogContent += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Timestamp</th><th>Time Taken</th><th>Source</th><th>Thread</th><th>Level</th><th>Message</th></tr></thead>';
       serverTextLogContent += '<tbody>';
+
+      // --- Pre-process logs to calculate durations ---
+      let totalDurationMs = 0;
+      const logsWithDuration = profileData.serverTextLog.map((log, i, arr) => {
+        let durationMs = 0;
+        if (i < arr.length - 1) {
+          // The timestamp string needs to be parsed correctly.
+          const currentTime = new Date(arr[i].event_time_microseconds.replace(' ', 'T') + 'Z').getTime();
+          const nextTime = new Date(arr[i + 1].event_time_microseconds.replace(' ', 'T') + 'Z').getTime();
+          durationMs = nextTime - currentTime;
+        }
+        return { ...log, durationMs };
+      });
+
+      // Calculate total duration after computing all individual durations
+      totalDurationMs = logsWithDuration.reduce((sum, log) => sum + log.durationMs, 0);
+
+      // Helper function to get a color class based on percentage of total time
+      const getPercentColorClass = (percent) => {
+        if (percent >= 50) return 'time-hot';
+        if (percent >= 5) return 'time-warm';
+        return 'time-good';
+      };
 
       // Helper function to get a color based on log level
       const getLevelColor = (level) => {
@@ -257,9 +333,13 @@ export class ClickHouseProfiler {
         return `hsl(${h}, ${s}%, ${l}%)`;
       };
 
-      for (const log of profileData.serverTextLog) {
+      for (const log of logsWithDuration) {
+        const percentOfTotal = totalDurationMs > 0 ? (log.durationMs / totalDurationMs) * 100 : 0;
+        const colorClass = getPercentColorClass(percentOfTotal);
+
         serverTextLogContent += `<tr style="border-bottom: 1px solid #444; padding: 3px 0;">
                                     <td style="white-space: nowrap;">${log.event_time_microseconds}</td>
+                                    <td class="${colorClass}" style="white-space: nowrap; text-align: right; padding-right: 10px;">${log.durationMs.toFixed(2)}ms (${percentOfTotal.toFixed(1)}%)</td>
                                     <td style="color: ${stringToHslColor(log.source)}; font-weight: bold;">${log.source}</td>
                                     <td style="white-space: nowrap;">${log.thread_name}(${log.thread_id})</td>
                                     <td style="color: ${getLevelColor(log.level)}; font-weight: bold;">${log.level}</td>
@@ -278,6 +358,7 @@ export class ClickHouseProfiler {
       { id: 'pipeline-plan', title: 'Pipeline Plan', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>' },
       { id: 'flamegraph', title: 'FlameGraph', content: '', header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
       { id: 'call-graph', title: 'Call Graph', content: '', header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.' },
+      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>' },
       { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>` },
       { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
     ];
