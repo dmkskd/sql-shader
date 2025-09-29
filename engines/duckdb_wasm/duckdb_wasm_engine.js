@@ -10,6 +10,7 @@ class DuckDBWasmEngine {
     this.db = null;
     this.connection = null;
     this.profiler = null;
+    this.bundleInfo = 'N/A'; // Will hold the name of the selected bundle file.
   }
 
   /**
@@ -21,7 +22,23 @@ class DuckDBWasmEngine {
   async initialize(statusCallback) {
     statusCallback('Initializing DuckDB-WASM...');
     const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-    const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+
+    // Log the decision-making process for bundle selection.
+    console.log('[DuckDB Engine] Available bundles:', JSDELIVR_BUNDLES);
+    console.log("[DuckDB Engine] Requesting 'mt' (multi-threaded) bundle...");
+
+    // Explicitly select the multi-threaded bundle if the environment supports it.
+    // This ensures we get maximum performance when cross-origin isolation is enabled.
+    // It will gracefully fall back to a single-threaded version if not supported.
+    const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES, 'mt');
+
+    // Determine if the selected bundle is multi-threaded for descriptive logging and stats.
+    const isMultiThreaded = bundle.mainWorker.includes('-mt') || bundle.mainWorker.includes('-mvp');
+    const filename = bundle.mainWorker.split('/').pop();
+
+    // Store the bundle information for display in the stats panel.
+    this.bundleInfo = `${filename} (${isMultiThreaded ? 'Multi-Threaded' : 'Single-Threaded'})`;
+    console.log(`[DuckDB Engine] Selected bundle: ${filename}`, bundle);
 
     // To avoid cross-origin issues in local development, create a Blob URL for the worker.
     // This makes the browser treat the worker as if it's from the same origin.
@@ -37,6 +54,20 @@ class DuckDBWasmEngine {
 
     statusCallback('Connecting to database...');
     this.connection = await this.db.connect();
+
+    // Check if the selected bundle supports multi-threading before attempting to set the thread count.
+    // Single-threaded builds (like -eh) will throw an error if this is attempted.
+    if (isMultiThreaded) {
+      // Explicitly set the number of threads to the maximum available hardware concurrency.
+      // This ensures consistent performance and overrides any lower default values.
+      const hardwareConcurrency = navigator.hardwareConcurrency || 4; // Default to 4 if unavailable
+      await this.connection.query(`PRAGMA threads=${hardwareConcurrency};`);
+      statusCallback(`DuckDB-WASM ready. Worker threads set to ${hardwareConcurrency}.`);
+      console.log(`[DuckDB Engine] Multi-threaded bundle loaded. Worker threads set to ${hardwareConcurrency}.`);
+    } else {
+      statusCallback('DuckDB-WASM ready. (Single-threaded bundle).');
+      console.log('[DuckDB Engine] Single-threaded bundle loaded. Thread count cannot be changed.');
+    }
 
     this.profiler = new DuckDBWasmProfiler(this.connection);
 
@@ -83,6 +114,61 @@ class DuckDBWasmEngine {
    */
   async renderProfile(profileData, mainContainer) {
     return this.profiler.renderProfile(profileData, mainContainer);
+  }
+
+  /**
+   * Polls PRAGMA tables for engine-specific performance metrics.
+   * @returns {Promise<Array<{label: string, value: string, rawValue: number}>>} A list of stats to display.
+   */
+  async pollEngineStats() {
+    if (!this.connection) {
+      return [];
+    }
+    try {
+      const queries = {
+        version: "PRAGMA version;",
+        db_size: "PRAGMA database_size;",
+        settings: "SELECT name, value FROM duckdb_settings() WHERE name IN ('threads', 'memory_limit');",
+      };
+
+      const [versionResult, dbSizeResult, settingsResult] = await Promise.all([
+        this.connection.query(queries.version),
+        this.connection.query(queries.db_size),
+        this.connection.query(queries.settings),
+      ]);
+
+      const version = versionResult.getChild('library_version').get(0);
+
+      // Extract settings into a map for easy access
+      const settings = {};
+      const settingsTable = settingsResult.toArray().map(row => row.toJSON());
+      for (const setting of settingsTable) {
+        settings[setting.name] = setting.value;
+      }
+
+      // PRAGMA database_size returns BIGINTs, which must be converted to Numbers
+      // for use with Math functions and for the performance monitor's sparkline.
+      const usedBlocks = Number(dbSizeResult.getChild('used_blocks').get(0));
+      const blockSize = Number(dbSizeResult.getChild('block_size').get(0));
+      const memoryUsedBytes = usedBlocks * blockSize;
+
+      const formatBytes = (bytes) => {
+        if (bytes === 0) return '0 B';
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${['B', 'KB', 'MB', 'GB'][i]}`;
+      };
+      return [
+        { label: 'Bundle', value: this.bundleInfo, rawValue: 0, description: "The DuckDB-WASM bundle file currently in use. 'mt' bundles support multi-threading." },
+        { label: 'DB Version', value: version, rawValue: 0, description: "The version of the DuckDB library. From PRAGMA version." },
+        { label: 'Memory Used', value: formatBytes(memoryUsedBytes), rawValue: memoryUsedBytes, description: "Estimated memory usage of the database buffer pool. From PRAGMA database_size." },
+        { label: 'Memory Limit', value: settings['memory_limit'], rawValue: 0, description: "The configured memory limit for the database instance. From duckdb_settings()." },
+        { label: 'Worker Threads', value: settings['threads'].toLocaleString(), rawValue: settings['threads'], description: "The number of active worker threads for parallel execution. From duckdb_settings()." },
+      ];
+
+    } catch (e) {
+      console.error("Failed to poll DuckDB-WASM stats:", e);
+      return [{ label: 'Engine Stats', value: 'Error', rawValue: 0 }];
+    }
   }
 
   /**

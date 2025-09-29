@@ -62,11 +62,23 @@ export class PerformanceMonitor {
      * @param {Array<{label: string, value: string, rawValue: number}>} stats - An array of stat objects.
      */
     updateEngineStats(engineName, stats) {
+        const cpuCoreStat = stats.find(s => s.type === 'cpu_cores');
+        const otherStats = stats.filter(s => s.type !== 'cpu_cores');
+
+        if (cpuCoreStat) {
+            document.getElementById('cpu-core-stats-container').style.display = 'flex';
+            document.getElementById('cpu-core-stats-title').title = cpuCoreStat.description;
+            this.drawCpuCoreChart(cpuCoreStat);
+        } else {
+            document.getElementById('cpu-core-stats-container').style.display = 'none';
+        }
+
         engineStatsTitle.textContent = `${engineName} Stats`;
         engineStatsContent.innerHTML = ''; // Clear previous content, including the "Loading..." message.
+        stats = otherStats; // Process the remaining stats
 
         stats.forEach((stat, index) => {
-            const { label, value, rawValue } = stat;
+            const { label, value, rawValue, description } = stat;
             const historyKey = `stat-${index}`;
 
             // Update history for this stat
@@ -83,6 +95,7 @@ export class PerformanceMonitor {
                 itemEl = document.createElement('div');
                 itemEl.id = `engine-stat-item-${index}`;
                 itemEl.className = 'engine-stat-item';
+                if (description) itemEl.title = description; // Set the tooltip
                 itemEl.innerHTML = `
                     <div class="stat-text">
                         <span class="stat-label">${label}:</span>
@@ -98,7 +111,11 @@ export class PerformanceMonitor {
 
             // Draw sparkline
             const canvas = document.getElementById(`sparkline-canvas-${index}`);
-            this.drawSparkline(canvas, history.data);
+            // Only draw a sparkline if the rawValue is a number and not always zero,
+            // which indicates it's a dynamic metric worth graphing.
+            if (typeof rawValue === 'number' && rawValue > 0) {
+                this.drawSparkline(canvas, history.data);
+            }
         });
     }
 
@@ -125,6 +142,83 @@ export class PerformanceMonitor {
         ctx.strokeStyle = '#ffc980'; // Use the same color as the 'query' metric
         ctx.lineWidth = 1.5;
         ctx.stroke();
+    }
+
+    /**
+     * Draws a stacked bar chart for per-core CPU usage.
+     * @param {object} cpuCoreStat The special stat object for CPU cores.
+     */
+    drawCpuCoreChart(cpuCoreStat) {
+        const canvas = document.getElementById('cpu-core-chart-canvas');
+        const ctx = canvas.getContext('2d');
+        const { width, height } = canvas;
+        ctx.clearRect(0, 0, width, height);
+
+        const cores = cpuCoreStat.cores;
+        if (!cores || cores.length === 0) return;
+
+        // Dynamically adjust canvas width based on number of cores
+        const barWidth = 15;
+        const barMargin = 5;
+        canvas.width = cores.length * (barWidth + barMargin);
+
+        const colors = {
+            'User': '#80bfff',      // Blue
+            'System': '#ff8080',    // Red
+            'Idle': '#444444',      // Dark Gray
+            'SoftIrq': '#ffc980',   // Orange
+            'IOWait': '#c080ff',    // Purple
+            'Other': '#80ff80',     // Green
+        };
+
+        // Define the stacking order from bottom to top to ensure a consistent chart.
+        const stackOrder = ['SoftIrq', 'IOWait', 'System', 'User', 'Other', 'Idle'];
+
+        cores.forEach((core, index) => {
+            const x = index * (barWidth + barMargin);
+            let currentY = height;
+
+            // Draw background for the total bar
+            ctx.fillStyle = '#282828';
+            ctx.fillRect(x, 0, barWidth, height);
+
+            // Iterate in the defined stack order to ensure consistent rendering.
+            for (const type of stackOrder) {
+                if (!core.breakdown.hasOwnProperty(type)) continue;
+
+                const percentageValue = core.breakdown[type];
+                const barHeight = percentageValue * height;
+
+                // Only draw if the segment is large enough to be visible
+                if (barHeight > 0) {
+                    ctx.fillStyle = colors[type] || colors['Other'];
+                    ctx.fillRect(x, currentY - barHeight, barWidth, barHeight);
+                    currentY -= barHeight;
+                }
+            }
+
+            // Draw core number label
+            ctx.fillStyle = '#aaa';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(core.id, x + barWidth / 2, height - 2);
+        });
+
+        // --- Render Legend ---
+        const legendContainer = document.getElementById('cpu-core-chart-legend');
+        // Only render the legend if it hasn't been rendered before to avoid redraws.
+        if (legendContainer && legendContainer.children.length === 0) {
+            legendContainer.innerHTML = ''; // Clear any previous content
+            for (const type in colors) {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `
+                    <div class="legend-color-box" style="background-color: ${colors[type]};"></div>
+                    <span>${type}</span>
+                `;
+                legendContainer.appendChild(item);
+            }
+        }
     }
 
     /**

@@ -272,12 +272,15 @@ const main = async (engine) => {
 
     // --- Engine Stats Polling ---
     // Periodically fetch and display engine-specific stats.
+    const generalSettings = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}general-settings`)) || {};
+    const pollInterval = parseInt(generalSettings.pollInterval, 10) || 250;
+
     if (typeof engine.pollEngineStats === 'function') {
         setInterval(async () => {
             const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].text;
             const engineStats = await engine.pollEngineStats();
             perfMonitor.updateEngineStats(engineName, engineStats);
-        }, 2000); // Poll every 2 seconds
+        }, pollInterval);
     } else {
         perfMonitor.updateEngineStats('N/A', []); // Clear stats for engines that don't support it
     }

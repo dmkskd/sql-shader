@@ -59,11 +59,6 @@ if(typeof window === 'undefined'){
             const newHeaders = new Headers(response.headers);
             newHeaders.set("Cross-Origin-Embedder-Policy", "require-corp");
             newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
-            // Preserve the original Content-Type to ensure modules are treated as JavaScript.
-            // This is crucial for preventing "unexpected token" syntax errors.
-            if (response.headers.has("Content-Type")) {
-                newHeaders.set("Content-Type", response.headers.get("Content-Type"));
-            }
 
             return new Response(response.body, {
                 status: response.status,

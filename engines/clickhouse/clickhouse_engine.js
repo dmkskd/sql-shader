@@ -182,29 +182,40 @@ class ClickHouseEngine {
         FROM system.events
         WHERE event IN ('Query', 'SelectQuery', 'FailedQuery', 'OSCPUVirtualTimeMicroseconds')
       `;
+      const asyncMetricsQuery = `
+        SELECT metric, value
+        FROM system.asynchronous_metrics
+        WHERE metric LIKE 'OS%TimeCPU%'
+      `;
 
-      const [metricsResult, eventsResult] = await Promise.all([
+      const [metricsResult, eventsResult, asyncMetricsResult] = await Promise.all([
         this.client.query({ query: metricsQuery, format: 'JSONEachRow' }),
-        this.client.query({ query: eventsQuery, format: 'JSONEachRow' })
+        this.client.query({ query: eventsQuery, format: 'JSONEachRow' }),
+        this.client.query({ query: asyncMetricsQuery, format: 'JSONEachRow' })
       ]);
 
       const metrics = await metricsResult.json();
       const events = await eventsResult.json();
+      const asyncMetrics = await asyncMetricsResult.json();
 
       const now = performance.now();
       const elapsedMs = now - this.lastPollTime;
       this.lastPollTime = now;
 
-      const statsMap = {};
-      // Store metrics and events separately to avoid name collisions (like 'Query')
-      metrics.forEach(m => statsMap[m.metric] = m.value);
-      events.forEach(e => statsMap[e.event] = e.value);
+      // Use separate maps to avoid name collisions between system tables (e.g., 'Query').
+      const metricsMap = {};
+      const eventsMap = {};
+      const asyncMetricsMap = {};
+      metrics.forEach(m => metricsMap[m.metric] = m.value);
+      events.forEach(e => eventsMap[e.event] = e.value);
+      asyncMetrics.forEach(m => asyncMetricsMap[m.metric] = m.value);
 
       // Calculate rates
-      const totalQueryCount = statsMap['Query'] || 0;
-      const selectQueryCount = statsMap['SelectQuery'] || 0;
-      const failedQueryCount = statsMap['FailedQuery'] || 0;
-      const cpuTimeMicroseconds = statsMap['OSCPUVirtualTimeMicroseconds'] || 0;
+      // Use system.events for rate calculations.
+      const totalQueryCount = eventsMap['Query'] || 0;
+      const selectQueryCount = eventsMap['SelectQuery'] || 0;
+      const failedQueryCount = eventsMap['FailedQuery'] || 0;
+      const cpuTimeMicroseconds = eventsMap['OSCPUVirtualTimeMicroseconds'] || 0;
 
       const queryRate = this.lastEventCounts['Query'] ? (totalQueryCount - this.lastEventCounts['Query']) / (elapsedMs / 1000) : 0;
       const selectRate = this.lastEventCounts['SelectQuery'] ? (selectQueryCount - this.lastEventCounts['SelectQuery']) / (elapsedMs / 1000) : 0;
@@ -226,14 +237,49 @@ class ClickHouseEngine {
         return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${['B', 'KB', 'MB', 'GB'][i]}`;
       };
 
-      return [
+      const finalStats = [
         // Correctly use the 'Query' value from system.metrics for active queries.
-        { label: 'Active Queries', value: (statsMap['Query'] || 0).toLocaleString(), rawValue: statsMap['Query'] || 0 },
-        { label: 'CPU Usage', value: `${cpuUsagePercent.toFixed(1)}%`, rawValue: cpuUsagePercent },
-        { label: 'Memory', value: formatBytes(statsMap['MemoryTracking']), rawValue: statsMap['MemoryTracking'] || 0 },
-        { label: 'Queries/s', value: queryRate.toFixed(1), rawValue: queryRate },
-        { label: 'Failed/s', value: failedRate.toFixed(1), rawValue: failedRate },
+        { label: 'Active Queries', value: (metricsMap['Query'] || 0).toLocaleString(), rawValue: metricsMap['Query'] || 0, description: "Number of concurrently executing queries. From system.metrics (metric: 'Query')." },
+        { label: 'CPU Usage', value: `${cpuUsagePercent.toFixed(1)}%`, rawValue: cpuUsagePercent, description: "Total server CPU usage percentage, calculated from the change in OSCPUVirtualTimeMicroseconds. From system.events." },
+        { label: 'Memory', value: formatBytes(metricsMap['MemoryTracking']), rawValue: metricsMap['MemoryTracking'] || 0, description: "Total memory tracked by the server for queries. From system.metrics (metric: 'MemoryTracking')." },
+        { label: 'Queries/s', value: queryRate.toFixed(1), rawValue: queryRate, description: "Rate of all queries processed per second. From system.events (event: 'Query')." },
+        { label: 'Failed/s', value: failedRate.toFixed(1), rawValue: failedRate, description: "Rate of failed queries per second. From system.events (event: 'FailedQuery')." },
       ];
+
+      // --- Per-Core CPU Calculation ---
+      const perCoreData = {
+        type: 'cpu_cores', // Special type for the performance monitor to recognize
+        label: 'Per-Core CPU Usage',
+        cores: [],
+        description: `Per-core CPU utilization breakdown. Calculated from OS*TimeCPU metrics in system.asynchronous_metrics.`
+      };
+
+      const coreUsage = {};
+      asyncMetrics.forEach(metric => {
+        const coreIdMatch = metric.metric.match(/CPU(\d+)/);
+        if (!coreIdMatch) return;
+        const coreId = coreIdMatch[1];
+        const timeTypeMatch = metric.metric.match(/^OS([a-zA-Z]+)TimeCPU/);
+        const timeType = timeTypeMatch ? timeTypeMatch[1] : 'Other';
+
+        if (!coreUsage[coreId]) coreUsage[coreId] = {};
+        // The value is a gauge (0-1), so we use it directly.
+        coreUsage[coreId][timeType] = metric.value;
+      });
+
+      Object.keys(coreUsage).sort((a, b) => parseInt(a) - parseInt(b)).forEach(coreId => {
+        // The `breakdown` now directly contains the percentage values.
+        perCoreData.cores.push({ id: coreId, breakdown: coreUsage[coreId] });
+      });
+
+      // Add a debug log to inspect the calculated per-core data before it's sent to the UI.
+      if (perCoreData.cores.length > 0) {
+        console.log('[Debug] Per-Core CPU Data:', JSON.parse(JSON.stringify(perCoreData.cores)));
+      }
+
+      if (perCoreData.cores.length > 0) finalStats.push(perCoreData);
+
+      return finalStats.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
     } catch (e) {
       console.error("Failed to poll engine stats:", e);
       return [{ label: 'Engine Stats', value: 'Error' }];

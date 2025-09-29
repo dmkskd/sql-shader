@@ -179,14 +179,22 @@ export const setupUI = (callbacks) => {
         if (e.target === dom.settingsModal) closeSettingsModal();
     });
     dom.saveSettingsButton.addEventListener('click', () => {
-        const settings = {
+        // Save general settings
+        const generalSettings = {
+            pollInterval: document.getElementById('stats-poll-interval').value,
+        };
+        localStorage.setItem('pixelql.general-settings', JSON.stringify(generalSettings));
+
+        // Save ClickHouse-specific settings
+        const chSettings = {
             url: document.getElementById('ch-url').value,
             username: document.getElementById('ch-user').value,
             password: document.getElementById('ch-password').value,
             dataFormat: document.getElementById('ch-data-format').value,
             logFlushWait: document.getElementById('ch-log-flush-wait').value,
         };
-        localStorage.setItem('pixelql.clickhouse-settings', JSON.stringify(settings));
+        localStorage.setItem('pixelql.clickhouse-settings', JSON.stringify(chSettings));
+
         window.location.reload();
     });
 
@@ -270,6 +278,10 @@ export const setupUI = (callbacks) => {
 
 // Exported function to handle opening the settings modal
 export const openSettingsModal = () => {
+    // Populate general settings
+    const storedGeneralSettings = JSON.parse(localStorage.getItem('pixelql.general-settings')) || {};
+    document.getElementById('stats-poll-interval').value = storedGeneralSettings.pollInterval || 250;
+
     const selectedEngine = dom.engineSelect.value;
     if (selectedEngine === 'clickhouse') {
         const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
@@ -279,8 +291,8 @@ export const openSettingsModal = () => {
         document.getElementById('ch-data-format').value = storedSettings.dataFormat || 'JSONEachRow';
         document.getElementById('ch-log-flush-wait').value = storedSettings.logFlushWait || '7500';
         dom.clickhouseSettings.style.display = 'block';
-        dom.settingsModal.style.display = 'flex';
     } else {
-        alert('No specific settings for the DuckDB WASM engine.');
+        dom.clickhouseSettings.style.display = 'none';
     }
+    dom.settingsModal.style.display = 'flex';
 };

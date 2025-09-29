@@ -142,7 +142,12 @@ export class ShaderManager {
             }
         } catch (e) {
             this.wasPlayingBeforeError = this.isPlaying;
-            stats.errorMessage = e.message;
+            // If the error is an HTTP error during the prepare phase, it's a compilation error.
+            if (e.message && (e.message.includes('HTTP') || e.message.includes('ClickHouse server'))) {
+                stats.errorMessage = `Compilation Error: ${e.message}`;
+            } else {
+                stats.errorMessage = e.message;
+            }
             if (!isInitialCompile) console.error("Shader compilation error:", e);
             updateErrorPanel(stats);
             return false;

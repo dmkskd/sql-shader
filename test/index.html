@@ -3,31 +3,21 @@
   <head>
     <meta charset="utf-8" />
     <title>PixelQL Tests</title>
+    <script src="../coi-serviceworker.js"></script>
     <style>
       body { font-family: sans-serif; background-color: #222; color: #eee; padding: 20px; }
-      .test-case { margin-bottom: 15px; border-left: 3px solid #555; padding-left: 15px; }
-      .pass { border-left-color: #2a4a3a; color: #b3ffb3; }
-      .fail { border-left-color: #5c2828; color: #ffc2c2; }
-      pre { background-color: #333; padding: 10px; border-radius: 3px; }
+      h1 { color: #ffc980; }
+      ul { list-style: none; padding: 0; }
+      li { margin-bottom: 10px; }
+      a { color: #80bfff; text-decoration: none; font-size: 1.1em; }
+      a:hover { text-decoration: underline; }
     </style>
   </head>
   <body>
     <h1>PixelQL Test Suite</h1>
-    <div id="results"></div>
-
-    <!-- This import map must contain all dependencies needed by the engine under test -->
-    <script type="importmap">
-      {
-        "imports": {
-          "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm",
-          "@apache/arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@latest/+esm",
-          "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm",
-          "mermaid": "https://esm.sh/mermaid@10",
-          "d3": "https://esm.sh/d3@7",
-          "d3-flame-graph": "https://esm.sh/d3-flame-graph@4"
-        }
-      }
-    </script>
-    <script type="module" src="/test/test_flamegraph_grouping.js"></script>
+    <ul>
+      <li><a href="/test/test_duckdb_stats.html">DuckDB Stats API Test</a></li>
+      <li><a href="/test/test_flamegraph_grouping.html">FlameGraph Grouping Test</a></li>
+    </ul>
   </body>
 </html>
