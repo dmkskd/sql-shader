@@ -1,4 +1,4 @@
-import { dom, setupUI, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal } from './ui_manager.js';
+import { dom, setupUI, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal, updateProfileButtonText } from './ui_manager.js';
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 
@@ -80,15 +80,16 @@ const main = async (engine) => {
             return;
         }
         dom.profileButton.disabled = true;
-        dom.profileButton.textContent = 'Profiling...';
         try {
-            updateInitStatus('Profiling...');
             let profileData;
             try {
-                profileData = await engine.profile(editor.getValue(), [
-                    resolution.width, resolution.height,
-                    stats.elapsedTime, iMouse.x, iMouse.y
-                ]);
+                profileData = await engine.profile(
+                    editor.getValue(),
+                    [resolution.width, resolution.height, stats.elapsedTime, iMouse.x, iMouse.y],
+                    // Pass the function that updates the button text. This is visible
+                    // even while the main stats bar is being updated by the render loop.
+                    updateProfileButtonText
+                );
             } catch (e) {
                 // This specifically catches errors from the profile data generation.
                 throw new Error(`Failed to generate profile data: ${e.message}`);
@@ -97,21 +98,21 @@ const main = async (engine) => {
             // Clear previous content
             const profilerContentContainer = document.getElementById('profiler-content-container');
             profilerContentContainer.innerHTML = 'Loading profile...';
+            
+            // --- CRITICAL: Zombie Tooltip Cleanup ---
+            // The d3-flame-graph library can leave a tooltip attached to the document body,
+            // which captures mouse events globally and causes massive performance degradation.
+            // We must explicitly find and remove it before rendering any new profile.
+            document.querySelectorAll('.d3-flame-graph-tip').forEach(tip => {
+                console.log('[Cleanup] Removing orphaned flamegraph tooltip to prevent performance issues.');
+                tip.remove();
+            });
 
-            // --- Tooltip Cleanup ---
-            // The d3-flame-graph library has stateful tooltips that can cause issues on re-render.
-            // It appends the tooltip to the body, so we must manually find and destroy any old instances.
-            const oldTooltip = document.querySelector('body > #flamegraph-tooltip');
-            if (oldTooltip) {
-                console.log('[Debug] Found and removed orphaned flamegraph tooltip from body.');
-                oldTooltip.remove();
-            }
-            // Now, recreate the tooltip element in its container for the next render.
+            // The tooltip container inside the modal is also cleared to be safe.
             const tooltipContainer = document.getElementById('flamegraph-tooltip-container');
-            tooltipContainer.innerHTML = ''; // Destroy the old tooltip
-            const newTooltip = document.createElement('div');
-            newTooltip.id = 'flamegraph-tooltip';
-            tooltipContainer.appendChild(newTooltip);
+            if (tooltipContainer) {
+                tooltipContainer.innerHTML = '';
+            }
             
             // Delegate the entire rendering process to the engine.
             // The engine now has full control over how to display its profile data.

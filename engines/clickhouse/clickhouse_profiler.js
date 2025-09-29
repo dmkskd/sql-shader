@@ -12,17 +12,18 @@ export class ClickHouseProfiler {
    * Runs the query with profiling enabled and collects various performance metrics.
    * @param {string} sql The raw SQL of the shader to profile.
    * @param {Array<any>} params The parameters for the query.
+   * @param {function(string): void} [statusCallback=(() => {})] Optional callback to report progress.
    * @returns {Promise<object>} A data object containing plans, logs, and traces.
    */
-  async profile(sql, params) {
-    const statusCallback = (message) => document.getElementById('stats-panel').textContent = message;
-    statusCallback('Profiling: Starting...');
+  async profile(sql, params, statusCallback = () => {}) {
+    // Use the provided status callback, or a no-op function if none is given.
+    statusCallback('Profiling...'); // Initial message
     const cleanedSql = sql.replace(/{[^}]+}/g, '1');
     const queryId = `pixelql-${Date.now()}`;
     let profileData = {};
 
     // 1. Get EXPLAIN PIPELINE graph
-    statusCallback('Profiling: Fetching pipeline plan...');
+    statusCallback('Profiling: Pipeline...');
     try {
       const graphSql = `EXPLAIN PIPELINE graph = 1 ${cleanedSql}`;
       const graphResultSet = await this.client.query({ query: graphSql, format: 'JSONEachRow' });
@@ -34,7 +35,7 @@ export class ClickHouseProfiler {
     }
 
     // 2. Get EXPLAIN actions, indexes
-    statusCallback('Profiling: Fetching actions and indexes plan...');
+    statusCallback('Profiling: Actions...');
     try {
       const actionsSql = `EXPLAIN actions = 1, indexes = 1 ${cleanedSql}`;
       const actionsResultSet = await this.client.query({ query: actionsSql, format: 'JSONEachRow' });
@@ -53,7 +54,7 @@ export class ClickHouseProfiler {
       .replace('{mx:Float64}', params[3])
       .replace('{my:Float64}', params[4]);
 
-    statusCallback('Profiling: Executing main query...');
+    statusCallback('Profiling: Executing...');
 
     try {
       // Execute the query. We rely on the server-side user profile to have the
@@ -62,24 +63,21 @@ export class ClickHouseProfiler {
         query: finalSql,
         query_id: queryId,
         format: 'JSONEachRow',
-        clickhouse_settings: {
-          send_logs_level: 'trace', // Enable server-side trace logging to be sent to the client
-        },
       });
-      profileData.serverTraceLog = mainQueryResultSet.logs;
-      console.log(`[Debug] Captured ${profileData.serverTraceLog ? profileData.serverTraceLog.length : 0} server trace log entries streamed from the main query execution.`);
+      // We no longer rely on streamed logs. They will be fetched from system.text_log later.
+      await mainQueryResultSet.json(); // Still need to consume the result set.
     } catch (e) {
       // If the query fails, we might still have received logs before the error.
       if (e.response && e.response.logs) {
-        profileData.serverTraceLog = e.response.logs;
-        console.log(`[Debug] Captured ${profileData.serverTraceLog.length} server trace log entries from a failed query.`);
+        profileData.serverTextLog = e.response.logs;
+        console.log(`[Debug] Captured ${profileData.serverTextLog.length} server text log entries from a failed query.`);
       }
       console.warn('Shader query failed during profiling, but attempting to fetch logs anyway.', e);
     }
 
     // Force ClickHouse to flush its log buffers to the system tables.
     // This is more reliable than waiting with a timeout and ensures the logs are available.
-    statusCallback('Profiling: Flushing server logs...');
+    statusCallback('Profiling: Flushing...');
     try {
       await this.client.command({ query: 'SYSTEM FLUSH LOGS' });
       // Add an explicit, long wait to test the theory that logs need more time to propagate.
@@ -94,7 +92,7 @@ export class ClickHouseProfiler {
 
     // 4. Poll for both query_log and trace_log entries in a single loop.
     // This is more robust against race conditions where one log flushes before the other.
-    statusCallback('Profiling: Polling for query_log and trace_log...');
+    statusCallback('Profiling: Polling...');
     const maxRetries = 8;
     const retryDelay = 250; // ms
 
@@ -103,11 +101,12 @@ export class ClickHouseProfiler {
         // Attempt to fetch query_log if we don't have it yet
         if (!profileData.queryLog) {
           const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
+          console.log('[Profiler] Executing Query Summary query:', queryLogQuery);
           const queryLogResultSet = await this.client.query({ query: queryLogQuery, format: 'JSONEachRow' });
           const queryLogData = await queryLogResultSet.json();
           if (queryLogData.length > 0) {
             profileData.queryLog = queryLogData[0];
-            console.log(`[engine.tracing] Found query_log entry after ${i + 1} attempt(s).`);
+            console.log(`[Profiler] Found Query Summary data in system.query_log after ${i + 1} attempt(s).`);
           }
         }
 
@@ -119,18 +118,32 @@ export class ClickHouseProfiler {
             WHERE query_id = '${queryId}' AND trace_type = 'CPU'
             GROUP BY trace
           `;
+          console.log('[Profiler] Executing CPU Trace (FlameGraph) query:', traceQuery.trim());
           const traceResultSet = await this.client.query({ query: traceQuery.trim(), format: 'JSONEachRow', clickhouse_settings: { allow_introspection_functions: 1 } });
           const resolvedTraces = await traceResultSet.json();
           if (resolvedTraces.length > 0) {
             profileData.traceLog = resolvedTraces.map(row => ({ trace: row.stack.split(';'), value: row.value }));
-            console.log(`[engine.tracing] Found trace_log entries after ${i + 1} attempt(s).`);
+            console.log(`[Profiler] Found CPU Trace data for FlameGraph in system.trace_log after ${i + 1} attempt(s).`);
+          }
+        }
+
+        // Attempt to fetch server logs from system.text_log if we don't have them yet
+        if (!profileData.serverTextLog || profileData.serverTextLog.length === 0) {
+          const serverLogQuery = `SELECT event_time_microseconds, logger_name as source, thread_name, thread_id, level, message FROM system.text_log WHERE query_id = '${queryId}' ORDER BY event_time_microseconds`;
+          console.log('[Profiler] Executing Server Text Log (Trace Log tab) query:', serverLogQuery);
+          const serverLogResultSet = await this.client.query({ query: serverLogQuery, format: 'JSONEachRow' });
+          const serverLogData = await serverLogResultSet.json();
+          if (serverLogData.length > 0) {
+            profileData.serverTextLog = serverLogData;
+            console.log(`[Profiler] Found Server Text Log data for the 'Trace Log' tab in system.text_log after ${i + 1} attempt(s).`);
           }
         }
 
         // If we have all the data we need, we can stop waiting
         // We no longer poll for query_thread_log.
-        const hasAllLogs = profileData.queryLog && profileData.traceLog && profileData.traceLog.length > 0;
-        if (hasAllLogs) {
+        const hasQueryLog = !!profileData.queryLog;
+        const hasTraceLog = profileData.traceLog && profileData.traceLog.length > 0;
+        if (hasQueryLog && hasTraceLog) {
           break;
         }
 
@@ -141,11 +154,11 @@ export class ClickHouseProfiler {
     }
 
     // Add final status logging after polling is complete.
-    console.log(`[Debug] Polling finished. Query Log found: ${!!profileData.queryLog}`);
-    console.log(`[Debug] Polling finished. Server Trace Log entries found: ${profileData.serverTraceLog ? profileData.serverTraceLog.length : 0}`);
-    console.log(`[Debug] Polling finished. Trace Log entries found: ${profileData.traceLog ? profileData.traceLog.length : 0}`);
+    console.log(`[Profiler] Polling finished. Found Query Summary data: ${!!profileData.queryLog}`);
+    console.log(`[Profiler] Polling finished. Found Server Text Log entries (for 'Trace Log' tab): ${profileData.serverTextLog ? profileData.serverTextLog.length : 0}`);
+    console.log(`[Profiler] Polling finished. Found CPU Trace entries (for FlameGraph): ${profileData.traceLog ? profileData.traceLog.length : 0}`);
 
-    statusCallback('Profiling: Data collection complete. Rendering results...');
+    statusCallback('Profiling: Rendering...');
     console.log('[engine.profile] Profiling data collection complete.');
     return profileData;
   }
@@ -216,22 +229,46 @@ export class ClickHouseProfiler {
     }
 
     // --- Tab 6: Server Trace Log (from send_logs_level='trace') ---
-    let serverTraceLogContent;
-    if (profileData.serverTraceLog && profileData.serverTraceLog.length > 0) {
-      serverTraceLogContent = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
-      serverTraceLogContent += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Time</th><th>Source</th><th>Level</th><th>Message</th></tr></thead>';
-      serverTraceLogContent += '<tbody>';
-      for (const log of profileData.serverTraceLog) {
-        serverTraceLogContent += `<tr style="border-bottom: 1px solid #444; padding: 3px 0;">
-                                    <td style="white-space: nowrap;">${new Date(log.time).toISOString()}</td>
-                                    <td>${log.source}</td>
-                                    <td>${log.level}</td>
+    let serverTextLogContent;
+    if (profileData.serverTextLog && profileData.serverTextLog.length > 0) {
+      serverTextLogContent = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
+      serverTextLogContent += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Timestamp</th><th>Source</th><th>Thread</th><th>Level</th><th>Message</th></tr></thead>';
+      serverTextLogContent += '<tbody>';
+
+      // Helper function to get a color based on log level
+      const getLevelColor = (level) => {
+        switch (level) {
+          case 'Error': return '#ff8080'; // Red
+          case 'Warning': return '#ffc980'; // Orange
+          case 'Information': return '#80ff80'; // Green
+          case 'Debug': return '#80bfff'; // Blue
+          case 'Trace': return '#b3b3b3'; // Gray
+          default: return '#eee'; // Default text color
+        }
+      };
+
+      // Helper function to generate a consistent color from a string (for the source)
+      const stringToHslColor = (str, s = 75, l = 55) => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+          hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const h = hash % 360;
+        return `hsl(${h}, ${s}%, ${l}%)`;
+      };
+
+      for (const log of profileData.serverTextLog) {
+        serverTextLogContent += `<tr style="border-bottom: 1px solid #444; padding: 3px 0;">
+                                    <td style="white-space: nowrap;">${log.event_time_microseconds}</td>
+                                    <td style="color: ${stringToHslColor(log.source)}; font-weight: bold;">${log.source}</td>
+                                    <td style="white-space: nowrap;">${log.thread_name}(${log.thread_id})</td>
+                                    <td style="color: ${getLevelColor(log.level)}; font-weight: bold;">${log.level}</td>
                                     <td style="white-space: pre-wrap;">${log.message}</td>
                                   </tr>`;
       }
-      serverTraceLogContent += '</tbody></table>';
+      serverTextLogContent += '</tbody></table>';
     } else {
-      serverTraceLogContent = '<p>No server trace logs were sent. This may be disabled by the server configuration.</p>';
+      serverTextLogContent = '<p>No server text logs were found. This may be disabled by the server configuration.</p>';
     }
 
     // --- Dynamically build the HTML for the profiler ---
@@ -241,7 +278,7 @@ export class ClickHouseProfiler {
       { id: 'pipeline-plan', title: 'Pipeline Plan', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>' },
       { id: 'flamegraph', title: 'FlameGraph', content: '', header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
       { id: 'call-graph', title: 'Call Graph', content: '', header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.' },
-      { id: 'trace-log', title: 'Trace Log', content: serverTraceLogContent, header: "Server logs streamed to the client by setting <code>send_logs_level = 'trace'</code>" },
+      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>` },
       { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
     ];
 
@@ -750,7 +787,7 @@ export class ClickHouseProfiler {
     });
     root.value = totalValue;
 
-    // --- NEW: Aggregation Logic ---
+    // Aggregate the hierarchical data into a flat list of nodes and edges for the graph.
     const aggregatedNodes = new Map();
     const aggregatedEdges = new Map();
 
@@ -845,8 +882,6 @@ export class ClickHouseProfiler {
         tooltipEl.style.display = 'none';
       });
     });
-
-    this.setupSelectionZoom(container, traceLog, direction);
   }
 
   /**
@@ -877,91 +912,6 @@ export class ClickHouseProfiler {
 
     updateButtonText();
     button.addEventListener('click', button.handler);
-  }
-
-  /**
-   * Sets up the drag-to-select zoom functionality for a Mermaid graph.
-   * @param {HTMLElement} container The container holding the SVG graph.
-   * @param {Array<object>} traceLog The raw trace log data for re-rendering.
-   * @param {string} direction The current graph direction ('TD' or 'BT').
-   */
-  setupSelectionZoom(container, traceLog, direction) {
-    const svg = container.querySelector('svg');
-    if (!svg) return;
-
-    // Force enable mouse events on the SVG, as Mermaid may disable them by default.
-    svg.style.pointerEvents = 'auto';
-
-    // Create a selection box element if it doesn't exist
-    let selectionBox = document.getElementById('graph-selection-box');
-    if (!selectionBox) {
-      selectionBox = document.createElement('div');
-      selectionBox.id = 'graph-selection-box';
-      selectionBox.style.position = 'absolute';
-      selectionBox.style.border = '1px dashed #ffc980';
-      selectionBox.style.backgroundColor = 'rgba(255, 201, 128, 0.2)';
-      selectionBox.style.pointerEvents = 'none';
-      selectionBox.style.display = 'none';
-      document.body.appendChild(selectionBox);
-    }
-
-    container.addEventListener('mousedown', (e) => {
-      // Don't start drag if clicking on a node itself or a control button
-      if (e.target.closest('.node, .graph-controls')) return;
-
-      let startX = e.clientX;
-      let startY = e.clientY;
-      selectionBox.style.left = `${startX}px`;
-      selectionBox.style.top = `${startY}px`;
-      selectionBox.style.width = '0px';
-      selectionBox.style.height = '0px';
-      selectionBox.style.display = 'block';
-      e.preventDefault();
-
-      const onMouseMove = (moveEvent) => {
-        const currentX = moveEvent.clientX;
-        const currentY = moveEvent.clientY;
-        const width = currentX - startX;
-        const height = currentY - startY;
-
-        selectionBox.style.width = `${Math.abs(width)}px`;
-        selectionBox.style.height = `${Math.abs(height)}px`;
-        selectionBox.style.left = `${width > 0 ? startX : currentX}px`;
-        selectionBox.style.top = `${height > 0 ? startY : currentY}px`;
-      };
-
-      const onMouseUp = (upEvent) => {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-
-        selectionBox.style.display = 'none';
-        const selectionRect = selectionBox.getBoundingClientRect();
-        if (selectionRect.width < 10 || selectionRect.height < 10) return;
-
-        const selectedNodeNames = new Set();
-        svg.querySelectorAll('.node').forEach(nodeEl => {
-          const nodeRect = nodeEl.getBoundingClientRect();
-          if (selectionRect.left < nodeRect.right && selectionRect.right > nodeRect.left &&
-              selectionRect.top < nodeRect.bottom && selectionRect.bottom > nodeRect.top) {
-            const title = nodeEl.querySelector('div[title]')?.title;
-            if (title) selectedNodeNames.add(title);
-          }
-        });
-
-        if (selectedNodeNames.size > 0) {
-          const filteredTraceLog = traceLog.filter(row => row.trace.some(funcName => selectedNodeNames.has(funcName)));
-          this.renderCallGraph(filteredTraceLog, container, direction);
-        }
-      };
-
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
-    });
-
-    // Add a double-click listener to reset the zoom
-    svg.addEventListener('dblclick', () => {
-      this.renderCallGraph(traceLog, container, direction);
-    });
   }
 
   /**

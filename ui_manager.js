@@ -55,6 +55,14 @@ export const updateInitStatus = (message) => {
     dom.statsPanel.textContent = message;
 };
 
+/**
+ * Updates the text content of the main profile button.
+ * @param {string} text The text to display on the button.
+ */
+export const updateProfileButtonText = (text) => {
+    dom.profileButton.textContent = text;
+};
+
 export const updateStatsPanel = (stats, resolution) => {
     let statsText = `FPS: ${stats.fps.toFixed(1)} | Prepare: ${stats.prepareTime.toFixed(2)}ms | Query: ${stats.queryTime.toFixed(2)}ms | Resolution: ${resolution.width}x${resolution.height} | Time: ${stats.elapsedTime.toFixed(2)}s`;
     // Use `!= null` to check for both `null` and `undefined` in a single, safe check.
