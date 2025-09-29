@@ -33,11 +33,19 @@ export class ShaderManager {
     /**
      * Loads a specific shader into the editor by its index.
      */
-    loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS) {
+    async loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS) {
+        // CRITICAL: Cancel any pending compilation from a previous shader change.
+        // This prevents a race condition where an old, complex shader (like Alien Beacon)
+        // could be recompiled after a new, simple one has already been loaded.
+        clearTimeout(this.debounceTimer);
         const shader = this.getShaders()[shaderIndex];
         if (!shader) return;
 
-        const sql = shader.sql.trim();
+        // Asynchronously load the shader content if it's from a file.
+        // The engine is responsible for implementing this loader function.
+        const sql = (await this.engine.loadShaderContent(shader)).trim();
+
+        // Now that we have the actual SQL, set it in the editor.
         this.editor.setValue(sql);
 
         if (this.applyPerformanceHints(sql, RESOLUTIONS, ZOOM_LEVELS)) {

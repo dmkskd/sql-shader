@@ -1,5 +1,5 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
-import { SHADERS } from './duckdb_wasm_shaders.js';
+import { SHADERS, loadShaderContent } from './duckdb_wasm_shaders.js';
 import { DuckDBWasmProfiler } from './duckdb_wasm_profiler.js';
 
 /**
@@ -79,6 +79,16 @@ class DuckDBWasmEngine {
    */
   getShaders() {
     return SHADERS;
+  }
+
+  /**
+   * Asynchronously loads the content of a shader.
+   * @param {object} shader The shader object, which may contain a path.
+   * @returns {Promise<string>} The SQL content.
+   */
+  async loadShaderContent(shader) {
+    // Delegate to the loader function in the shaders file.
+    return loadShaderContent(shader);
   }
 }
 

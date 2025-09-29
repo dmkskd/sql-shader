@@ -1,6 +1,6 @@
 import { createClient } from '@clickhouse/client-web';
 import { Table, Float32, makeTable } from '@apache/arrow';
-import { SHADERS } from './clickhouse_shaders.js';
+import { SHADERS, loadShaderContent } from './clickhouse_shaders.js';
 import { ClickHouseProfiler } from './clickhouse_profiler.js';
 
 /**
@@ -81,9 +81,10 @@ class ClickHouseEngine {
       .replace('{mx:Float64}', params[3])
       .replace('{my:Float64}', params[4]);
 
+    // Append the FORMAT clause directly to the SQL string for reliability.
     const resultSet = await this.client.query({
       query: finalSql,
-      format: 'JSONEachRow'
+      format: 'JSONEachRow', // Use the dedicated format option.
     });
     const rows = await resultSet.json();
 
@@ -161,6 +162,15 @@ class ClickHouseEngine {
    */
   getShaders() {
     return SHADERS;
+  }
+
+  /**
+   * Asynchronously loads the content of a shader.
+   * @param {object} shader The shader object, which may contain a path.
+   * @returns {Promise<string>} The SQL content.
+   */
+  async loadShaderContent(shader) {
+    return loadShaderContent(shader);
   }
 }
 

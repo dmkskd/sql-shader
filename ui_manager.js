@@ -110,17 +110,26 @@ export const setupUI = (callbacks) => {
     const closeModal = () => {
         dom.profileModal.style.display = 'none';
 
-        // --- CRITICAL CLEANUP ---
-        // The d3-flame-graph library's tooltip (`d3-tip`) appends the tooltip element to the document body.
-        // If we don't manually remove it when the modal closes, it becomes an invisible overlay
-        // that blocks clicks on the header. This is the definitive fix for that issue.
-        const orphanedTooltip = document.querySelector('body > #flamegraph-tooltip');
-        if (orphanedTooltip) orphanedTooltip.remove();
+        // --- CRITICAL: Zombie Tooltip Cleanup ---
+        // The d3-flame-graph library can leave tooltips attached to the document body.
+        // These tooltips have global mousemove listeners that cause massive performance degradation
+        // if they are not removed when the modal is closed.
+        // We select all elements with this class and remove them to be safe.
+        document.querySelectorAll('.d3-flame-graph-tip').forEach(tip => {
+            console.log('[Cleanup] Removing orphaned flamegraph tooltip to prevent performance issues.');
+            tip.remove();
+        });
     };
-    dom.profileModalClose.addEventListener('click', closeModal);
-    dom.profileModal.addEventListener('click', (e) => {
-        if (e.target === dom.profileModal) closeModal();
-    });
+
+    // Attach listeners only once to prevent multiple calls.
+    if (!dom.profileModal.listenerAttached) {
+        dom.profileModalClose.addEventListener('click', closeModal);
+        dom.profileModal.addEventListener('click', (e) => {
+            if (e.target === dom.profileModal) closeModal();
+        });
+        dom.profileModal.listenerAttached = true;
+    }
+
     window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && dom.profileModal.style.display !== 'none') {
             closeModal();
