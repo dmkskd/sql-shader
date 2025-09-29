@@ -353,6 +353,7 @@ export class ClickHouseProfiler {
 
     // --- Dynamically build the HTML for the profiler ---
     const tabsConfig = [
+      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
       { id: 'raw-plan', title: 'Raw Plan', content: `<pre>${profileData.actionsPlan || 'No data.'}</pre>`, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
       { id: 'structured-plan', title: 'Structured Plan', content: `<pre>${formattedHtml}</pre>`, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
       { id: 'pipeline-plan', title: 'Pipeline Plan', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>' },
@@ -360,7 +361,6 @@ export class ClickHouseProfiler {
       { id: 'call-graph', title: 'Call Graph', content: '', header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.' },
       { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>' },
       { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>` },
-      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
     ];
 
     let tabsHtml = '<div class="profiler-tabs">';
