@@ -405,6 +405,27 @@
         padding: 8px;
         margin-bottom: 15px;
       }
+      /* --- New Performance Bar Styles --- */
+      #performance-bar {
+        display: flex;
+        align-items: center;
+        background-color: #1a1a1a;
+        border-top: 1px solid #444;
+        padding: 5px 15px;
+        gap: 20px;
+        flex-shrink: 0;
+      }
+      .perf-chart-container {
+        background-color: #282828;
+        border: 1px solid #444;
+      }
+      #engine-stats-container {
+        font-family: monospace;
+        font-size: 12px;
+        color: #ccc;
+        display: flex;
+        gap: 15px;
+      }
     </style>
   </head>
   <body>
@@ -446,6 +467,19 @@
         <button id="share-button" title="Generate a shareable link for the current shader and settings">🔗 Share</button>
       </div>
       <div id="stats-panel">Initializing...</div>
+      <!-- New Performance Monitoring Bar -->
+      <div id="performance-bar">
+        <div class="perf-chart-container">
+          <canvas id="timing-chart-canvas" width="600" height="60"></canvas>
+        </div>
+        <div id="engine-stats-container">
+          <!-- Engine-specific stats will be rendered here -->
+          <div class="engine-stat">
+            <span class="stat-label">Engine Stats:</span>
+            <span class="stat-value">Loading...</span>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="profile-modal" class="modal-overlay" style="display: none;">
       <div class="modal-content">

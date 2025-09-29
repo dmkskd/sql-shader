@@ -54,8 +54,11 @@ class DuckDBWasmEngine {
     // the query result to be wrapped in an object with `table` and `timings` properties.
     return {
       query: async (...args) => {
+        const t0 = performance.now();
         const table = await preparedStatement.query(...args);
-        return { table, timings: {} }; // Return empty timings object for consistency.
+        const t1 = performance.now();
+        const timings = { query: t1 - t0 };
+        return { table, timings };
       }
     };
   }

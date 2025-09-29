@@ -2,6 +2,7 @@ import { dom, setupUI, updateInitStatus, updateStatsPanel, updateErrorPanel, ope
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 
+import { PerformanceMonitor } from './performance_monitor.js';
 console.log('Executing main.js - Debug Version: 1.4.0');
 
 const APP_VERSION = '1.1.0';
@@ -15,6 +16,9 @@ const main = async (engine) => {
   let ctx = dom.canvas.getContext('2d', { willReadFrequently: true });
   let resolution = { width: dom.canvas.width, height: dom.canvas.height };
   let imageData; // Will be initialized within the main try block
+  // Initialize the performance monitor with its canvas
+  const perfMonitor = new PerformanceMonitor(document.getElementById('timing-chart-canvas'));
+
   const iMouse = { x: resolution.width / 2, y: resolution.height / 2 };
 
   // --- Initialize CodeMirror ---
@@ -375,6 +379,14 @@ const main = async (engine) => {
         );
         const t1 = performance.now();
         stats.queryTime = t1 - t0;
+        
+        // Update the performance monitor with detailed timings
+        perfMonitor.update({
+            query: timings.query || stats.queryTime, // Use detailed if available
+            network: timings.network,
+            processing: timings.processing,
+            draw: stats.drawTime,
+        });
 
         drawResultToCanvas(result, localImageData);
         lastGoodResult = result; // Store the successful result

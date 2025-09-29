@@ -106,11 +106,17 @@ class ClickHouseEngine {
    * @returns {Promise<{table: import('@apache/arrow').Table, timings: object}>}
    */
   async executeQueryAsJSON(finalSql) {
+    const timings = {};
+    let t0 = performance.now();
     const resultSet = await this.client.query({
       query: finalSql,
       format: 'JSONEachRow', // Use the dedicated format option.
     });
+    timings.network = performance.now() - t0;
+
+    t0 = performance.now();
     const rows = await resultSet.json();
+    timings.processing = performance.now() - t0;
 
     // Convert the JSON result into an Arrow Table, which the renderer expects.
     const r = new Float32Array(rows.map(row => row.r));
@@ -118,7 +124,7 @@ class ClickHouseEngine {
     const b = new Float32Array(rows.map(row => row.b));
 
     const table = arrow.makeTable({ r, g, b });
-    return { table, timings: {} }; // Wrap in object for consistency
+    return { table, timings };
   }
 
   /**
@@ -128,6 +134,9 @@ class ClickHouseEngine {
    * @returns {Promise<{table: import('@apache/arrow').Table, timings: object}>}
    */
   async executeQueryAsArrow(finalSql) {
+    const timings = {};
+    let t0 = performance.now();
+
     // Retrieve connection settings directly from localStorage, just like in initialize().
     const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
     const url = storedSettings.url || 'http://localhost:8123';
@@ -142,12 +151,16 @@ class ClickHouseEngine {
         'Authorization': 'Basic ' + btoa(`${username}:${password}`),
       }
     });
+    timings.network = performance.now() - t0;
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
 
+    t0 = performance.now();
     const arrow_buffer = await resp.arrayBuffer();
     const table = await arrow.tableFromIPC(arrow_buffer);
-    return { table, timings: {} }; // Wrap in object for consistency
+    timings.processing = performance.now() - t0;
+
+    return { table, timings };
   }
 
   /**
