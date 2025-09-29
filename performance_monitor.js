@@ -7,10 +7,10 @@ export class PerformanceMonitor {
         this.ctx = canvas.getContext('2d');
         this.historySize = canvas.width; // One pixel per frame history
         this.metrics = {
-            query: { color: '#ffc980', data: [], max: 0 }, // Orange
-            draw: { color: '#80bfff', data: [], max: 0 },  // Blue
-            network: { color: '#ff8080', data: [], max: 0 }, // Red
-            processing: { color: '#80ff80', data: [], max: 0 }, // Green
+            query: { color: '#ffc980', data: [], max: 0, visible: true }, // Orange
+            draw: { color: '#80bfff', data: [], max: 0, visible: true },  // Blue
+            network: { color: '#ff8080', data: [], max: 0, visible: true }, // Red
+            processing: { color: '#80ff80', data: [], max: 0, visible: true }, // Green
         };
         this.totalMax = 0;
         this.recalcInterval = 2000; // Recalculate max value every 2 seconds for stability.
@@ -24,6 +24,7 @@ export class PerformanceMonitor {
 
         this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
         this.canvas.addEventListener('mouseout', this.handleMouseOut.bind(this));
+        this.canvas.addEventListener('click', this.handleMouseClick.bind(this));
     }
 
     /**
@@ -110,6 +111,39 @@ export class PerformanceMonitor {
     }
 
     /**
+     * Handles clicks on the canvas, specifically for toggling legend items.
+     * @param {MouseEvent} event 
+     */
+    handleMouseClick(event) {
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+
+        // Check if the click was within the legend area
+        const legendX = 15;
+        let legendY = 14;
+        const itemHeight = 14;
+        const boxSize = 8;
+        const boxTextGap = 5;
+
+        for (const key in this.metrics) {
+            const textWidth = this.ctx.measureText(key).width;
+            const itemWidth = legendX + boxSize + boxTextGap + textWidth;
+
+            // Define the clickable area for this legend item
+            if (mouseX >= legendX && mouseX <= itemWidth &&
+                mouseY >= legendY - itemHeight / 2 && mouseY <= legendY + itemHeight / 2) {
+                
+                this.metrics[key].visible = !this.metrics[key].visible;
+                this.draw(); // Redraw with the updated visibility
+                return; // Stop after handling the click
+            }
+
+            legendY += itemHeight;
+        }
+    }
+
+    /**
      * Draws the stacked area chart on the canvas.
      */
     draw() {
@@ -128,7 +162,9 @@ export class PerformanceMonitor {
             for (let i = 0; i < metrics.query.data.length; i++) {
                 let frameTotal = 0;
                 for (const key in metrics) {
-                    frameTotal += metrics[key].data[i] || 0;
+                    if (metrics[key].visible) {
+                        frameTotal += metrics[key].data[i] || 0;
+                    }
                 }
                 if (frameTotal > currentHistoryMax) {
                     currentHistoryMax = frameTotal;
@@ -147,7 +183,7 @@ export class PerformanceMonitor {
             let currentY = height;
             for (const key of metricKeys) {
                 const metric = metrics[key];
-                if (metric.data[i] > 0) {
+                if (metric.visible && metric.data[i] > 0) {
                     const value = metric.data[i];
                     // Use a minimum value of ~16.67ms (60fps) for the scale.
                     const barHeight = (value / Math.max(16.67, this.totalMax)) * height;
@@ -191,39 +227,8 @@ export class PerformanceMonitor {
             ctx.fillText(labelText, width - 5, y - 2);
         }
 
-        // --- Draw Legend and Max Value ---
-        ctx.textAlign = 'left'; // Ensure legend text is left-aligned.
-        ctx.font = '12px monospace';
-        const legendX = 15; // Constant X position for the legend column
-        let legendY = 14;   // Starting Y position
-        const itemHeight = 14; // Vertical space for each legend item
-        const boxSize = 8;  // Smaller box size for vertical layout
-        const boxTextGap = 5; // Gap between color swatch and text
-
-        for (const key of metricKeys) {
-            const metric = metrics[key];
-            // Vertically center the box with the text's baseline
-            const boxY = legendY - boxSize + 1;
-
-            ctx.fillStyle = metric.color;
-            ctx.fillRect(legendX, boxY, boxSize, boxSize);
-
-            // Draw a strong outline by stroking the text in black from all sides.
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            const outlineOffset = 1;
-            ctx.fillText(key, legendX + boxSize + boxTextGap - outlineOffset, legendY);
-            ctx.fillText(key, legendX + boxSize + boxTextGap + outlineOffset, legendY);
-            ctx.fillText(key, legendX + boxSize + boxTextGap, legendY - outlineOffset);
-            ctx.fillText(key, legendX + boxSize + boxTextGap, legendY + outlineOffset);
-
-            // Draw the main white text on top
-            ctx.fillStyle = '#eee';
-            ctx.fillText(key, legendX + boxSize + boxTextGap, legendY);
-
-            legendY += itemHeight; // Move down for the next item
-        }
-
         // --- Draw Tooltip ---
+        // Drawn before the legend so the legend always appears on top.
         if (this.tooltip.visible) {
             const { x, metric, value, color } = this.tooltip;
 
@@ -247,6 +252,43 @@ export class PerformanceMonitor {
             
             ctx.fillStyle = color;
             ctx.fillText(tooltipText, tooltipX, tooltipY);
+        }
+
+        // --- Draw Legend and Max Value ---
+        ctx.textAlign = 'left'; // Ensure legend text is left-aligned.
+        ctx.font = '12px monospace';
+        const legendX = 15; // Constant X position for the legend column
+        let legendY = 14;   // Starting Y position
+        const itemHeight = 14; // Vertical space for each legend item
+        const boxSize = 8;  // Smaller box size for vertical layout
+        const boxTextGap = 5; // Gap between color swatch and text
+
+        for (const key of metricKeys) {
+            const metric = metrics[key];
+            // Vertically center the box with the text's baseline
+            const boxY = legendY - boxSize + 1;
+
+            // Dim the legend item if it's not visible
+            ctx.globalAlpha = metric.visible ? 1.0 : 0.4;
+
+            ctx.fillStyle = metric.color;
+            ctx.fillRect(legendX, boxY, boxSize, boxSize);
+
+            // Draw a strong outline by stroking the text in black from all sides.
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            const outlineOffset = 1;
+            ctx.fillText(key, legendX + boxSize + boxTextGap - outlineOffset, legendY);
+            ctx.fillText(key, legendX + boxSize + boxTextGap + outlineOffset, legendY);
+            ctx.fillText(key, legendX + boxSize + boxTextGap, legendY - outlineOffset);
+            ctx.fillText(key, legendX + boxSize + boxTextGap, legendY + outlineOffset);
+
+            // Draw the main white text on top
+            ctx.fillStyle = '#eee';
+            ctx.fillText(key, legendX + boxSize + boxTextGap, legendY);
+
+            legendY += itemHeight; // Move down for the next item
+
+            ctx.globalAlpha = 1.0; // Reset alpha for the next item
         }
     }
 }
