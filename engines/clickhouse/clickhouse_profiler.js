@@ -2,10 +2,12 @@ import mermaid from 'mermaid';
 import * as d3 from 'd3';
 // Use a namespace import to robustly handle this non-standard module.
 import * as d3_flame_graph from 'd3-flame-graph';
+import { makeTable } from '@apache/arrow';
 
 export class ClickHouseProfiler {
-  constructor(client) {
-    this.client = client;
+  constructor(engine) {
+    this.engine = engine;
+    this.client = engine.client; // Keep a direct reference to the client for commands
   }
 
   /**
@@ -58,14 +60,16 @@ export class ClickHouseProfiler {
 
     try {
       // Execute the query. We rely on the server-side user profile to have the
-      // correct profiling settings enabled, but we also explicitly enable server-side trace logging.
-      const mainQueryResultSet = await this.client.query({
+      // correct profiling settings enabled, but we also explicitly enable logging.
+      await this.client.exec({
         query: finalSql,
         query_id: queryId,
-        format: 'JSONEachRow',
+        clickhouse_settings: {
+          log_queries: 1,
+        },
+        // We don't need the output, just for the query to run and be logged.
+        // The exec method is used to avoid the client adding its own query_id.
       });
-      // We no longer rely on streamed logs. They will be fetched from system.text_log later.
-      await mainQueryResultSet.json(); // Still need to consume the result set.
     } catch (e) {
       // If the query fails, we might still have received logs before the error.
       if (e.response && e.response.logs) {
@@ -77,11 +81,12 @@ export class ClickHouseProfiler {
 
     // Force ClickHouse to flush its log buffers to the system tables.
     // This is more reliable than waiting with a timeout and ensures the logs are available.
-    statusCallback('Profiling: Flushing...');
+    const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
+    const waitDuration = parseInt(storedSettings.logFlushWait || '7500', 10);
+    statusCallback(`Profiling: Flushing logs (waiting ${waitDuration}ms)...`);
     try {
       await this.client.command({ query: 'SYSTEM FLUSH LOGS' });
-      // Add an explicit, long wait to test the theory that logs need more time to propagate.
-      const waitDuration = 3000; // 3 seconds
+      // Read the configurable wait duration from settings, with a safe default.
       console.log(`[Debug] Waiting for ${waitDuration}ms to ensure all server logs are flushed...`);
       await new Promise(resolve => setTimeout(resolve, waitDuration));
       console.log('[engine.tracing] Flushed system logs successfully.');
@@ -119,7 +124,9 @@ export class ClickHouseProfiler {
             GROUP BY trace
           `;
           console.log('[Profiler] Executing CPU Trace (FlameGraph) query:', traceQuery.trim());
-          const traceResultSet = await this.client.query({ query: traceQuery.trim(), format: 'JSONEachRow', clickhouse_settings: { allow_introspection_functions: 1 } });
+          const traceResultSet = await this.client.query({
+            query: traceQuery, format: 'JSONEachRow', clickhouse_settings: { allow_introspection_functions: 1 }
+          });
           const resolvedTraces = await traceResultSet.json();
           if (resolvedTraces.length > 0) {
             profileData.traceLog = resolvedTraces.map(row => ({ trace: row.stack.split(';'), value: row.value }));

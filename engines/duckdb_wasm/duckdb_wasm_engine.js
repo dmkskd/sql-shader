@@ -23,6 +23,8 @@ class DuckDBWasmEngine {
     const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
     const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
 
+    // To avoid cross-origin issues in local development, create a Blob URL for the worker.
+    // This makes the browser treat the worker as if it's from the same origin.
     const workerUrl = URL.createObjectURL(
       new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' })
     );
@@ -31,7 +33,7 @@ class DuckDBWasmEngine {
     const logger = new duckdb.VoidLogger();
     this.db = new duckdb.AsyncDuckDB(logger, worker);
     await this.db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-    URL.revokeObjectURL(workerUrl);
+    URL.revokeObjectURL(workerUrl); // Clean up the Blob URL after the worker is instantiated.
 
     statusCallback('Connecting to database...');
     this.connection = await this.db.connect();
@@ -47,7 +49,15 @@ class DuckDBWasmEngine {
    * @returns {Promise<any>} A handle to the prepared query.
    */
   async prepare(sql) {
-    return await this.connection.prepare(sql);
+    const preparedStatement = await this.connection.prepare(sql);
+    // Return an object that conforms to the new interface, which expects
+    // the query result to be wrapped in an object with `table` and `timings` properties.
+    return {
+      query: async (...args) => {
+        const table = await preparedStatement.query(...args);
+        return { table, timings: {} }; // Return empty timings object for consistency.
+      }
+    };
   }
 
   /**

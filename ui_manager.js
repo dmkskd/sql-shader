@@ -64,7 +64,7 @@ export const updateProfileButtonText = (text) => {
 };
 
 export const updateStatsPanel = (stats, resolution) => {
-    let statsText = `FPS: ${stats.fps.toFixed(1)} | Prepare: ${stats.prepareTime.toFixed(2)}ms | Query: ${stats.queryTime.toFixed(2)}ms | Resolution: ${resolution.width}x${resolution.height} | Time: ${stats.elapsedTime.toFixed(2)}s`;
+    let statsText = `FPS: ${stats.fps.toFixed(1)} | Prepare: ${stats.prepareTime.toFixed(2)}ms | Query: ${stats.queryTime.toFixed(2)}ms | Draw: ${stats.drawTime.toFixed(2)}ms | Resolution: ${resolution.width}x${resolution.height} | Time: ${stats.elapsedTime.toFixed(2)}s`;
     // Use `!= null` to check for both `null` and `undefined` in a single, safe check.
     // This prevents a race condition when resizing the canvas.
     if (stats.pixelR != null) {
@@ -183,6 +183,8 @@ export const setupUI = (callbacks) => {
             url: document.getElementById('ch-url').value,
             username: document.getElementById('ch-user').value,
             password: document.getElementById('ch-password').value,
+            dataFormat: document.getElementById('ch-data-format').value,
+            logFlushWait: document.getElementById('ch-log-flush-wait').value,
         };
         localStorage.setItem('pixelql.clickhouse-settings', JSON.stringify(settings));
         window.location.reload();
@@ -274,6 +276,8 @@ export const openSettingsModal = () => {
         document.getElementById('ch-url').value = storedSettings.url || '';
         document.getElementById('ch-user').value = storedSettings.username || '';
         document.getElementById('ch-password').value = storedSettings.password || '';
+        document.getElementById('ch-data-format').value = storedSettings.dataFormat || 'JSONEachRow';
+        document.getElementById('ch-log-flush-wait').value = storedSettings.logFlushWait || '7500';
         dom.clickhouseSettings.style.display = 'block';
         dom.settingsModal.style.display = 'flex';
     } else {

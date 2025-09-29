@@ -1,7 +1,7 @@
 -- "Interactive Waves" - A pattern that reacts to mouse movement and time.
 -- INTERACTIVE WAVES - SPICY EDITION" 
 -- Multiple rotations, color explosions, and mind-bending effects!
--- @run: resolution=160x120, zoom=8
+-- @run: resolution=320x240, zoom=2
 
 WITH
     {width:UInt32} AS width,

@@ -490,6 +490,22 @@
             <label for="ch-password">Password</label>
             <input type="password" id="ch-password" placeholder="leave blank if none">
           </div>
+          <div class="settings-form-group">
+            <label for="ch-data-format">Data Format</label>
+            <select id="ch-data-format">
+              <option value="JSONEachRow" selected>JSONEachRow (Stable)</option>
+              <option value="Arrow">Arrow (Direct Fetch)</option>
+            </select>
+            <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">'Arrow (Direct Fetch)' bypasses the client library for a raw binary transfer, offering the highest performance.</p>
+          </div>
+          <div class="settings-form-group">
+            <label for="ch-log-flush-wait">Log Flush Wait (ms)</label>
+            <input type="number" id="ch-log-flush-wait" value="7500" min="0" step="100">
+            <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">
+              Time to wait after <code>SYSTEM FLUSH LOGS</code> for logs to appear.
+              Increase this for slow systems or if profiler tabs are empty.
+            </p>
+          </div>
           <button id="save-settings-button">Save and Reload</button>
         </div>
       </div>

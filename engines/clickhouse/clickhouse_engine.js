@@ -1,5 +1,5 @@
 import { createClient } from '@clickhouse/client-web';
-import { Table, Float32, makeTable } from '@apache/arrow';
+import * as arrow from '@apache/arrow';
 import { SHADERS, loadShaderContent } from './clickhouse_shaders.js';
 import { ClickHouseProfiler } from './clickhouse_profiler.js';
 
@@ -10,6 +10,10 @@ class ClickHouseEngine {
   constructor() {
     this.client = null;
     this.profiler = null;
+    // This setting will control which data format is used for rendering.
+    // It can be 'JSONEachRow' (stable, text-based) or 'Arrow' (fast, binary).
+    // We default to the most compatible format.
+    this.dataFormat = 'JSONEachRow';
   }
 
   /**
@@ -29,6 +33,13 @@ class ClickHouseEngine {
     const url = storedSettings.url || urlParams.get('ch_host') || 'http://localhost:8123';
     const username = storedSettings.username || urlParams.get('ch_user') || 'default';
     const password = storedSettings.password || urlParams.get('ch_password') || '';
+    this.dataFormat = storedSettings.dataFormat || 'JSONEachRow';
+
+    if (this.dataFormat === 'Arrow') {
+      console.log(`[ClickHouse Engine] Initialized with data format: Arrow (Direct Fetch)`);
+    } else {
+      console.log(`[ClickHouse Engine] Initialized with data format: ${this.dataFormat}`);
+    }
 
     this.client = createClient({
       url: url, // Deprecated 'host' is replaced by 'url'
@@ -36,7 +47,7 @@ class ClickHouseEngine {
       password: password,
     });
 
-    this.profiler = new ClickHouseProfiler(this.client);
+    this.profiler = new ClickHouseProfiler(this); // Pass the engine instance itself
 
     statusCallback(`Pinging ClickHouse server at ${url}...`);
     try {
@@ -56,13 +67,14 @@ class ClickHouseEngine {
    * "Prepares" a query by returning an object that can execute it.
    * For the HTTP client, this is a lightweight operation.
    * @param {string} sql The SQL query string.
-   * @returns {Promise<{query: function(...any): Promise<Table>}>} An object with a `query` method.
+   * @returns {Promise<{query: function(...any): Promise<{table: import('@apache/arrow').Table, timings: object}>}>} An object with a `query` method.
    */
   async prepare(sql) {
     // For the ClickHouse HTTP client, there's no "prepare" step.
     // We return an object that holds the SQL and can execute it.
     return {
-      query: async (...args) => this.executeQuery(sql, args),
+      // The query function will now return both the result table and detailed timings.
+      query: async (...args) => this.executeQuery(sql, args)
     };
   }
 
@@ -70,10 +82,9 @@ class ClickHouseEngine {
    * Executes a "prepared" query with the given parameters.
    * @param {string} sql The SQL query string from the prepare step.
    * @param {Array<any>} params The parameters for the query.
-   * @returns {Promise<Table>} An Apache Arrow Table containing the result.
+   * @returns {Promise<{table: import('@apache/arrow').Table, timings: object}>} An object containing the result table and a breakdown of timings.
    */
   async executeQuery(sql, params) {
-    // New Strategy: Manually substitute parameters to avoid client library issues.
     let finalSql = sql
       .replace('{width:UInt32}', params[0])
       .replace('{height:UInt32}', params[1])
@@ -81,7 +92,20 @@ class ClickHouseEngine {
       .replace('{mx:Float64}', params[3])
       .replace('{my:Float64}', params[4]);
 
-    // Append the FORMAT clause directly to the SQL string for reliability.
+    // Strategy pattern to handle different data formats.
+    if (this.dataFormat === 'Arrow') {
+      return this.executeQueryAsArrow(finalSql);
+    }
+    // Default to JSONEachRow for stability.
+    return this.executeQueryAsJSON(finalSql);
+  }
+
+  /**
+   * Executes the query using the stable, text-based JSONEachRow format.
+   * @param {string} finalSql The final SQL query with parameters substituted.
+   * @returns {Promise<{table: import('@apache/arrow').Table, timings: object}>}
+   */
+  async executeQueryAsJSON(finalSql) {
     const resultSet = await this.client.query({
       query: finalSql,
       format: 'JSONEachRow', // Use the dedicated format option.
@@ -89,22 +113,41 @@ class ClickHouseEngine {
     const rows = await resultSet.json();
 
     // Convert the JSON result into an Arrow Table, which the renderer expects.
-    const r = new Float32Array(rows.length);
-    const g = new Float32Array(rows.length);
-    const b = new Float32Array(rows.length);
+    const r = new Float32Array(rows.map(row => row.r));
+    const g = new Float32Array(rows.map(row => row.g));
+    const b = new Float32Array(rows.map(row => row.b));
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      r[i] = row.r;
-      g[i] = row.g;
-      b[i] = row.b;
-    }
+    const table = arrow.makeTable({ r, g, b });
+    return { table, timings: {} }; // Wrap in object for consistency
+  }
 
-    return makeTable({
-      r: r,
-      g: g,
-      b: b,
+  /**
+   * Executes the query using the high-performance, binary Arrow format by bypassing
+   * the client library and using the native `fetch` API directly.
+   * @param {string} finalSql The final SQL query with parameters substituted.
+   * @returns {Promise<{table: import('@apache/arrow').Table, timings: object}>}
+   */
+  async executeQueryAsArrow(finalSql) {
+    // Retrieve connection settings directly from localStorage, just like in initialize().
+    const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
+    const url = storedSettings.url || 'http://localhost:8123';
+    const username = storedSettings.username || 'default';
+    const password = storedSettings.password || '';
+
+    // Add `output_format_arrow_compression_method=none` to prevent receiving compressed data that the browser library can't handle.
+    const resp = await fetch(`${url}/?default_format=Arrow&output_format_arrow_compression_method=none`, {
+      method: "POST",
+      body: finalSql,
+      headers: {
+        'Authorization': 'Basic ' + btoa(`${username}:${password}`),
+      }
     });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+
+    const arrow_buffer = await resp.arrayBuffer();
+    const table = await arrow.tableFromIPC(arrow_buffer);
+    return { table, timings: {} }; // Wrap in object for consistency
   }
 
   /**

@@ -1,5 +1,5 @@
 -- "Cosmic Time" - A simple time-based color cycling effect.
--- ClickHouse Version
+-- @run: resolution=640x480, zoom=1
 
 WITH
     {width:UInt32} AS width,

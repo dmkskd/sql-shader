@@ -51,6 +51,7 @@ const main = async (engine) => {
       pixelG: 0,
       pixelB: 0,
       elapsedTime: 0,
+      drawTime: 0,
     };
     let frameCount = 0;
     let lastStatsUpdate = performance.now();
@@ -314,6 +315,7 @@ const main = async (engine) => {
       const r = resultTable.getChild('r').toArray();
       const g = resultTable.getChild('g').toArray();
       const b = resultTable.getChild('b').toArray();
+      const t0 = performance.now();
       // Store the latest color data for the pixel inspector
       lastR = r; // This can still be global for the inspector
       lastG = g;
@@ -327,6 +329,7 @@ const main = async (engine) => {
         targetImageData.data[pixelIndex + 3] = 255;        // Alpha
       }
       ctx.putImageData(targetImageData, 0, 0);
+      stats.drawTime = performance.now() - t0;
     };
 
     /**
@@ -363,7 +366,7 @@ const main = async (engine) => {
         const localImageData = ctx.createImageData(frameWidth, frameHeight);
 
         const t0 = performance.now();
-        const result = await shaderManager.prepared.query(
+        const { table: result, timings } = await shaderManager.prepared.query(
           frameWidth,
           frameHeight,
           iTime,
