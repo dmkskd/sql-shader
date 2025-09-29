@@ -14,6 +14,9 @@ class ClickHouseEngine {
     // It can be 'JSONEachRow' (stable, text-based) or 'Arrow' (fast, binary).
     // We default to the most compatible format.
     this.dataFormat = 'JSONEachRow';
+
+    this.lastPollTime = Date.now();
+    this.lastEventCounts = {};
   }
 
   /**
@@ -161,6 +164,80 @@ class ClickHouseEngine {
     timings.processing = performance.now() - t0;
 
     return { table, timings };
+  }
+
+  /**
+   * Polls system tables for engine-specific performance metrics.
+   * @returns {Promise<Array<{label: string, value: string}>>} A list of stats to display.
+   */
+  async pollEngineStats() {
+    try {
+      const metricsQuery = `
+        SELECT metric, value
+        FROM system.metrics
+        WHERE metric IN ('Query', 'MemoryTracking')
+      `;
+      const eventsQuery = `
+        SELECT event, value
+        FROM system.events
+        WHERE event IN ('Query', 'SelectQuery', 'FailedQuery', 'OSCPUVirtualTimeMicroseconds')
+      `;
+
+      const [metricsResult, eventsResult] = await Promise.all([
+        this.client.query({ query: metricsQuery, format: 'JSONEachRow' }),
+        this.client.query({ query: eventsQuery, format: 'JSONEachRow' })
+      ]);
+
+      const metrics = await metricsResult.json();
+      const events = await eventsResult.json();
+
+      const now = performance.now();
+      const elapsedMs = now - this.lastPollTime;
+      this.lastPollTime = now;
+
+      const statsMap = {};
+      // Store metrics and events separately to avoid name collisions (like 'Query')
+      metrics.forEach(m => statsMap[m.metric] = m.value);
+      events.forEach(e => statsMap[e.event] = e.value);
+
+      // Calculate rates
+      const totalQueryCount = statsMap['Query'] || 0;
+      const selectQueryCount = statsMap['SelectQuery'] || 0;
+      const failedQueryCount = statsMap['FailedQuery'] || 0;
+      const cpuTimeMicroseconds = statsMap['OSCPUVirtualTimeMicroseconds'] || 0;
+
+      const queryRate = this.lastEventCounts['Query'] ? (totalQueryCount - this.lastEventCounts['Query']) / (elapsedMs / 1000) : 0;
+      const selectRate = this.lastEventCounts['SelectQuery'] ? (selectQueryCount - this.lastEventCounts['SelectQuery']) / (elapsedMs / 1000) : 0;
+      const failedRate = this.lastEventCounts['FailedQuery'] ? (failedQueryCount - this.lastEventCounts['FailedQuery']) / (elapsedMs / 1000) : 0;
+      
+      // Calculate CPU usage percentage
+      const cpuTimeDelta = this.lastEventCounts['OSCPUVirtualTimeMicroseconds'] ? cpuTimeMicroseconds - this.lastEventCounts['OSCPUVirtualTimeMicroseconds'] : 0;
+      const cpuUsagePercent = (cpuTimeDelta / (elapsedMs * 1000)) * 100;
+
+      this.lastEventCounts['Query'] = totalQueryCount;
+      this.lastEventCounts['SelectQuery'] = selectQueryCount;
+      this.lastEventCounts['FailedQuery'] = failedQueryCount;
+      this.lastEventCounts['OSCPUVirtualTimeMicroseconds'] = cpuTimeMicroseconds;
+
+      const formatBytes = (bytes) => {
+        if (bytes === null || bytes === undefined) return 'N/A';
+        if (bytes === 0) return '0 B';
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${['B', 'KB', 'MB', 'GB'][i]}`;
+      };
+
+      return [
+        // Correctly use the 'Query' value from system.metrics for active queries.
+        { label: 'Active Queries', value: (statsMap['Query'] || 0).toLocaleString(), rawValue: statsMap['Query'] || 0 },
+        { label: 'CPU Usage', value: `${cpuUsagePercent.toFixed(1)}%`, rawValue: cpuUsagePercent },
+        { label: 'Memory', value: formatBytes(statsMap['MemoryTracking']), rawValue: statsMap['MemoryTracking'] || 0 },
+        { label: 'Queries/s', value: queryRate.toFixed(1), rawValue: queryRate },
+        { label: 'Failed/s', value: failedRate.toFixed(1), rawValue: failedRate },
+      ];
+    } catch (e) {
+      console.error("Failed to poll engine stats:", e);
+      return [{ label: 'Engine Stats', value: 'Error' }];
+    }
   }
 
   /**

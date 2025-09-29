@@ -408,12 +408,26 @@
       /* --- New Performance Bar Styles --- */
       #performance-bar {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         background-color: #1a1a1a;
         border-top: 1px solid #444;
         padding: 5px 15px;
         gap: 20px;
         flex-shrink: 0;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .perf-section {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .perf-section-title {
+        color: #aaa;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 11px;
+        padding-left: 2px;
       }
       .perf-chart-container {
         background-color: #282828;
@@ -423,8 +437,27 @@
         font-family: monospace;
         font-size: 12px;
         color: #ccc;
+      }
+      #engine-stats-content {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(200px, 1fr)); /* Create 2 columns */
+        grid-template-rows: repeat(2, auto); /* Allow for a max of 2 rows */
+        grid-auto-flow: column; /* Fill columns first */
+        gap: 5px 20px;
+      }
+      .engine-stat-item {
         display: flex;
-        gap: 15px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        background-color: #282828;
+        padding: 4px 8px;
+        border-radius: 3px;
+        border: 1px solid #444;
+      }
+      .sparkline-canvas {
+        width: 60px;
+        height: 20px;
       }
     </style>
   </head>
@@ -469,15 +502,13 @@
       <div id="stats-panel">Initializing...</div>
       <!-- New Performance Monitoring Bar -->
       <div id="performance-bar">
-        <div class="perf-chart-container">
+        <div id="pipeline-stats-container" class="perf-section">
+          <div class="perf-section-title">Rendering Pipeline</div>
           <canvas id="timing-chart-canvas" width="450" height="60"></canvas>
         </div>
-        <div id="engine-stats-container">
-          <!-- Engine-specific stats will be rendered here -->
-          <div class="engine-stat">
-            <span class="stat-label">Engine Stats:</span>
-            <span class="stat-value">Loading...</span>
-          </div>
+        <div id="engine-stats-container" class="perf-section">
+          <div class="perf-section-title" id="engine-stats-title">Engine Stats</div>
+          <div id="engine-stats-content">Loading...</div>
         </div>
       </div>
     </div>

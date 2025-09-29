@@ -270,6 +270,18 @@ const main = async (engine) => {
       throw new Error("Initial shader compilation failed. Please fix the SQL and refresh.");
     }
 
+    // --- Engine Stats Polling ---
+    // Periodically fetch and display engine-specific stats.
+    if (typeof engine.pollEngineStats === 'function') {
+        setInterval(async () => {
+            const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].text;
+            const engineStats = await engine.pollEngineStats();
+            perfMonitor.updateEngineStats(engineName, engineStats);
+        }, 2000); // Poll every 2 seconds
+    } else {
+        perfMonitor.updateEngineStats('N/A', []); // Clear stats for engines that don't support it
+    }
+
     // --- Animation & Rendering Loop ---
     let imageData = ctx.createImageData(resolution.width, resolution.height); // ctx is from canvas
     let startTime = performance.now();

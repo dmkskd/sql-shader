@@ -1,3 +1,6 @@
+const engineStatsTitle = document.getElementById('engine-stats-title');
+const engineStatsContent = document.getElementById('engine-stats-content');
+
 /**
  * Manages the real-time performance monitoring graphs.
  */
@@ -15,6 +18,7 @@ export class PerformanceMonitor {
         this.totalMax = 0;
         this.recalcInterval = 2000; // Recalculate max value every 2 seconds for stability.
         this.lastRecalcTime = performance.now();
+        this.engineStatHistories = new Map();
         this.tooltip = {
             visible: false,
             x: 0,
@@ -51,6 +55,76 @@ export class PerformanceMonitor {
         }
 
         this.draw();
+    }
+
+    /**
+     * Renders engine-specific statistics into the performance bar.
+     * @param {Array<{label: string, value: string, rawValue: number}>} stats - An array of stat objects.
+     */
+    updateEngineStats(engineName, stats) {
+        engineStatsTitle.textContent = `${engineName} Stats`;
+        engineStatsContent.innerHTML = ''; // Clear previous content, including the "Loading..." message.
+
+        stats.forEach((stat, index) => {
+            const { label, value, rawValue } = stat;
+            const historyKey = `stat-${index}`;
+
+            // Update history for this stat
+            if (!this.engineStatHistories.has(historyKey)) {
+                this.engineStatHistories.set(historyKey, { data: [], max: 0 });
+            }
+            const history = this.engineStatHistories.get(historyKey);
+            history.data.push(rawValue);
+            if (history.data.length > 60) history.data.shift(); // Keep 60 data points
+
+            // Find or create DOM elements
+            let itemEl = document.getElementById(`engine-stat-item-${index}`);
+            if (!itemEl) {
+                itemEl = document.createElement('div');
+                itemEl.id = `engine-stat-item-${index}`;
+                itemEl.className = 'engine-stat-item';
+                itemEl.innerHTML = `
+                    <div class="stat-text">
+                        <span class="stat-label">${label}:</span>
+                        <span class="stat-value" id="stat-value-${index}"></span>
+                    </div>
+                    <canvas class="sparkline-canvas" id="sparkline-canvas-${index}" width="60" height="20"></canvas>
+                `;
+                engineStatsContent.appendChild(itemEl);
+            }
+
+            // Update text value
+            document.getElementById(`stat-value-${index}`).textContent = value;
+
+            // Draw sparkline
+            const canvas = document.getElementById(`sparkline-canvas-${index}`);
+            this.drawSparkline(canvas, history.data);
+        });
+    }
+
+    /**
+     * Draws a simple sparkline graph on a given canvas.
+     * @param {HTMLCanvasElement} canvas The canvas to draw on.
+     * @param {number[]} data The historical data to plot.
+     */
+    drawSparkline(canvas, data) {
+        const ctx = canvas.getContext('2d');
+        const { width, height } = canvas;
+        ctx.clearRect(0, 0, width, height);
+
+        if (data.length < 2) return;
+
+        const max = Math.max(...data) * 1.1 || 1; // Add 10% padding, avoid division by zero
+        const step = width / (data.length - 1);
+
+        ctx.beginPath();
+        ctx.moveTo(0, height - (data[0] / max) * height);
+        for (let i = 1; i < data.length; i++) {
+            ctx.lineTo(i * step, height - (data[i] / max) * height);
+        }
+        ctx.strokeStyle = '#ffc980'; // Use the same color as the 'query' metric
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
     }
 
     /**
