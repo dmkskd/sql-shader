@@ -259,6 +259,11 @@ const main = async (engine) => {
 
     console.log('[Init] UI setup complete.');
 
+    // Before the first compile, ensure the editor contains a valid shader for the current engine.
+    // This prevents a race condition where an old, incompatible shader from a previous session
+    // is compiled against the new engine, causing an error.
+    await shaderManager.loadShader(dom.shaderSelect.value, RESOLUTIONS, ZOOM_LEVELS);
+
     console.log('[Init] Initializing database engine...');
     updateInitStatus('Compiling initial shader...'); // Pass true for the initial compile
     await engine.initialize(updateInitStatus);
