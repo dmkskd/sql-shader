@@ -64,13 +64,20 @@ export const updateProfileButtonText = (text) => {
 };
 
 export const updateStatsPanel = (stats, resolution) => {
-    let statsText = `FPS: ${stats.fps.toFixed(1)} | Prepare: ${stats.prepareTime.toFixed(2)}ms | Query: ${stats.queryTime.toFixed(2)}ms | Draw: ${stats.drawTime.toFixed(2)}ms | Resolution: ${resolution.width}x${resolution.height} | Time: ${stats.elapsedTime.toFixed(2)}s`;
+    const statsText = `FPS: ${stats.fps.toFixed(1)} | Prepare: ${stats.prepareTime.toFixed(2)}ms | Query: ${stats.queryTime.toFixed(2)}ms | Draw: ${stats.drawTime.toFixed(2)}ms | Resolution: ${resolution.width}x${resolution.height} | Time: ${stats.elapsedTime.toFixed(2)}s`;
+    let pixelInspectorHtml = '';
+
     // Use `!= null` to check for both `null` and `undefined` in a single, safe check.
     // This prevents a race condition when resizing the canvas.
     if (stats.pixelR != null) {
-        statsText += ` | Pixel (${stats.pixelX}, ${stats.pixelY}): R=${stats.pixelR.toFixed(3)} G=${stats.pixelG.toFixed(3)} B=${stats.pixelB.toFixed(3)}`;
+        const r = Math.floor(stats.pixelR * 255);
+        const g = Math.floor(stats.pixelG * 255);
+        const b = Math.floor(stats.pixelB * 255);
+        pixelInspectorHtml = ` | Pixel (${stats.pixelX}, ${stats.pixelY}): R=${stats.pixelR.toFixed(3)} G=${stats.pixelG.toFixed(3)} B=${stats.pixelB.toFixed(3)} <span style="display: inline-block; width: 14px; height: 14px; background-color: rgb(${r}, ${g}, ${b}); border: 1px solid #888; vertical-align: middle; margin: 0 5px;"></span>`;
     }
-    dom.statsPanel.textContent = statsText;
+
+    // Use innerHTML to render the color swatch span
+    dom.statsPanel.innerHTML = statsText + pixelInspectorHtml;
     updateErrorPanel(stats);
 };
 
@@ -103,6 +110,7 @@ export const setupUI = (callbacks) => {
         onToggleEditor,
         onResizeEnd,
         onClearState,
+        onTogglePerf,
         onShare,
     } = callbacks;
 
@@ -241,6 +249,8 @@ export const setupUI = (callbacks) => {
     dom.playToggleButton.addEventListener('click', onPlayToggle);
     dom.restartButton.addEventListener('click', onRestart);
     dom.toggleEditorButton.addEventListener('click', onToggleEditor);
+    // Find the button inside setupUI to ensure the DOM is ready.
+    document.getElementById('toggle-perf-button').addEventListener('click', onTogglePerf);
     
     // --- Visual Effect Selector ---
     dom.effectSelect.addEventListener('change', (e) => {

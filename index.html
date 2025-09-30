@@ -228,10 +228,13 @@
         background-color: #282828;
         border-top: 1px solid #444;
         flex-shrink: 0;
+        /* New styles for grouping */
+        display: flex;
+        align-items: center;
+        gap: 25px; /* Spacing between groups */
       }
       #controls-bar button {
         padding: 5px 12px;
-        margin-right: 10px;
         background-color: #555;
         color: #eee;
         border: 1px solid #666;
@@ -248,6 +251,23 @@
         padding: 5px;
         background-color: #555;
         color: #eee;
+      }
+      .control-group {
+        display: flex;
+        align-items: center;
+        gap: 10px; /* Spacing within a group */
+        /* Visual cue for grouping */
+        background-color: #333;
+        padding: 5px 10px;
+        border-radius: 5px;
+        border: 1px solid #444;
+      }
+      .control-group-title {
+        font-size: 0.8em;
+        color: #999;
+        text-transform: uppercase;
+        margin-right: 5px; /* Space between title and first control */
+        font-weight: bold;
       }
 
       /* Modal styles for the profiler */
@@ -440,7 +460,7 @@
       }
       #engine-stats-content {
         display: grid;
-        grid-template-columns: repeat(2, minmax(200px, 1fr)); /* Create 2 columns */
+        grid-template-columns: repeat(2, minmax(140px, 1fr)); /* Create 2 columns, 30% smaller min-width */
         grid-template-rows: repeat(2, auto); /* Allow for a max of 2 rows */
         grid-auto-flow: column; /* Fill columns first */
         gap: 5px 20px;
@@ -454,6 +474,17 @@
         padding: 4px 8px;
         border-radius: 3px;
         border: 1px solid #444;
+      }
+      .stat-text {
+        flex-grow: 1; /* Allow text to take available space */
+        display: flex;
+        justify-content: space-between; /* Pushes label and value apart */
+      }
+      .stat-value {
+        font-weight: bold;
+        color: #fff;
+        min-width: 60px; /* Give the value a fixed minimum width */
+        text-align: right; /* Align the text to the right */
       }
       .sparkline-canvas {
         width: 60px;
@@ -504,36 +535,45 @@
         </div>
       </div>
       <div id="controls-bar">
-        <button id="play-toggle-button">❚❚ Stop</button>
-        <button id="restart-button">↺ Restart</button>
-        <button id="profile-button" title="Run the query once and log detailed performance profile to the console">Profile</button>
-        <select id="shader-select"></select>
-        <select id="resolution-select"></select>
-        <select id="zoom-select"></select>
-        <button id="toggle-editor-button">Toggle Editor</button>
-        <select id="effect-select" title="Select an editor effect">
-          <option value="none">Editor Effect: None</option>
-          <option value="crt-effect">CRT</option>
-          <option value="vhs-effect">VHS</option>
-          <option value="terminal-effect">Terminal</option>
-        </select>
-        <button id="share-button" title="Generate a shareable link for the current shader and settings">🔗 Share</button>
+        <div class="control-group">
+          <select id="shader-select"></select>
+          <select id="resolution-select"></select>
+          <select id="zoom-select"></select>
+        </div>
+        <div class="control-group">
+          <button id="play-toggle-button">❚❚ Stop</button>
+          <button id="restart-button">↺ Restart</button>
+        </div>
+        <div class="control-group">
+          <button id="toggle-editor-button">Toggle Editor</button>
+          <select id="effect-select" title="Select an editor effect">
+            <option value="none">Editor Effect: None</option>
+            <option value="crt-effect">CRT</option>
+            <option value="vhs-effect">VHS</option>
+            <option value="terminal-effect">Terminal</option>
+          </select>
+          <button id="share-button" title="Generate a shareable link for the current shader and settings">🔗 Share</button>
+        </div>
+        <div class="control-group">
+          <button id="profile-button" title="Run the query once and log detailed performance profile to the console">Profile</button>
+          <button id="toggle-perf-button" title="Show/Hide Performance Stats">Hide Perf Stats</button>
+        </div>
       </div>
       <div id="stats-panel">Initializing...</div>
       <!-- New Performance Monitoring Bar -->
       <div id="performance-bar">
         <div id="pipeline-stats-container" class="perf-section">
           <div class="perf-section-title">Rendering Pipeline</div>
-          <canvas id="timing-chart-canvas" width="450" height="60"></canvas>
+          <canvas id="timing-chart-canvas" width="315" height="60"></canvas>
         </div>
         <div id="engine-stats-container" class="perf-section">
           <div class="perf-section-title" id="engine-stats-title">Engine Stats</div>
           <div id="engine-stats-content">Loading...</div>
         </div>
         <div id="cpu-core-stats-container" class="perf-section" style="display: none;">
-          <div class="perf-section-title" id="cpu-core-stats-title">CPU Cores</div>
+          <div class="perf-section-title" id="cpu-core-stats-title">ClickHouse CPU Cores</div>
           <div class="cpu-core-chart-wrapper">
-            <canvas id="cpu-core-chart-canvas" height="60"></canvas>
+            <canvas id="cpu-core-chart-canvas" height="42"></canvas>
             <div id="cpu-core-chart-legend"></div>
           </div>
         </div>

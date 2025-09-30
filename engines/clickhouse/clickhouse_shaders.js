@@ -15,7 +15,7 @@ const loadedShaders = fileShaderPaths.map(path => {
   const name = path.split('/').pop().replace('.sql', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   // The SQL will be fetched later when the shader is selected.
   // We store the path so we know where to fetch it from.
-  return { name: `${name} (ClickHouse)`, path: path, sql: `-- Loading from ${path}...` };
+  return { name: `${name}`, path: path, sql: `-- Loading from ${path}...` };
 })
 
 // You can still define shaders inline for quick testing or for shaders that

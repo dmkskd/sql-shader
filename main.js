@@ -19,6 +19,9 @@ const main = async (engine) => {
   // Initialize the performance monitor with its canvas
   const perfMonitor = new PerformanceMonitor(document.getElementById('timing-chart-canvas'));
 
+  let isPerfVisible = true;
+  let statsPollIntervalId = null;
+
   const iMouse = { x: resolution.width / 2, y: resolution.height / 2 };
 
   // --- Initialize CodeMirror ---
@@ -199,6 +202,21 @@ const main = async (engine) => {
             const shareUrl = `${baseUrl}?engine=${engineName}&shader=${encodeURIComponent(shaderName)}`;
             return shareUrl;
         },
+        onTogglePerf: () => {
+            isPerfVisible = !isPerfVisible;
+            const perfBar = document.getElementById('performance-bar');
+            if (isPerfVisible) {
+                perfBar.style.display = 'flex';
+                document.getElementById('toggle-perf-button').textContent = 'Hide Perf Stats';
+                // Restart polling
+                startStatsPolling(engine, perfMonitor);
+            } else {
+                perfBar.style.display = 'none';
+                document.getElementById('toggle-perf-button').textContent = 'Show Perf Stats';
+                // Stop polling
+                if (statsPollIntervalId) clearInterval(statsPollIntervalId);
+            }
+        },
     });
 
     const SHADERS = shaderManager.getShaders();
@@ -275,20 +293,22 @@ const main = async (engine) => {
       throw new Error("Initial shader compilation failed. Please fix the SQL and refresh.");
     }
 
-    // --- Engine Stats Polling ---
-    // Periodically fetch and display engine-specific stats.
-    const generalSettings = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}general-settings`)) || {};
-    const pollInterval = parseInt(generalSettings.pollInterval, 10) || 250;
+    /** Starts the engine stats polling interval. */
+    const startStatsPolling = (engine, perfMonitor) => {
+        if (statsPollIntervalId) clearInterval(statsPollIntervalId); // Clear any existing interval
 
-    if (typeof engine.pollEngineStats === 'function') {
-        setInterval(async () => {
-            const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].text;
-            const engineStats = await engine.pollEngineStats();
-            perfMonitor.updateEngineStats(engineName, engineStats);
-        }, pollInterval);
-    } else {
-        perfMonitor.updateEngineStats('N/A', []); // Clear stats for engines that don't support it
+        const generalSettings = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}general-settings`)) || {};
+        const pollInterval = parseInt(generalSettings.pollInterval, 10) || 250;
+
+        if (typeof engine.pollEngineStats === 'function') {
+            statsPollIntervalId = setInterval(async () => {
+                const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].text;
+                const engineStats = await engine.pollEngineStats();
+                perfMonitor.updateEngineStats(engineName, engineStats);
+            }, pollInterval);
+        }
     }
+    startStatsPolling(engine, perfMonitor);
 
     // --- Animation & Rendering Loop ---
     let imageData = ctx.createImageData(resolution.width, resolution.height); // ctx is from canvas
@@ -401,12 +421,14 @@ const main = async (engine) => {
         stats.queryTime = t1 - t0;
         
         // Update the performance monitor with detailed timings
-        perfMonitor.update({
-            query: timings.query || stats.queryTime, // Use detailed if available
-            network: timings.network,
-            processing: timings.processing,
-            draw: stats.drawTime,
-        });
+        if (isPerfVisible) {
+            perfMonitor.update({
+                query: timings.query || stats.queryTime, // Use detailed if available
+                network: timings.network,
+                processing: timings.processing,
+                draw: stats.drawTime,
+            });
+        }
 
         drawResultToCanvas(result, localImageData);
         lastGoodResult = result; // Store the successful result
@@ -475,6 +497,7 @@ const initializeEngine = async () => {
         onResizeEnd: () => {},
         onClearState: () => {},
         onShare: () => {},
+        onTogglePerf: () => {},
     });
 
     const engineSelect = document.getElementById('engine-select');    
