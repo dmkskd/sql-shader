@@ -73,8 +73,18 @@ class ClickHouseEngine {
    * @returns {Promise<{query: function(...any): Promise<{table: import('@apache/arrow').Table, timings: object}>}>} An object with a `query` method.
    */
   async prepare(sql) {
-    // For the ClickHouse HTTP client, there's no "prepare" step.
-    // We return an object that holds the SQL and can execute it.
+    // To provide immediate feedback on compilation errors, we run an EXPLAIN PLAN check.
+    // This validates the query syntax and table existence on the server without executing it,
+    // catching a wide range of errors early.
+    // We must replace the parameter placeholders with dummy values for the syntax check to pass.
+    const syntaxCheckSql = `EXPLAIN PLAN ${sql.replace(/{[^}]+}/g, '1')}`;
+    try {
+      await this.client.exec({ query: syntaxCheckSql });
+    } catch (e) {
+      // Re-throw the error so it's caught by the ShaderManager as a compilation error.
+      throw new Error(`ClickHouse server error: ${e.message}`);
+    }
+
     return {
       // The query function will now return both the result table and detailed timings.
       query: async (...args) => this.executeQuery(sql, args)

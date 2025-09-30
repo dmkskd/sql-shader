@@ -21,6 +21,7 @@ const main = async (engine) => {
 
   let isPerfVisible = true;
   let statsPollIntervalId = null;
+  let isAutocompileOn = true;
 
   const iMouse = { x: resolution.width / 2, y: resolution.height / 2 };
 
@@ -166,6 +167,14 @@ const main = async (engine) => {
         onToggleEditor: () => {
             dom.editorPane.classList.toggle('editor-hidden');
             setTimeout(() => {
+                // Update button state after toggling
+                const isHidden = dom.editorPane.classList.contains('editor-hidden');
+                if (isHidden) {
+                    dom.toggleEditorButton.innerHTML = 'Editor: <span class="perf-status perf-status-off">OFF</span>';
+                } else {
+                    dom.toggleEditorButton.innerHTML = 'Editor: <span class="perf-status perf-status-on">ON</span>';
+                }
+
                 onResizeEnd();
                 editor.refresh();
             }, 50);
@@ -205,17 +214,33 @@ const main = async (engine) => {
         onTogglePerf: () => {
             isPerfVisible = !isPerfVisible;
             const perfBar = document.getElementById('performance-bar');
+            const toggleButton = document.getElementById('toggle-perf-button');
             if (isPerfVisible) {
                 perfBar.style.display = 'flex';
-                document.getElementById('toggle-perf-button').textContent = 'Hide Perf Stats';
+                toggleButton.innerHTML = 'Perf Stats: <span class="perf-status perf-status-on">ON</span>';
                 // Restart polling
                 startStatsPolling(engine, perfMonitor);
             } else {
                 perfBar.style.display = 'none';
-                document.getElementById('toggle-perf-button').textContent = 'Show Perf Stats';
+                toggleButton.innerHTML = 'Perf Stats: <span class="perf-status perf-status-off">OFF</span>';
                 // Stop polling
                 if (statsPollIntervalId) clearInterval(statsPollIntervalId);
             }
+        },
+        onToggleAutocompile: () => {
+            isAutocompileOn = !isAutocompileOn;
+            const toggleButton = document.getElementById('autocompile-toggle-button');
+            const compileButton = document.getElementById('compile-button');
+            if (isAutocompileOn) {
+                toggleButton.innerHTML = 'Autocompile: <span class="perf-status perf-status-on">ON</span>';
+                compileButton.style.display = 'none';
+            } else {
+                toggleButton.innerHTML = 'Autocompile: <span class="perf-status perf-status-off">OFF</span>';
+                compileButton.style.display = 'inline-block';
+            }
+        },
+        onCompile: () => {
+            shaderManager.updateShader(false, stats);
         },
     });
 
@@ -472,7 +497,9 @@ const main = async (engine) => {
             updateCanvasSizeAndResolution();
         }
         clearTimeout(shaderManager.debounceTimer);
-        shaderManager.debounceTimer = setTimeout(() => shaderManager.updateShader(false, stats), 300);
+        if (isAutocompileOn) {
+            shaderManager.debounceTimer = setTimeout(() => shaderManager.updateShader(false, stats), 300);
+        }
     });
   } catch (e) {
     console.error(e);
@@ -498,6 +525,8 @@ const initializeEngine = async () => {
         onClearState: () => {},
         onShare: () => {},
         onTogglePerf: () => {},
+        onToggleAutocompile: () => {},
+        onCompile: () => {},
     });
 
     const engineSelect = document.getElementById('engine-select');    

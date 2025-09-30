@@ -252,6 +252,21 @@
         background-color: #555;
         color: #eee;
       }
+      /* Styles for the ON/OFF status indicator inside the button */
+      .perf-status {
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-weight: bold;
+        margin-left: 5px;
+      }
+      .perf-status-on {
+        background-color: #2a4a3a; /* Subtle green from success panel */
+        color: #b3ffb3;
+      }
+      .perf-status-off {
+        background-color: #5c2828; /* Subtle red from error panel */
+        color: #ffc2c2;
+      }
       .control-group {
         display: flex;
         align-items: center;
@@ -545,7 +560,7 @@
           <button id="restart-button">↺ Restart</button>
         </div>
         <div class="control-group">
-          <button id="toggle-editor-button">Toggle Editor</button>
+          <button id="toggle-editor-button" title="Toggle SQL Editor Visibility">Editor: <span class="perf-status perf-status-on">ON</span></button>
           <select id="effect-select" title="Select an editor effect">
             <option value="none">Editor Effect: None</option>
             <option value="crt-effect">CRT</option>
@@ -553,10 +568,12 @@
             <option value="terminal-effect">Terminal</option>
           </select>
           <button id="share-button" title="Generate a shareable link for the current shader and settings">🔗 Share</button>
+          <button id="autocompile-toggle-button" title="Toggle autocompilation on editor change">Autocompile: <span class="perf-status perf-status-on">ON</span></button>
+          <button id="compile-button" style="display: none;">Compile</button>
         </div>
         <div class="control-group">
           <button id="profile-button" title="Run the query once and log detailed performance profile to the console">Profile</button>
-          <button id="toggle-perf-button" title="Show/Hide Performance Stats">Hide Perf Stats</button>
+          <button id="toggle-perf-button" title="Show/Hide Performance Stats">Perf Stats: <span class="perf-status perf-status-on">ON</span></button>
         </div>
       </div>
       <div id="stats-panel">Initializing...</div>

@@ -136,11 +136,17 @@ export class ShaderManager {
             stats.errorMessage = null;
             updateErrorPanel(stats);
 
+            // If the shader was playing before the error, and it's currently stopped, resume it.
             if (this.wasPlayingBeforeError && !this.isPlaying) {
                 this.isPlaying = true;
                 dom.playToggleButton.innerHTML = '❚❚ Stop';
+                // We need to request a new animation frame to kickstart the rendering loop again.
+                // The main render loop will handle continuing the animation.
+                // This is a placeholder that will be picked up by the main renderFrame function.
+                requestAnimationFrame(() => {});
             }
         } catch (e) {
+            // Store the current playing state, so we can restore it upon a successful compile.
             this.wasPlayingBeforeError = this.isPlaying;
             // If the error is an HTTP error during the prepare phase, it's a compilation error.
             if (e.message && (e.message.includes('HTTP') || e.message.includes('ClickHouse server'))) {
