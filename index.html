@@ -200,13 +200,24 @@
         font-family: monospace;
         font-size: 14px;
       }
+      #editor-status-bar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start; /* Align items to the left */
+        flex-shrink: 0;
+        /* Match the background of the success/error panel */
+        background-color: #2a4a3a;
+        gap: 20px; /* Add space between the status text and buttons */
+      }
+      #editor-actions {
+        padding: 5px;
+        display: flex;
+        gap: 10px;
+      }
       #error-panel {
         padding: 10px;
         flex-shrink: 0; /* Prevent the error panel from shrinking away */
-        font-family: monospace;
         white-space: pre-wrap; /* Wrap long error messages */
-        max-height: 150px; /* Prevent it from taking too much space */
-        overflow-y: auto;
       }
       #error-panel.error {
         background-color: #5c2828; /* Dark red for errors */
@@ -546,7 +557,14 @@
         <div id="resize-handle"></div>
         <div class="right-pane">
           <textarea id="sql-editor" spellcheck="false"></textarea>
-          <div id="error-panel"></div>
+          <div id="editor-status-bar">
+            <div id="editor-actions">
+              <button id="compile-button" style="display: none;">Compile</button>
+              <button id="play-toggle-button">❚❚ Stop</button>
+              <button id="restart-button">↺ Restart</button>
+            </div>
+            <div id="error-panel"></div>
+          </div>
         </div>
       </div>
       <div id="controls-bar">
@@ -556,11 +574,8 @@
           <select id="zoom-select"></select>
         </div>
         <div class="control-group">
-          <button id="play-toggle-button">❚❚ Stop</button>
-          <button id="restart-button">↺ Restart</button>
-        </div>
-        <div class="control-group">
           <button id="toggle-editor-button" title="Toggle SQL Editor Visibility">Editor: <span class="perf-status perf-status-on">ON</span></button>
+          <button id="autocompile-toggle-button" title="Toggle autocompilation on editor change">Autocompile: <span class="perf-status perf-status-on">ON</span></button>
           <select id="effect-select" title="Select an editor effect">
             <option value="none">Editor Effect: None</option>
             <option value="crt-effect">CRT</option>
@@ -568,8 +583,6 @@
             <option value="terminal-effect">Terminal</option>
           </select>
           <button id="share-button" title="Generate a shareable link for the current shader and settings">🔗 Share</button>
-          <button id="autocompile-toggle-button" title="Toggle autocompilation on editor change">Autocompile: <span class="perf-status perf-status-on">ON</span></button>
-          <button id="compile-button" style="display: none;">Compile</button>
         </div>
         <div class="control-group">
           <button id="profile-button" title="Run the query once and log detailed performance profile to the console">Profile</button>

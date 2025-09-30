@@ -82,16 +82,17 @@ export const updateStatsPanel = (stats, resolution) => {
 };
 
 export const updateErrorPanel = (stats) => {
+    const statusBar = document.getElementById('editor-status-bar');
     if (stats.errorMessage) {
         if (stats.errorMessage.startsWith('Runtime Error')) {
             dom.errorPanel.textContent = stats.errorMessage;
         } else {
             dom.errorPanel.textContent = `Compilation Error:\n${stats.errorMessage}`;
         }
-        dom.errorPanel.className = 'error';
+        statusBar.style.backgroundColor = '#5c2828'; // Dark red
     } else {
         dom.errorPanel.textContent = `Compilation Successful in ${stats.prepareTime.toFixed(2)}ms`;
-        dom.errorPanel.className = 'success';
+        statusBar.style.backgroundColor = '#2a4a3a'; // Dark green
     }
 };
 
