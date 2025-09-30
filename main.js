@@ -5,10 +5,17 @@ import { ShaderManager } from './shader_manager.js';
 import { PerformanceMonitor } from './performance_monitor.js';
 console.log('Executing main.js - Debug Version: 1.4.0');
 
+/**
+ * A module-level variable to hold the currently active engine instance.
+ * This allows us to access it for cleanup without needing to re-import during page unload.
+ */
+let activeEngine = null;
+
 const APP_VERSION = '1.1.0';
 const STORAGE_PREFIX = 'pixelql.';
 
 const main = async (engine) => {
+  activeEngine = engine; // Store the reference to the initialized engine.
   dom.versionSpan.textContent = `v${APP_VERSION}`; // Mermaid is now initialized in index.html
 
   updateInitStatus('Initializing...');
@@ -175,7 +182,7 @@ const main = async (engine) => {
                     dom.toggleEditorButton.innerHTML = 'Editor: <span class="perf-status perf-status-on">ON</span>';
                 }
 
-                onResizeEnd();
+                updateCanvasSizeAndResolution();
                 editor.refresh();
             }, 50);
         },
@@ -592,4 +599,17 @@ if (engineSelect) {
         window.location.href = url.origin + url.pathname;
     });
 }
+
+// --- Engine Cleanup on Page Unload ---
+// This is critical for engines that use web workers (like DuckDB-WASM).
+// When switching engines, the page reloads. We must ensure the old worker
+// is terminated to prevent resource conflicts. Using a synchronous call with the
+// stored `activeEngine` reference is more reliable than a dynamic import.
+window.addEventListener('beforeunload', () => {
+    if (activeEngine && typeof activeEngine.terminate === 'function') {
+        // Note: This is a "fire and forget" call. We can't reliably `await`
+        // an async operation during page unload.
+        activeEngine.terminate();
+    }
+});
 initializeEngine();

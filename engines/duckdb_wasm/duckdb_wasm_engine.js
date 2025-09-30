@@ -95,6 +95,17 @@ class DuckDBWasmEngine {
   }
 
   /**
+   * Terminates the DuckDB worker and releases resources.
+   * This is crucial for ensuring a clean state when switching engines.
+   */
+  async terminate() {
+    if (this.db) {
+      console.log('[DuckDB Engine] Terminating worker.');
+      await this.db.terminate();
+    }
+  }
+
+  /**
    * Runs a query with profiling enabled and returns the raw and JSON profile data.
    * @param {string} sql The raw SQL of the shader to profile.
    * This is a required method for the engine interface.
