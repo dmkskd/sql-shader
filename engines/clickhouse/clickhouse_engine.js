@@ -36,7 +36,7 @@ class ClickHouseEngine {
     const url = storedSettings.url || urlParams.get('ch_host') || 'http://localhost:8123';
     const username = storedSettings.username || urlParams.get('ch_user') || 'default';
     const password = storedSettings.password || urlParams.get('ch_password') || '';
-    this.dataFormat = storedSettings.dataFormat || 'JSONEachRow';
+    this.dataFormat = storedSettings.dataFormat || 'Arrow';
 
     if (this.dataFormat === 'Arrow') {
       console.log(`[ClickHouse Engine] Initialized with data format: Arrow (Direct Fetch)`);
