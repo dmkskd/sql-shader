@@ -2,8 +2,44 @@ import * as arrow from '@apache/arrow';
 import { SHADERS, loadShaderContent } from './dummy_shaders.js';
 
 /**
+ * @typedef {import('@apache/arrow').Table} ArrowTable
+ */
+
+/**
+ * @interface Engine
+ * @description Defines the contract for a database engine that can be used by PixelQL.
+ * This ensures that the main application can interact with any backend in a consistent way.
+ */
+/**
+ * @function
+ * @name Engine#initialize
+ * @param {function(string): void} statusCallback - A function to report progress updates.
+ * @returns {Promise<void>}
+ */
+/**
+ * @function
+ * @name Engine#prepare
+ * @param {string} sql - The SQL query string.
+ * @returns {Promise<{query: function(...any): Promise<{table: ArrowTable, timings: object}>}>}
+ */
+/**
+ * @function
+ * @name Engine#pollEngineStats
+ * @returns {Promise<Array<object>>}
+ */
+/**
+ * @function
+ * @name Engine#profile
+ * @param {string} sql - The SQL query to profile.
+ * @param {Array<any>} params - The runtime parameters for the query.
+ * @param {function(string): void} statusCallback - A function to report profiling progress.
+ * @returns {Promise<object>} - Engine-specific profiling data.
+ */
+
+/**
  * Implements the Engine interface for a minimal "dummy" engine.
  * This serves as a template and a test for the application's abstractions.
+ * @implements {Engine}
  */
 class DummyEngine {
   constructor() {
@@ -24,7 +60,7 @@ class DummyEngine {
   /**
    * A minimal prepare function that does no validation.
    * @param {string} sql The SQL query string.
-   * @returns {Promise<{query: function(...any): Promise<{table: import('@apache/arrow').Table, timings: object}>}>}
+   * @returns {Promise<{query: function(...any): Promise<{table: ArrowTable, timings: object}>}>}
    */
   async prepare(sql) {
     return {
@@ -35,7 +71,7 @@ class DummyEngine {
   /**
    * "Executes" a query by returning a static, pre-defined Arrow table.
    * This always returns a single grey pixel, regardless of the input SQL.
-   * @returns {Promise<{table: import('@apache/arrow').Table, timings: object}>}
+   * @returns {Promise<{table: ArrowTable, timings: object}>}
    */
   async executeQuery(sql, params) {
     // Create a 1x1 pixel table with a grey color.
