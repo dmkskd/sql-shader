@@ -58,6 +58,7 @@ Your `my_new_engine_engine.js` file must export a constant named `engine` which 
 
 *   **Purpose**: To run the actual query with runtime parameters and return the pixel data. This method is typically called by the function returned from `prepare`.
 *   **`params`**: An array of uniform values: `[width, height, iTime, mx, my]`.
+    *   `mx` and `my` represent the mouse's X and Y coordinates, scaled to the shader's internal pixel space (e.g., from `0` to `width-1` and `0` to `height-1`).
 *   **Return Value**: `Promise<{table: ArrowTable, timings: object}>`. The `table` must be an Apache Arrow Table with `r`, `g`, and `b` columns (Float32). The `timings` object can provide a breakdown of execution time (e.g., `query`, `network`, `processing`).
 
 ---
@@ -108,10 +109,15 @@ Your `my_new_engine_engine.js` file must export a constant named `engine` which 
 
 ## 3. The Shaders File (`my_new_engine_shaders.js`)
 
-This file is responsible for defining the shaders available for your engine. It must export two things:
+This file is responsible for defining the shaders available for your engine. To simplify this process and avoid code duplication, you should use the `ShaderLoader` utility class.
 
-1.  **`SHADERS`**: An array of shader objects. Each object should have a `name` and either the full `sql` content or a `path` to the `.sql` file.
-2.  **`loadShaderContent(shader)`**: An async function that takes a shader object and returns its SQL content. If the shader is file-based, this function should use `fetch` to load it.
+Your shaders file should do the following:
+1.  Import `ShaderLoader` from `../shader_loader.js`.
+2.  Define an array of paths to your engine's `.sql` files.
+3.  Instantiate the `ShaderLoader` with this array.
+4.  Export `SHADERS` and `loadShaderContent` from the loader instance.
+
+See `engines/duckdb_wasm/duckdb_wasm_shaders.js` for a clear example.
 
 ## 4. Integration
 
