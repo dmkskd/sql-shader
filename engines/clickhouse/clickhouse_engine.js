@@ -272,11 +272,6 @@ class ClickHouseEngine {
         perCoreData.cores.push({ id: coreId, breakdown: coreUsage[coreId] });
       });
 
-      // Add a debug log to inspect the calculated per-core data before it's sent to the UI.
-      if (perCoreData.cores.length > 0) {
-        console.log('[Debug] Per-Core CPU Data:', JSON.parse(JSON.stringify(perCoreData.cores)));
-      }
-
       if (perCoreData.cores.length > 0) finalStats.push(perCoreData);
 
       return finalStats.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
