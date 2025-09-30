@@ -29,6 +29,7 @@ const main = async (engine) => {
   let isPerfVisible = true;
   let statsPollIntervalId = null;
   let isAutocompileOn = true;
+  let isOverlayModeOn = false;
 
   const iMouse = { x: resolution.width / 2, y: resolution.height / 2 };
 
@@ -248,6 +249,17 @@ const main = async (engine) => {
         },
         onCompile: () => {
             shaderManager.updateShader(false, stats);
+        },
+        onToggleOverlay: () => {
+            isOverlayModeOn = !isOverlayModeOn;
+            const toggleButton = document.getElementById('overlay-toggle-button');
+            dom.editorPane.classList.toggle('overlay-mode', isOverlayModeOn);
+            if (isOverlayModeOn) {
+                toggleButton.innerHTML = 'Overlay: <span class="perf-status perf-status-on">ON</span>';
+            } else {
+                toggleButton.innerHTML = 'Overlay: <span class="perf-status perf-status-off">OFF</span>';
+            }
+            editor.refresh(); // Refresh editor to adapt to new layout
         },
     });
 
@@ -533,6 +545,7 @@ const initializeEngine = async () => {
         onShare: () => {},
         onTogglePerf: () => {},
         onToggleAutocompile: () => {},
+        onToggleOverlay: () => {},
         onCompile: () => {},
     });
 

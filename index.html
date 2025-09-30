@@ -164,6 +164,25 @@
         flex-grow: 1;
         overflow: hidden; /* Prevent content from overflowing */
       }
+      /* New styles for Overlay Mode */
+      .editor-pane.overlay-mode {
+        display: block; /* Disable grid layout */
+        position: relative; /* Establish stacking context */
+      }
+      .editor-pane.overlay-mode .right-pane {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(20, 20, 20, 0.8); /* Semi-transparent background */
+      }
+      .editor-pane.overlay-mode .CodeMirror {
+        background: transparent !important; /* Override theme to see canvas underneath */
+      }
+      .editor-pane.overlay-mode #resize-handle {
+        display: none; /* Hide the resizer in overlay mode */
+      }
       /* When the editor is hidden, the canvas column takes up all the space */
       .editor-pane.editor-hidden {
         grid-template-columns: 1fr;
@@ -547,7 +566,6 @@
           <select id="engine-select">
             <option value="duckdb_wasm" selected>DuckDB WASM</option>
             <option value="clickhouse">ClickHouse</option>
-            <option value="dummy">Dummy</option>
           </select>
           <button id="settings-button">⚙️ Settings</button>
           <button id="clear-state-button" title="Clear all saved settings and shaders from your browser's local storage">⚠️ Clear State</button>
@@ -576,9 +594,10 @@
         </div>
         <div class="control-group">
           <button id="toggle-editor-button" title="Toggle SQL Editor Visibility">Editor: <span class="perf-status perf-status-on">ON</span></button>
+          <button id="overlay-toggle-button" title="Toggle Editor Overlay Mode">Overlay: <span class="perf-status perf-status-off">OFF</span></button>
           <button id="autocompile-toggle-button" title="Toggle autocompilation on editor change">Autocompile: <span class="perf-status perf-status-on">ON</span></button>
           <select id="effect-select" title="Select an editor effect">
-            <option value="none">Editor Effect: None</option>
+            <option value="none">Effect: None</option>
             <option value="crt-effect">CRT</option>
             <option value="vhs-effect">VHS</option>
             <option value="terminal-effect">Terminal</option>

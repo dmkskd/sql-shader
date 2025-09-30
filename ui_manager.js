@@ -113,6 +113,7 @@ export const setupUI = (callbacks) => {
         onClearState,
         onTogglePerf,
         onToggleAutocompile,
+        onToggleOverlay,
         onCompile,
         onShare,
     } = callbacks;
@@ -255,6 +256,7 @@ export const setupUI = (callbacks) => {
     // Find the button inside setupUI to ensure the DOM is ready.
     document.getElementById('toggle-perf-button').addEventListener('click', onTogglePerf);
     document.getElementById('autocompile-toggle-button').addEventListener('click', onToggleAutocompile);
+    document.getElementById('overlay-toggle-button').addEventListener('click', onToggleOverlay);
     document.getElementById('compile-button').addEventListener('click', onCompile);
     
     // --- Visual Effect Selector ---
