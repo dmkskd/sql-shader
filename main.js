@@ -253,13 +253,25 @@ const main = async (engine) => {
         onToggleOverlay: () => {
             isOverlayModeOn = !isOverlayModeOn;
             const toggleButton = document.getElementById('overlay-toggle-button');
+            const opacitySlider = document.getElementById('overlay-opacity-slider');
             dom.editorPane.classList.toggle('overlay-mode', isOverlayModeOn);
             if (isOverlayModeOn) {
                 toggleButton.innerHTML = 'Overlay: <span class="perf-status perf-status-on">ON</span>';
+                opacitySlider.style.display = 'inline-block';
+                // Apply the initial opacity value when turning the overlay on.
+                dom.editorPane.style.setProperty('--overlay-opacity', 1.1 - parseFloat(opacitySlider.value));
             } else {
                 toggleButton.innerHTML = 'Overlay: <span class="perf-status perf-status-off">OFF</span>';
+                opacitySlider.style.display = 'none';
             }
             editor.refresh(); // Refresh editor to adapt to new layout
+        },
+        onOverlayOpacityChange: (value) => {
+            // Invert the slider's value. The slider goes from 0.1 (min) to 1 (max).
+            // We want max on the slider (right) to be MINIMUM opacity, and vice-versa.
+            const invertedValue = 1.1 - parseFloat(value);
+            // Update the CSS custom property on the editor pane element
+            dom.editorPane.style.setProperty('--overlay-opacity', invertedValue);
         },
     });
 
@@ -546,6 +558,7 @@ const initializeEngine = async () => {
         onTogglePerf: () => {},
         onToggleAutocompile: () => {},
         onToggleOverlay: () => {},
+        onOverlayOpacityChange: () => {},
         onCompile: () => {},
     });
 

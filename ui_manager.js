@@ -114,6 +114,7 @@ export const setupUI = (callbacks) => {
         onTogglePerf,
         onToggleAutocompile,
         onToggleOverlay,
+        onOverlayOpacityChange,
         onCompile,
         onShare,
     } = callbacks;
@@ -257,6 +258,7 @@ export const setupUI = (callbacks) => {
     document.getElementById('toggle-perf-button').addEventListener('click', onTogglePerf);
     document.getElementById('autocompile-toggle-button').addEventListener('click', onToggleAutocompile);
     document.getElementById('overlay-toggle-button').addEventListener('click', onToggleOverlay);
+    document.getElementById('overlay-opacity-slider').addEventListener('input', (e) => onOverlayOpacityChange(e.target.value));
     document.getElementById('compile-button').addEventListener('click', onCompile);
     
     // --- Visual Effect Selector ---

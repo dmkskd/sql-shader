@@ -175,7 +175,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: rgba(20, 20, 20, 0.8); /* Semi-transparent background */
+        background-color: rgba(20, 20, 20, var(--overlay-opacity, 0.8)); /* Use CSS variable for opacity */
       }
       .editor-pane.overlay-mode .CodeMirror {
         background: transparent !important; /* Override theme to see canvas underneath */
@@ -313,6 +313,19 @@
         text-transform: uppercase;
         margin-right: 5px; /* Space between title and first control */
         font-weight: bold;
+      }
+      #overlay-opacity-slider {
+        width: 50px; /* Make the slider much smaller */
+        margin: 0 5px;
+      }
+      /* Style the slider thumb to be smaller */
+      #overlay-opacity-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        cursor: pointer;
       }
 
       /* Modal styles for the profiler */
@@ -595,6 +608,7 @@
         <div class="control-group">
           <button id="toggle-editor-button" title="Toggle SQL Editor Visibility">Editor: <span class="perf-status perf-status-on">ON</span></button>
           <button id="overlay-toggle-button" title="Toggle Editor Overlay Mode">Overlay: <span class="perf-status perf-status-off">OFF</span></button>
+          <input type="range" id="overlay-opacity-slider" min="0.1" max="1" step="0.05" value="0.85" style="display: none;" title="Overlay Opacity">
           <button id="autocompile-toggle-button" title="Toggle autocompilation on editor change">Autocompile: <span class="perf-status perf-status-on">ON</span></button>
           <select id="effect-select" title="Select an editor effect">
             <option value="none">Effect: None</option>
