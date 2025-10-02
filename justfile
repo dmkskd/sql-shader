@@ -1,0 +1,60 @@
+# Default password for the ClickHouse container. Change if needed.
+ch_password := 'your_password'
+
+# Default ports for the services. Can be overridden from the command line, e.g., `just caddy_port=8080 run`
+ch_http_port    := '8123'
+ch_tcp_port     := '9000'
+caddy_port := '8000'
+
+# The default task when running `just` is to show the help message.
+default: help
+
+# Show this help message.
+help:
+	@just --list
+
+# Starts all required services for development (ClickHouse and Caddy).
+run: start-clickhouse start-caddy
+
+# Starts the ClickHouse server in a Docker container.
+start-clickhouse:
+	@echo "Ensuring port {{ch_http_port}} is free by stopping any container using it..."
+	@docker ps -q --filter "publish={{ch_http_port}}" | xargs -r docker stop > /dev/null 2>&1 || true
+	@echo "Starting new ClickHouse container on port {{ch_http_port}}..."
+	@docker run \
+		--rm -d \
+		--name pixelql-clickhouse \
+		-p {{ch_http_port}}:8123 \
+		-p {{ch_tcp_port}}:9000 \
+		--ulimit nofile=262144:262144 \
+		-e CLICKHOUSE_PASSWORD={{ch_password}} \
+		-v "{{justfile_directory()}}/docker/clickhouse/enable_system_log_tables.xml:/etc/clickhouse-server/config.d/enable_system_log_tables.xml" \
+		-v "{{justfile_directory()}}/docker/clickhouse/enable_profiling.xml:/etc/clickhouse-server/users.d/enable_profiling.xml" \
+		clickhouse/clickhouse-server
+
+# Starts the Caddy web server in a Docker container.
+# It mounts the current directory and uses the Caddyfile for configuration.
+start-caddy:
+	@echo "Ensuring port {{caddy_port}} is free by stopping any container using it..."
+	@docker ps -q --filter "publish={{caddy_port}}" | xargs -r docker stop > /dev/null 2>&1 || true
+	@echo "Starting new Caddy web server on port {{caddy_port}}..."
+	@docker run \
+		--rm -d \
+		--name pixelql-caddy \
+		-p {{caddy_port}}:8000 \
+		-v "{{justfile_directory()}}:/srv" \
+		-v "{{justfile_directory()}}/docker/caddy/Caddyfile:/etc/caddy/Caddyfile" \
+		caddy
+
+# Stops all running services.
+stop: stop-clickhouse stop-caddy
+
+# Stops the ClickHouse container.
+stop-clickhouse:
+	@echo "Stopping any container using port {{ch_http_port}}..."
+	@docker ps -q --filter "publish={{ch_http_port}}" | xargs -r docker stop > /dev/null 2>&1 || true
+
+# Stops the Caddy web server container.
+stop-caddy:
+	@echo "Stopping any container using port {{caddy_port}}..."
+	@docker ps -q --filter "publish={{caddy_port}}" | xargs -r docker stop > /dev/null 2>&1 || true

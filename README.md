@@ -18,47 +18,51 @@ It currently supports two database engines:
 *   **Configurable Environment**: Adjustable resolution, zoom, and connection settings.
 *   **Persistent State**: Your last-used shader and connection settings are saved in `localStorage`.
 
-## Local Development Setup
+## Quick Start (Recommended)
 
-This is a pure front-end application. You do not need `npm` or any build tools to run it. You only need a simple local web server.
+This project uses `just` as a command runner to simplify starting the required services (Caddy web server and ClickHouse).
 
-1.  **Clone the repository:**
+1.  **Prerequisites**:
+    *   Install Docker.
+    *   Install `just`.
+
+2.  **Configure**:
+    *   Open the `justfile` in the project root.
+    *   Set the `ch_password` variable to your desired ClickHouse password.
+
+3.  **Run**:
+    *   Start all services (Caddy web server and ClickHouse):
+        ```bash
+        just run
+        ```
+    *   Open your browser to `http://localhost:8000`.
+
+4.  **Stop**:
+    *   To stop all services:
+        ```bash
+        just stop
+        ```
+
+5.  **Help**:
+    *   To see all available commands and their descriptions:
+        ```bash
+        just help
+        ```
+
+## Manual Development Setup
+
+If you prefer not to use `just`, you can run the services manually.
+
+1.  **Run a local web server.**
+    A simple way is to use Python's built-in server. Note that this will not provide the necessary COI headers for DuckDB-WASM multi-threading.
     ```bash
-    git clone <repository-url>
-    cd sql-shader
+    python3 -m http.server 8000
     ```
 
-2.  **Run a local web server.**
-    A simple way is to use Python's built-in server.
-    ```bash
-    python3 -m http.server
-    ```
-    Alternatively, you can use other tools like `npx serve`.
-
-3.  **Open your browser** to `http://localhost:8000`.
-
-### Engine-Specific Setup
-
-#### DuckDB-WASM
-
-No additional setup is required. The DuckDB engine runs entirely in the browser. The necessary libraries are loaded from a CDN.
-
-#### ClickHouse
-
-To use the ClickHouse engine, you need a running ClickHouse server that is accessible from your browser.
-
-1.  **Run ClickHouse using Docker (Recommended):**
-    This command will start a ClickHouse server and expose its HTTP interface on port 8123.
-    The `-e CLICKHOUSE_PASSWORD=your_password` flag is necessary for recent versions of the image to enable network access for the `default` user.
-    Replace `your_password` with a password of your choice.
+2.  **Run ClickHouse using Docker:**
     ```bash
     docker run -p 8123:8123  --ulimit nofile=262144:262144 -e CLICKHOUSE_PASSWORD=your_password clickhouse/clickhouse-server
     ```
-
-2.  **Configure Connection in the App:**
-    *   Select "ClickHouse" from the engine dropdown in the application header.
-    *   If your server is not at the default `http://localhost:8123`, click the "Settings" button to configure the URL, username, and password.
-    *   The settings are saved to `localStorage` and will persist across sessions.
 
 ## Architecture Overview
 

@@ -1,0 +1,18 @@
+<!-- save this as enable_profiling.xml -->
+<clickhouse>
+  <profiles>
+    <default>
+      <!-- Allow changing query_profiler_cpu_time_period_ns -->
+      <query_profiler_cpu_time_period_ns>999999</query_profiler_cpu_time_period_ns>
+      <query_profiler_real_time_period_ns>999998</query_profiler_real_time_period_ns>
+      <constraints>
+        <query_profiler_cpu_time_period_ns>
+          <readonly>0</readonly>
+        </query_profiler_cpu_time_period_ns>
+        <query_profiler_real_time_period_ns>
+          <readonly>1</readonly>
+        </query_profiler_real_time_period_ns>
+      </constraints>
+    </default>
+  </profiles>
+</clickhouse>
