@@ -1,0 +1,17 @@
+[
+  {
+    "id": "duckdb_wasm",
+    "name": "DuckDB WASM",
+    "requiresConfiguration": false
+  },
+  {
+    "id": "clickhouse",
+    "name": "ClickHouse",
+    "requiresConfiguration": true
+  },
+  {
+    "id": "dummy",
+    "name": "Dummy",
+    "requiresConfiguration": false
+  }
+]

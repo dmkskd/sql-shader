@@ -1,4 +1,4 @@
-import { dom, setupUI, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal, updateProfileButtonText } from './ui_manager.js';
+import { dom, setupUI, updateUICallbacks, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal, updateProfileButtonText } from './ui_manager.js';
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 
@@ -17,6 +17,29 @@ const STORAGE_PREFIX = 'pixelql.';
 const main = async (engine) => {
   activeEngine = engine; // Store the reference to the initialized engine.
   dom.versionSpan.textContent = `v${APP_VERSION}`; // Mermaid is now initialized in index.html
+
+  // --- Generic First-Time Configuration Check ---
+  // This logic is now inside main(), ensuring all UI callbacks are set up
+  // before we potentially open the settings modal.
+  const engineMeta = (await (await fetch('./engines/engines.json')).json()).find(e => e.id === dom.engineSelect.value);
+  if (engineMeta && engineMeta.requiresConfiguration) {
+      const hasConfig = !!localStorage.getItem(`${STORAGE_PREFIX}${dom.engineSelect.value}-settings`);
+      if (!hasConfig) {
+          console.log(`[Init] First-time use of '${dom.engineSelect.value}'. Opening settings panel...`);
+          openSettingsModal(activeEngine);
+          // We don't return here. We let the app initialize fully so the modal is interactive.
+          // The user is expected to save and reload.
+      }
+  }
+
+  // --- Set up UI with real callbacks ---
+  // This is now the single source of truth for setting up UI interaction.
+  // It's called after the engine is loaded and all state is ready.
+  setupUI({
+    onOpenSettings: () => {
+        openSettingsModal(activeEngine);
+    },
+  });
 
   updateInitStatus('Initializing...');
 
@@ -149,7 +172,7 @@ const main = async (engine) => {
         }
     };
 
-    setupUI({
+    updateUICallbacks({ // This updates the callbacks for the already-set-up UI
         onShaderSelect: (index) => shaderManager.loadShader(index, RESOLUTIONS, ZOOM_LEVELS),
         onResolutionChange: updateCanvasSizeAndResolution,
         onZoomChange: updateCanvasSizeAndResolution,
@@ -273,6 +296,20 @@ const main = async (engine) => {
             // Update the CSS custom property on the editor pane element
             dom.editorPane.style.setProperty('--overlay-opacity', invertedValue);
         },
+        onSaveSettings: () => {
+            // Save general settings
+            const generalSettings = {
+                pollInterval: document.getElementById('stats-poll-interval').value,
+            };
+            localStorage.setItem('pixelql.general-settings', JSON.stringify(generalSettings));
+
+            if (activeEngine && typeof activeEngine.saveSettings === 'function') {
+                activeEngine.saveSettings();
+            }
+            // Hide the modal before reloading for a cleaner UX.
+            dom.settingsModal.style.display = 'none';
+            window.location.reload();
+        }
     });
 
     const SHADERS = shaderManager.getShaders();
@@ -338,7 +375,7 @@ const main = async (engine) => {
     // is compiled against the new engine, causing an error.
     await shaderManager.loadShader(dom.shaderSelect.value, RESOLUTIONS, ZOOM_LEVELS);
 
-    console.log('[Init] Initializing database engine...');
+    console.log('[Init] Initializing database engine connection...');
     updateInitStatus('Compiling initial shader...'); // Pass true for the initial compile
     await engine.initialize(updateInitStatus);
     shaderManager.engineReady = true; // Signal that the engine is now ready for use
@@ -542,27 +579,20 @@ const main = async (engine) => {
  * Dynamically loads and initializes the selected database engine.
  */
 const initializeEngine = async () => {
-    // First, set up the UI and all its event listeners to ensure the application is responsive.
-    // This is a temporary measure until the full main() function is called.
-    setupUI({
-        onShaderSelect: () => {},
-        onResolutionChange: () => {},
-        onZoomChange: () => {},
-        onProfile: () => {},
-        onPlayToggle: () => {},
-        onRestart: () => {},
-        onToggleEditor: () => {},
-        onResizeEnd: () => {},
-        onClearState: () => {},
-        onShare: () => {},
-        onTogglePerf: () => {},
-        onToggleAutocompile: () => {},
-        onToggleOverlay: () => {},
-        onOverlayOpacityChange: () => {},
-        onCompile: () => {},
+    // --- 1. Load the engine manifest ---
+    const engineManifest = await (await fetch('./engines/engines.json')).json();
+
+    // --- 2. Populate the engine dropdown from the manifest ---
+    const engineSelect = document.getElementById('engine-select');
+    engineSelect.innerHTML = ''; // Clear hardcoded options
+    engineManifest.forEach(engineMeta => {
+        const option = document.createElement('option');
+        option.value = engineMeta.id;
+        option.textContent = engineMeta.name;
+        engineSelect.appendChild(option);
     });
 
-    const engineSelect = document.getElementById('engine-select');    
+    // --- 3. Determine which engine to load ---
     const urlParams = new URLSearchParams(window.location.search);
     let selectedEngine;
 
@@ -575,16 +605,7 @@ const initializeEngine = async () => {
     // Ensure the dropdown visually matches the engine being loaded.
     engineSelect.value = selectedEngine;
 
-    // If switching to ClickHouse for the first time, show the settings modal.
-    if (selectedEngine === 'clickhouse') {
-        const hasConfiguredClickHouse = !!localStorage.getItem(`${STORAGE_PREFIX}clickhouse-settings`);
-        if (!hasConfiguredClickHouse) {
-            openSettingsModal();
-            // Stop further execution. The user will save settings and the page will reload.
-            return; 
-        }
-    }
-
+    // --- 5. Proceed with normal engine initialization ---
     try {
         console.log(`[Init] Attempting to load engine: ${selectedEngine}`);
         updateInitStatus(`Loading ${selectedEngine} engine...`);

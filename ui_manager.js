@@ -38,7 +38,7 @@ export const dom = {
     settingsButton: document.getElementById('settings-button'),
     settingsModal: document.getElementById('settings-modal'),
     settingsModalClose: document.querySelector('#settings-modal .modal-close-button'),
-    clickhouseSettings: document.getElementById('clickhouse-settings'),
+    engineSettingsContainer: document.getElementById('engine-specific-settings'),
     saveSettingsButton: document.getElementById('save-settings-button'),
     clearStateButton: document.getElementById('clear-state-button'),
     clearStateModal: document.getElementById('clear-state-modal'),
@@ -96,28 +96,19 @@ export const updateErrorPanel = (stats) => {
     }
 };
 
+/** A module-level variable to hold the callbacks. */
+let uiCallbacks = {};
+
+/** Updates the callbacks used by the UI event listeners. */
+export const updateUICallbacks = (newCallbacks) => {
+    uiCallbacks = { ...uiCallbacks, ...newCallbacks };
+};
+
 /**
  * Sets up all UI event listeners and initial states.
  */
-export const setupUI = (callbacks) => {
-    const {
-        onShaderSelect,
-        onResolutionChange,
-        onZoomChange,
-        onProfile,
-        onEditorChange,
-        onPlayToggle,
-        onRestart,
-        onToggleEditor,
-        onResizeEnd,
-        onClearState,
-        onTogglePerf,
-        onToggleAutocompile,
-        onToggleOverlay,
-        onOverlayOpacityChange,
-        onCompile,
-        onShare,
-    } = callbacks;
+export const setupUI = (initialCallbacks) => {
+    updateUICallbacks(initialCallbacks);
 
     // Profiler Modal
     const closeModal = () => {
@@ -148,67 +139,25 @@ export const setupUI = (callbacks) => {
             closeModal();
         }
     });
-    dom.profileButton.addEventListener('click', onProfile);
+    dom.profileButton.addEventListener('click', () => uiCallbacks.onProfile && uiCallbacks.onProfile());
 
-    // Set the initial name for the graph plan tab based on the selected engine.
-    const graphPlanTab = document.querySelector('.profiler-tab[data-tab="pipeline-plan"]');
-    if (graphPlanTab && dom.engineSelect.value === 'duckdb_wasm') {
-        graphPlanTab.textContent = 'Graph Plan';
-    }
-
-    // --- Profiler Tabs Logic ---
-    const profilerTabs = document.querySelectorAll('.profiler-tab');
-    const profilerTabContents = document.querySelectorAll('.profiler-tab-content');
-    profilerTabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            profilerTabs.forEach(t => t.classList.remove('active'));
-            profilerTabContents.forEach(c => c.classList.remove('active'));
-
-            tab.classList.add('active');
-            const contentId = `profile-content-${tab.dataset.tab}`; // e.g., profile-content-raw-plan
-            document.getElementById(contentId).classList.add('active');
-
-            // Show/hide zoom controls based on tab
-            const isGraphView = tab.dataset.tab === 'pipeline-plan' || tab.dataset.tab === 'graph-plan' || tab.dataset.tab === 'graph';
-            const isStructuredView = tab.dataset.tab === 'structured-plan' || tab.dataset.tab === 'structured';
-
-            // Visibility for Mermaid graph zoom controls
-            const showZoom = isGraphView; // Only for DuckDB graph view for now
-            dom.zoomInButton.style.display = showZoom ? 'inline-block' : 'none';
-            dom.zoomOutButton.style.display = showZoom ? 'inline-block' : 'none';
-            dom.zoomResetButton.style.display = showZoom ? 'inline-block' : 'none';
-            dom.switchGraphDirectionButton.style.display = isGraphView ? 'inline-block' : 'none';
-
-            // Visibility for Tree view controls
-            dom.expandAllButton.style.display = isStructuredView ? 'inline-block' : 'none';
-            dom.collapseAllButton.style.display = isStructuredView ? 'inline-block' : 'none';
-        });
+    const closeSettingsModal = () => {
+        console.log('[UI Event] Closing settings modal.');
+        dom.settingsModal.style.display = 'none';
+    };
+    dom.settingsButton.addEventListener('click', () => {
+        console.log('[UI Event] Settings button clicked.');
+        uiCallbacks.onOpenSettings && uiCallbacks.onOpenSettings();
     });
-
-    const closeSettingsModal = () => dom.settingsModal.style.display = 'none';
-    dom.settingsButton.addEventListener('click', openSettingsModal);
     dom.settingsModalClose.addEventListener('click', closeSettingsModal);
     dom.settingsModal.addEventListener('click', (e) => {
         if (e.target === dom.settingsModal) closeSettingsModal();
     });
+
+    // The onSaveSettings callback is now responsible for all saving logic.
     dom.saveSettingsButton.addEventListener('click', () => {
-        // Save general settings
-        const generalSettings = {
-            pollInterval: document.getElementById('stats-poll-interval').value,
-        };
-        localStorage.setItem('pixelql.general-settings', JSON.stringify(generalSettings));
-
-        // Save ClickHouse-specific settings
-        const chSettings = {
-            url: document.getElementById('ch-url').value,
-            username: document.getElementById('ch-user').value,
-            password: document.getElementById('ch-password').value,
-            dataFormat: document.getElementById('ch-data-format').value,
-            logFlushWait: document.getElementById('ch-log-flush-wait').value,
-        };
-        localStorage.setItem('pixelql.clickhouse-settings', JSON.stringify(chSettings));
-
-        window.location.reload();
+        console.log('[UI Event] Save Settings button clicked.');
+        uiCallbacks.onSaveSettings && uiCallbacks.onSaveSettings();
     });
 
     // --- Clear State Modal Logic ---
@@ -223,12 +172,12 @@ export const setupUI = (callbacks) => {
     });
     dom.confirmClearStateButton.addEventListener('click', () => {
         closeClearStateModal();
-        onClearState(); // Execute the callback to clear state
+        uiCallbacks.onClearState && uiCallbacks.onClearState(); // Execute the callback to clear state
     });
 
     // --- Share Modal Logic ---
     const openShareModal = () => {
-        const shareUrl = onShare(); // Get the URL from the main logic
+        const shareUrl = uiCallbacks.onShare ? uiCallbacks.onShare() : ''; // Get the URL from the main logic
         dom.shareLinkInput.value = shareUrl;
         dom.shareModal.style.display = 'flex';
         dom.shareLinkInput.select();
@@ -248,18 +197,19 @@ export const setupUI = (callbacks) => {
     });
 
     // Main Controls
-    dom.shaderSelect.addEventListener('change', () => onShaderSelect(dom.shaderSelect.value));
-    dom.resolutionSelect.addEventListener('change', onResolutionChange);
-    dom.zoomSelect.addEventListener('change', onZoomChange);
-    dom.playToggleButton.addEventListener('click', onPlayToggle);
-    dom.restartButton.addEventListener('click', onRestart);
-    dom.toggleEditorButton.addEventListener('click', onToggleEditor);
+    dom.shaderSelect.addEventListener('change', () => uiCallbacks.onShaderSelect && uiCallbacks.onShaderSelect(dom.shaderSelect.value));
+    dom.resolutionSelect.addEventListener('change', () => uiCallbacks.onResolutionChange && uiCallbacks.onResolutionChange());
+    dom.zoomSelect.addEventListener('change', () => uiCallbacks.onZoomChange && uiCallbacks.onZoomChange());
+    dom.playToggleButton.addEventListener('click', () => uiCallbacks.onPlayToggle && uiCallbacks.onPlayToggle());
+    dom.restartButton.addEventListener('click', () => uiCallbacks.onRestart && uiCallbacks.onRestart());
+    dom.toggleEditorButton.addEventListener('click', () => uiCallbacks.onToggleEditor && uiCallbacks.onToggleEditor());
     // Find the button inside setupUI to ensure the DOM is ready.
-    document.getElementById('toggle-perf-button').addEventListener('click', onTogglePerf);
-    document.getElementById('autocompile-toggle-button').addEventListener('click', onToggleAutocompile);
-    document.getElementById('overlay-toggle-button').addEventListener('click', onToggleOverlay);
-    document.getElementById('overlay-opacity-slider').addEventListener('input', (e) => onOverlayOpacityChange(e.target.value));
-    document.getElementById('compile-button').addEventListener('click', onCompile);
+    document.getElementById('toggle-perf-button').addEventListener('click', () => uiCallbacks.onTogglePerf && uiCallbacks.onTogglePerf());
+    document.getElementById('autocompile-toggle-button').addEventListener('click', () => uiCallbacks.onToggleAutocompile && uiCallbacks.onToggleAutocompile());
+    document.getElementById('overlay-toggle-button').addEventListener('click', () => uiCallbacks.onToggleOverlay && uiCallbacks.onToggleOverlay());
+    document.getElementById('overlay-opacity-slider').addEventListener('input', (e) => uiCallbacks.onOverlayOpacityChange && uiCallbacks.onOverlayOpacityChange(e.target.value));
+    // The compile button is now in the editor status bar, but the listener is still attached here.
+    document.getElementById('compile-button').addEventListener('click', () => uiCallbacks.onCompile && uiCallbacks.onCompile());
     
     // --- Visual Effect Selector ---
     dom.effectSelect.addEventListener('change', (e) => {
@@ -286,7 +236,7 @@ export const setupUI = (callbacks) => {
             const handleMouseUp = () => {
                 window.removeEventListener('mousemove', handleMouseMove);
                 window.removeEventListener('mouseup', handleMouseUp);
-                onResizeEnd();
+                uiCallbacks.onResizeEnd && uiCallbacks.onResizeEnd();
             };
             window.addEventListener('mousemove', handleMouseMove);
             window.addEventListener('mouseup', handleMouseUp);
@@ -296,22 +246,27 @@ export const setupUI = (callbacks) => {
 };
 
 // Exported function to handle opening the settings modal
-export const openSettingsModal = () => {
+export const openSettingsModal = (engine) => {
     // Populate general settings
     const storedGeneralSettings = JSON.parse(localStorage.getItem('pixelql.general-settings')) || {};
     document.getElementById('stats-poll-interval').value = storedGeneralSettings.pollInterval || 250;
 
-    const selectedEngine = dom.engineSelect.value;
-    if (selectedEngine === 'clickhouse') {
-        const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
-        document.getElementById('ch-url').value = storedSettings.url || '';
-        document.getElementById('ch-user').value = storedSettings.username || '';
-        document.getElementById('ch-password').value = storedSettings.password || '';
-        document.getElementById('ch-data-format').value = storedSettings.dataFormat || 'Arrow';
-        document.getElementById('ch-log-flush-wait').value = storedSettings.logFlushWait || '1500';
-        dom.clickhouseSettings.style.display = 'block';
-    } else {
-        dom.clickhouseSettings.style.display = 'none';
+    // Clear any previous engine-specific settings
+    dom.engineSettingsContainer.innerHTML = '';
+
+    // Ask the engine for its settings UI
+    if (engine && typeof engine.getSettingsPanel === 'function') {
+        const settingsHtml = engine.getSettingsPanel();
+        dom.engineSettingsContainer.innerHTML = settingsHtml;
+
+        // Now populate the newly created fields
+        const defaults = (typeof engine.getSettingsDefaults === 'function') ? engine.getSettingsDefaults() : {};
+        const storedSettings = JSON.parse(localStorage.getItem(`pixelql.${dom.engineSelect.value}-settings`)) || {};
+
+        // Delegate population to the engine itself.
+        if (typeof engine.populateSettings === 'function') {
+            engine.populateSettings(storedSettings, defaults);
+        }
     }
     dom.settingsModal.style.display = 'flex';
 };

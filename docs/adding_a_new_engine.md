@@ -95,6 +95,28 @@ Your `my_new_engine_engine.js` file must export a constant named `engine` which 
 
 ---
 
+#### `getSettingsPanel()` (Optional)
+
+*   **Purpose**: To provide a string of HTML for the engine's settings panel.
+*   **Return Value**: An HTML string. If the engine has no settings, this method can be omitted.
+*   **Details**: This allows an engine to define its own configuration UI, which will be dynamically injected into the settings modal. This keeps the UI manager generic and avoids hardcoded logic for specific engines. See `clickhouse_engine.js` for an example.
+
+---
+
+#### `populateSettings(storedSettings, defaultSettings)` (Optional)
+
+*   **Purpose**: To populate the fields in the engine's settings panel with values from `localStorage` or the engine's defaults.
+*   **Details**: This method is called by the UI manager after the settings panel has been injected into the DOM. It is responsible for finding the elements it created (e.g., via `document.getElementById`) and setting their `value`. This keeps the UI manager completely agnostic about the structure of an engine's settings.
+
+---
+
+#### `saveSettings()` (Optional)
+
+*   **Purpose**: To read the current values from the engine's settings form (provided by `getSettingsPanel`) and save them to `localStorage`.
+*   **Details**: This method is called when the user clicks the "Save and Reload" button in the settings modal. It is responsible for retrieving the values from the DOM elements it created and persisting them. This keeps the UI manager completely agnostic about the structure and content of engine-specific settings.
+
+---
+
 #### `getShaders()`
 
 *   **Purpose**: To return the list of available example shaders for the engine.
@@ -121,17 +143,23 @@ See `engines/duckdb_wasm/duckdb_wasm_shaders.js` for a clear example.
 
 ## 4. Integration
 
-The final step is to add your new engine to the dropdown list in `index.html`.
+The final steps are to register your engine in the manifest and update the UI.
 
-```html
-<select id="engine-select">
-  <option value="duckdb_wasm">DuckDB WASM</option>
-  <option value="clickhouse">ClickHouse</option>
-  <option value="dummy">Dummy</option>
-  <option value="my_new_engine">My New Engine</option> <!-- Add your engine here -->
-</select>
+#### Add to `engines/engines.json`
+
+Add a new entry for your engine in the `engines/engines.json` file. This manifest drives the engine selection UI and initialization logic.
+
+```json
+{
+  "id": "my_new_engine",
+  "name": "My New Engine",
+  "requiresConfiguration": true
+}
 ```
+*   `id`: Must match the directory name you created.
+*   `name`: The user-friendly name for the dropdown.
+*   `requiresConfiguration`: Set to `true` if your engine needs settings (like a URL or credentials) to be configured by the user before it can initialize.
 
-The `value` attribute must exactly match the name of the directory you created in the `engines/` folder. The `main.js` script uses this value to dynamically construct the import path (e.g., `./engines/my_new_engine/my_new_engine_engine.js`).
+The `main.js` script uses the `id` to dynamically construct the import path (e.g., `./engines/my_new_engine/my_new_engine_engine.js`).
 
 By following this structure, you can integrate any SQL-based engine that can return data in the required Arrow format, leveraging the application's existing UI and rendering pipeline.

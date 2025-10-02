@@ -356,6 +356,98 @@ class ClickHouseEngine {
   async loadShaderContent(shader) {
     return loadShaderContent(shader);
   }
+
+  /**
+   * Returns the HTML content for the engine-specific settings panel.
+   * @returns {string} The HTML string for the settings UI.
+   */
+  getSettingsPanel() {
+    return `
+      <h3>ClickHouse Connection</h3>
+      <p style="font-size: 0.9em; color: #ccc; margin-top: 0; border-left: 3px solid #ffc980; padding-left: 10px;">
+        <b>Disclaimer:</b> The ClickHouse engine requires a running server instance accessible from your browser.
+        By default, PixelQL attempts to connect to <code>http://localhost:8123</code>.
+        Please see the project's <code>README.md</code> for instructions on running ClickHouse via Docker.
+      </p>
+      <div class="settings-form-group">
+        <label for="ch-url">Server URL</label>
+        <input type="text" id="ch-url" placeholder="http://localhost:8123">
+      </div>
+      <div class="settings-form-group">
+        <label for="ch-user">Username</label>
+        <input type="text" id="ch-user" placeholder="default">
+      </div>
+      <div class="settings-form-group">
+        <label for="ch-password">Password</label>
+        <input type="password" id="ch-password" placeholder="leave blank if none">
+      </div>
+      <div class="settings-form-group">
+        <label for="ch-data-format">Data Format</label>
+        <select id="ch-data-format">
+          <option value="JSONEachRow">JSONEachRow (Stable)</option>
+          <option value="Arrow" selected>Arrow (Direct Fetch)</option>
+        </select>
+        <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">'Arrow (Direct Fetch)' bypasses the client library for a raw binary transfer, offering the highest performance.</p>
+      </div>
+      <div class="settings-form-group">
+        <label for="ch-log-flush-wait">Log Flush Wait (ms)</label>
+        <input type="number" id="ch-log-flush-wait" value="1500" min="0" step="100">
+        <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">
+          Time to wait after <code>SYSTEM FLUSH LOGS</code> for logs to appear.
+          Increase this for slow systems or if profiler tabs are empty.
+        </p>
+      </div>
+    `;
+  }
+
+  /**
+   * Populates the engine's settings form with stored or default values.
+   * @param {object} storedSettings - The settings object from localStorage.
+   * @param {object} defaultSettings - The engine's default settings.
+   */
+  populateSettings(storedSettings, defaultSettings) {
+    if (document.getElementById('ch-url')) document.getElementById('ch-url').value = storedSettings.url || defaultSettings.url || '';
+    if (document.getElementById('ch-user')) document.getElementById('ch-user').value = storedSettings.username || defaultSettings.username || '';
+    if (document.getElementById('ch-password')) document.getElementById('ch-password').value = storedSettings.password || defaultSettings.password || '';
+    if (document.getElementById('ch-data-format')) document.getElementById('ch-data-format').value = storedSettings.dataFormat || defaultSettings.dataFormat || 'Arrow';
+    if (document.getElementById('ch-log-flush-wait')) document.getElementById('ch-log-flush-wait').value = storedSettings.logFlushWait || defaultSettings.logFlushWait || 1500;
+  }
 }
+
+/**
+ * The default time in milliseconds to wait for ClickHouse to flush its system logs.
+ */
+export const DEFAULT_LOG_FLUSH_WAIT = 1500;
+
+/**
+ * Returns the default settings for the ClickHouse engine.
+ * This is used to populate the settings modal with sensible defaults.
+ * @returns {object}
+ */
+ClickHouseEngine.prototype.getSettingsDefaults = function() {
+  return {
+    logFlushWait: DEFAULT_LOG_FLUSH_WAIT,
+    dataFormat: 'Arrow',
+    url: 'http://localhost:8123',
+    username: 'default',
+    password: ''
+  };
+};
+
+/**
+ * Reads the current values from the settings modal and saves them to localStorage.
+ * This is part of the engine interface, allowing the UI to be fully generic.
+ */
+ClickHouseEngine.prototype.saveSettings = function() {
+  const chSettings = {
+      url: document.getElementById('ch-url').value,
+      username: document.getElementById('ch-user').value,
+      password: document.getElementById('ch-password').value,
+      dataFormat: document.getElementById('ch-data-format').value,
+      logFlushWait: document.getElementById('ch-log-flush-wait').value,
+  };
+  localStorage.setItem('pixelql.clickhouse-settings', JSON.stringify(chSettings));
+  console.log('[ClickHouse Engine] Settings saved.');
+};
 
 export const engine = new ClickHouseEngine();

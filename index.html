@@ -577,8 +577,7 @@
         <div class="engine-selector">
           <label for="engine-select">Engine:</label>
           <select id="engine-select">
-            <option value="duckdb_wasm" selected>DuckDB WASM</option>
-            <option value="clickhouse">ClickHouse</option>
+            <!-- Options will be dynamically populated by main.js -->
           </select>
           <button id="settings-button">⚙️ Settings</button>
           <button id="clear-state-button" title="Clear all saved settings and shaders from your browser's local storage">⚠️ Clear State</button>
@@ -678,41 +677,8 @@
           </div>
         </div>
         <hr>
-        <div id="clickhouse-settings" style="display: none;">
-          <h3>ClickHouse Connection</h3>
-          <p style="font-size: 0.9em; color: #ccc; margin-top: 0; border-left: 3px solid #ffc980; padding-left: 10px;">
-            <b>Disclaimer:</b> The ClickHouse engine requires a running server instance accessible from your browser.
-            By default, PixelQL attempts to connect to <code>http://localhost:8123</code>.
-            Please see the project's <code>README.md</code> for instructions on running ClickHouse via Docker.
-          </p>
-          <div class="settings-form-group">
-            <label for="ch-url">Server URL</label>
-            <input type="text" id="ch-url" placeholder="http://localhost:8123">
-          </div>
-          <div class="settings-form-group">
-            <label for="ch-user">Username</label>
-            <input type="text" id="ch-user" placeholder="default">
-          </div>
-          <div class="settings-form-group">
-            <label for="ch-password">Password</label>
-            <input type="password" id="ch-password" placeholder="leave blank if none">
-          </div>
-          <div class="settings-form-group">
-            <label for="ch-data-format">Data Format</label>
-            <select id="ch-data-format">
-              <option value="JSONEachRow">JSONEachRow (Stable)</option>
-              <option value="Arrow" selected>Arrow (Direct Fetch)</option>
-            </select>
-            <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">'Arrow (Direct Fetch)' bypasses the client library for a raw binary transfer, offering the highest performance.</p>
-          </div>
-          <div class="settings-form-group">
-            <label for="ch-log-flush-wait">Log Flush Wait (ms)</label>
-            <input type="number" id="ch-log-flush-wait" value="1500" min="0" step="100">
-            <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">
-              Time to wait after <code>SYSTEM FLUSH LOGS</code> for logs to appear.
-              Increase this for slow systems or if profiler tabs are empty.
-            </p>
-          </div>
+        <div id="engine-specific-settings">
+          <!-- Engine-specific settings will be dynamically injected here -->
         </div>
         <button id="save-settings-button">Save and Reload</button>
       </div>
