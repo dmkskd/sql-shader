@@ -308,7 +308,7 @@ export const openSettingsModal = () => {
         document.getElementById('ch-user').value = storedSettings.username || '';
         document.getElementById('ch-password').value = storedSettings.password || '';
         document.getElementById('ch-data-format').value = storedSettings.dataFormat || 'Arrow';
-        document.getElementById('ch-log-flush-wait').value = storedSettings.logFlushWait || '7500';
+        document.getElementById('ch-log-flush-wait').value = storedSettings.logFlushWait || '1500';
         dom.clickhouseSettings.style.display = 'block';
     } else {
         dom.clickhouseSettings.style.display = 'none';
