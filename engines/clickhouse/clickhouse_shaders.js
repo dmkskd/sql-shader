@@ -1,9 +1,13 @@
 import { ShaderLoader } from '../shader_loader.js';
 
 const fileShaderPaths = [
+    './engines/clickhouse/shaders/squircle_2.sql',
     './engines/clickhouse/shaders/interactive_waves.sql',
     './engines/clickhouse/shaders/cosmic_time.sql',
-];
+    './engines/clickhouse/shaders/volumetric_fog.sql',
+    './engines/clickhouse/shaders/volumetric_fog_parallel.sql',
+    './engines/clickhouse/shaders/mandelbrot.sql',
+  ];
 
 const inlineShaders = [];
 

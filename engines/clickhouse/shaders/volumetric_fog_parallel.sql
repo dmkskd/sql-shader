@@ -19,7 +19,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width)) AS y
         FROM system.numbers
-        WHERE 1 = 1 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -32,7 +31,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + slice_height) AS y
         FROM system.numbers
-        WHERE 2 = 2 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -45,7 +43,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + (slice_height * 2)) AS y
         FROM system.numbers
-        WHERE 3 = 3 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -58,7 +55,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + (slice_height * 3)) AS y
         FROM system.numbers
-        WHERE 4 = 4 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -71,7 +67,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + (slice_height * 4)) AS y
         FROM system.numbers
-        WHERE 5 = 5 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -84,7 +79,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + (slice_height * 5)) AS y
         FROM system.numbers
-        WHERE 6 = 6 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -97,7 +91,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + (slice_height * 6)) AS y
         FROM system.numbers
-        WHERE 7 = 7 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -110,7 +103,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + (slice_height * 7)) AS y
         FROM system.numbers
-        WHERE 8 = 8 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -123,7 +115,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + (slice_height * 8)) AS y
         FROM system.numbers
-        WHERE 9 = 9 -- Unique clause to prevent caching
         LIMIT width * slice_height
     )
     
@@ -136,7 +127,6 @@ all_pixel_coords AS (
             toUInt32(number % width) AS x,
             toUInt32(intDiv(number, width) + (slice_height * 9)) AS y
         FROM system.numbers
-        WHERE 10 = 10 -- Unique clause to prevent caching
         LIMIT width * (height - (slice_height * 9))
     )
 ),

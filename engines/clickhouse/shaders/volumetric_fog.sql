@@ -1,4 +1,4 @@
--- Simplified Volumetric Fog Effect
+-- Simplified Volumetric Fog Effect - 10-way parallel
 -- @run: resolution=320x240, zoom=2
 
 WITH
@@ -8,127 +8,17 @@ WITH
     {mx:Float64} AS mx,
     {my:Float64} AS my,
     
-    intDiv(height, 10) AS slice_height,
-
 -- Generate all pixel coordinates in 10 parallel slices
 all_pixel_coords AS (
-    -- Slice 1
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width)) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 2
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + slice_height) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 3
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + (slice_height * 2)) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 4
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + (slice_height * 3)) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 5
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + (slice_height * 4)) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 6
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + (slice_height * 5)) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 7
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + (slice_height * 6)) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 8
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + (slice_height * 7)) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 9
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + (slice_height * 8)) AS y
-        FROM system.numbers
-        LIMIT width * slice_height
-    )
-    
-    UNION ALL
-    
-    -- Slice 10 (catches remainder)
-    SELECT x, y
-    FROM (
-        SELECT 
-            toUInt32(number % width) AS x,
-            toUInt32(intDiv(number, width) + (slice_height * 9)) AS y
-        FROM system.numbers
-        LIMIT width * (height - (slice_height * 9))
-    )
+
+    SELECT  y,x 
+        FROM
+        (
+            SELECT number AS y
+            FROM system.numbers LIMIT height
+        ) AS t_y
+        CROSS JOIN (SELECT number AS x FROM system.numbers LIMIT width) AS t_x
+        
 ),
 
 -- Generate pixels with ray direction (shader logic defined once)
