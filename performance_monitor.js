@@ -62,12 +62,14 @@ export class PerformanceMonitor {
      * @param {Array<{label: string, value: string, rawValue: number}>} stats - An array of stat objects.
      */
     updateEngineStats(engineName, stats) {
+        const cpuCoreTitleEl = document.getElementById('cpu-core-stats-title');
         const cpuCoreStat = stats.find(s => s.type === 'cpu_cores');
         const otherStats = stats.filter(s => s.type !== 'cpu_cores');
 
         if (cpuCoreStat) {
             document.getElementById('cpu-core-stats-container').style.display = 'flex';
-            document.getElementById('cpu-core-stats-title').title = cpuCoreStat.description;
+            cpuCoreTitleEl.title = cpuCoreStat.description;
+            cpuCoreTitleEl.textContent = `${engineName} CPU Cores`;
             this.drawCpuCoreChart(cpuCoreStat);
         } else {
             document.getElementById('cpu-core-stats-container').style.display = 'none';
@@ -82,6 +84,15 @@ export class PerformanceMonitor {
             const historyKey = `stat-${index}`;
 
             // Update history for this stat
+            // --- New Logic to Prime the History ---
+            // If this is the 'Compile Time' metric and it's the first time we're seeing it,
+            // we can "prime" its history with the initial, potentially slow, prepare time.
+            // This makes the initial compilation cost visible on the sparkline.
+            if (label === 'Compile Time' && !this.engineStatHistories.has(historyKey) && window.initialPrepareTime) {
+                history.data.push(window.initialPrepareTime);
+                // Clear the global variable after use to prevent it from being used again.
+                delete window.initialPrepareTime;
+            }
             if (!this.engineStatHistories.has(historyKey)) {
                 this.engineStatHistories.set(historyKey, { data: [], max: 0 });
             }
