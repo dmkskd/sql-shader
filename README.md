@@ -48,22 +48,6 @@ This project uses `just` as a command runner to simplify starting the required s
         ```bash
         just help
         ```
-
-## Manual Development Setup
-
-If you prefer not to use `just`, you can run the services manually.
-
-1.  **Run a local web server.**
-    A simple way is to use Python's built-in server. Note that this will not provide the necessary COI headers for DuckDB-WASM multi-threading.
-    ```bash
-    python3 -m http.server 8000
-    ```
-
-2.  **Run ClickHouse using Docker:**
-    ```bash
-    docker run -p 8123:8123  --ulimit nofile=262144:262144 -e CLICKHOUSE_PASSWORD=your_password clickhouse/clickhouse-server
-    ```
-
 ## Architecture Overview
 
 The application is built with vanilla JavaScript modules, emphasizing a clean separation of concerns.
