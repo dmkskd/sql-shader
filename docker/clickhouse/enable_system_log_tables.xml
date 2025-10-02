@@ -2,7 +2,7 @@
   <query_log>
     <database>system</database>
     <table>query_log</table>
-    <flush_interval_milliseconds>2500</flush_interval_milliseconds>
+    <flush_interval_milliseconds>1500</flush_interval_milliseconds>
     <max_size_rows>1048576</max_size_rows>
     <reserved_size_rows>8192</reserved_size_rows>
     <buffer_size_rows_flush_threshold>524288</buffer_size_rows_flush_threshold>
@@ -12,7 +12,7 @@
   <metric_log>
     <database>system</database>
     <table>metric_log</table>
-    <flush_interval_milliseconds>2500</flush_interval_milliseconds>
+    <flush_interval_milliseconds>1500</flush_interval_milliseconds>
     <collect_interval_milliseconds>1000</collect_interval_milliseconds>
     <max_size_rows>1048576</max_size_rows>
     <reserved_size_rows>8192</reserved_size_rows>
@@ -23,7 +23,7 @@
   <query_metric_log>
     <database>system</database>
     <table>query_metric_log</table>
-    <flush_interval_milliseconds>2500</flush_interval_milliseconds>
+    <flush_interval_milliseconds>1500</flush_interval_milliseconds>
     <collect_interval_milliseconds>1000</collect_interval_milliseconds>
     <max_size_rows>1048576</max_size_rows>
     <reserved_size_rows>8192</reserved_size_rows>
@@ -35,7 +35,7 @@
     <database>system</database>
     <table>part_log</table>
     <partition_by>toMonday(event_date)</partition_by>
-    <flush_interval_milliseconds>2500</flush_interval_milliseconds>
+    <flush_interval_milliseconds>1500</flush_interval_milliseconds>
     <max_size_rows>1048576</max_size_rows>
     <reserved_size_rows>8192</reserved_size_rows>
     <buffer_size_rows_flush_threshold>524288</buffer_size_rows_flush_threshold>
@@ -45,7 +45,7 @@
   <error_log>
     <database>system</database>
     <table>error_log</table>
-    <flush_interval_milliseconds>2500</flush_interval_milliseconds>
+    <flush_interval_milliseconds>1500</flush_interval_milliseconds>
     <collect_interval_milliseconds>1000</collect_interval_milliseconds>
     <max_size_rows>1048576</max_size_rows>
     <reserved_size_rows>8192</reserved_size_rows>

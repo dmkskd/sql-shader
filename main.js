@@ -225,12 +225,12 @@ const main = async (engine) => {
             const toggleButton = document.getElementById('toggle-perf-button');
             if (isPerfVisible) {
                 perfBar.style.display = 'flex';
-                toggleButton.innerHTML = 'Perf Stats: <span class="perf-status perf-status-on">ON</span>';
+                toggleButton.innerHTML = 'Stats: <span class="perf-status perf-status-on">ON</span>';
                 // Restart polling
                 startStatsPolling(engine, perfMonitor);
             } else {
                 perfBar.style.display = 'none';
-                toggleButton.innerHTML = 'Perf Stats: <span class="perf-status perf-status-off">OFF</span>';
+                toggleButton.innerHTML = 'Stats: <span class="perf-status perf-status-off">OFF</span>';
                 // Stop polling
                 if (statsPollIntervalId) clearInterval(statsPollIntervalId);
             }
@@ -299,7 +299,7 @@ const main = async (engine) => {
     ZOOM_LEVELS.forEach(level => {
         const option = document.createElement('option');
         option.value = level;
-        option.textContent = `${level}x Zoom`;
+        option.textContent = `${level}x`;
         dom.zoomSelect.appendChild(option);
     });
     dom.zoomSelect.value = 1;
