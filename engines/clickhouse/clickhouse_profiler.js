@@ -8,28 +8,6 @@ export class ClickHouseProfiler {
   constructor(engine) {
     this.engine = engine;
     this.client = engine.client; // Keep a direct reference to the client for commands
-    
-    // Initialize Mermaid with higher limits to handle complex graphs
-    mermaid.initialize({
-      maxTextSize: 50000,
-      maxEdges: 2000,
-      securityLevel: 'loose',
-      theme: 'dark',
-      themeVariables: {
-        darkMode: true,
-        primaryColor: '#ffc980',
-        primaryTextColor: '#eee',
-        primaryBorderColor: '#777',
-        lineColor: '#80bfff',
-        secondaryColor: '#333',
-        tertiaryColor: '#222'
-      },
-      flowchart: {
-        nodeSpacing: 30,
-        rankSpacing: 30,
-        curve: 'linear'
-      }
-    });
   }
 
   /**
@@ -355,7 +333,7 @@ export class ClickHouseProfiler {
         </div>
         
         <div class="export-options">
-          <button onclick="exportToSpeedscope('${data.queryId}')" class="export-btn">📊 Export to Speedscope</button>
+          <button onclick="exportToSpeedscope('${data.queryId}')" class="export-btn">📊 Open in Speedscope</button>
           <button onclick="exportToJSON('${data.queryId}')" class="export-btn">💾 Export JSON</button>
           <small>Export trace data for external analysis tools</small>
         </div>
@@ -840,6 +818,10 @@ export class ClickHouseProfiler {
                             <option value="system">By System</option>
                           </select>
                           <span style="font-size: 0.8em; color: #ffc980;"> (Experimental)</span>
+                          <div class="export-buttons" style="margin-left: 20px;">
+                            <button id="ch-speedscope-export-button" class="export-btn" title="Open CPU trace in Speedscope">Open in Speedscope</button>
+                            <button id="ch-perfetto-export-button" class="export-btn" title="Perfetto integration is temporarily disabled due to browser security policy issues." disabled style="background-color: #555; cursor: not-allowed;">Open in Perfetto</button>
+                          </div>
                        </div>`;
       }
       if (tab.id === 'call-graph') {
@@ -871,6 +853,12 @@ export class ClickHouseProfiler {
         const activeContent = mainContainer.querySelector(contentId);
         activeContent.classList.add('active');
 
+        // Show/hide the graph controls based on the active tab
+        mainContainer.querySelectorAll('.graph-controls').forEach(controls => {
+            const isForActiveTab = controls.dataset.forTab === tab.dataset.tab;
+            controls.style.display = isForActiveTab ? 'flex' : 'none';
+        });
+
       });
     });
 
@@ -889,6 +877,16 @@ export class ClickHouseProfiler {
             this.renderFlamegraph(profileData.traceLog, flamegraphContainer, groupBySelect.value);
           });
           flamegraphTab.removeEventListener('click', renderFlamegraphOnFirstClick);
+        });
+
+        // Attach listeners for the new export buttons
+        const perfettoButton = mainContainer.querySelector('#ch-perfetto-export-button');
+        if (perfettoButton) {
+          // The button is disabled, but we prevent any accidental clicks.
+          perfettoButton.addEventListener('click', (e) => e.preventDefault());
+        }
+        mainContainer.querySelector('#ch-speedscope-export-button').addEventListener('click', () => {
+          this.exportTraceToSpeedscope(profileData.traceLog, profileData.queryLog?.query_id || 'unknown-query');
         });
       };
       flamegraphTab.addEventListener('click', renderFlamegraphOnFirstClick);
@@ -1406,6 +1404,9 @@ export class ClickHouseProfiler {
         }
     }
 
+    // Log the size of the generated graph definition for debugging.
+    console.log(`[Profiler] Generated Call Graph Mermaid syntax size: ${mermaidSyntax.length} characters.`);
+
     try {
       const { svg } = await mermaid.render('ch-call-graph', mermaidSyntax);
       container.innerHTML = svg;
@@ -1534,5 +1535,131 @@ export class ClickHouseProfiler {
       }
     });
     return mermaidString;
+  }
+
+  /**
+   * Converts ClickHouse trace_log data to Perfetto JSON format and opens it in the Perfetto UI.
+   * @param {Array<object>} traceLog The data from system.trace_log.
+   * @param {string} queryId The ID of the query being profiled.
+   */
+  exportTraceToPerfetto(traceLog, queryId) {
+    if (!traceLog || traceLog.length === 0) {
+      alert('No trace data available to export.');
+      return;
+    }
+
+    const frameMap = new Map();
+    const callstackMap = new Map();
+    const stackSamples = [];
+    let frameIdCounter = 0;
+    let callstackIdCounter = 0;
+    let currentTimeNs = 0;
+
+    traceLog.forEach(sample => {
+      const frameIds = sample.trace.map(funcName => {
+        if (!frameMap.has(funcName)) {
+          frameMap.set(funcName, { id: frameIdCounter++, name: funcName });
+        }
+        return frameMap.get(funcName).id;
+      });
+
+      const callstackKey = frameIds.join(',');
+      if (!callstackMap.has(callstackKey)) {
+        // CRITICAL: Perfetto expects the stack from root to leaf.
+        // The trace_log from ClickHouse is leaf to root, so we must reverse it.
+        const reversedFrameIds = [...frameIds].reverse();
+        callstackMap.set(callstackKey, { id: callstackIdCounter++, frame_ids: reversedFrameIds });
+      }
+      const callstackId = callstackMap.get(callstackKey).id;
+
+      // Add a sample for each count in the value
+      for (let i = 0; i < sample.value; i++) {
+        stackSamples.push({
+          callstack_id: callstackId,
+          ts: currentTimeNs,
+          utid: 1 // Use a single thread ID
+        });
+        currentTimeNs += 1000000; // Assume 1ms per sample
+      }
+    });
+
+    const perfettoData = {
+      displayTimeUnit: 'ns',
+      // The stackProfile data must be wrapped in a traceEvents array as a metadata event.
+      traceEvents: [
+        {
+          name: 'stack_profile',
+          ph: 'M', // Metadata event
+          pid: 1,
+          tid: 1, // This thread ID is required by the Perfetto UI.
+          args: {
+            name: `ClickHouse Query: ${queryId}`,
+            stack_profile: {
+              frame: Array.from(frameMap.values()),
+              callstack: Array.from(callstackMap.values()),
+              stack_sample: stackSamples
+            }
+          }
+        }
+      ]
+    };
+
+    const blob = new Blob([JSON.stringify(perfettoData)], { type: 'application/json' });
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      // The data URL must be encoded to be safely passed as a URL parameter.
+      const encodedDataUrl = encodeURIComponent(e.target.result);
+      const url = `https://ui.perfetto.dev/#!/?url=${encodedDataUrl}`;
+      window.open(url, '_blank');
+    };
+    reader.readAsDataURL(blob);
+  }
+
+  /**
+   * Converts ClickHouse trace_log data to Speedscope's file format and triggers a download.
+   * @param {Array<object>} traceLog The data from system.trace_log.
+   * @param {string} queryId The ID of the query being profiled.
+   */
+  exportTraceToSpeedscope(traceLog, queryId) {
+    if (!traceLog || traceLog.length === 0) {
+      alert('No trace data available to export.');
+      return;
+    }
+
+    const frames = [];
+    const frameMap = new Map();
+    const samples = []; // This will be an array of stack arrays
+    const weights = []; // This will be an array of numbers (sample counts)
+    let totalWeight = 0;
+
+    traceLog.forEach(sample => {
+      const stackFrameIndices = sample.trace.map(fullName => {
+        if (!frameMap.has(fullName)) {
+          frameMap.set(fullName, frames.length);
+          frames.push({ name: this.simplifyFunctionName(fullName) });
+        }
+        return frameMap.get(fullName);
+      }).reverse(); // Speedscope expects stack from root (bottom) to leaf (top)
+
+      samples.push(stackFrameIndices);
+      weights.push(sample.value); // The weight is the sample count from trace_log
+      totalWeight += sample.value;
+    });
+
+    const speedscopeData = {
+      '$schema': 'https://www.speedscope.app/file-format-schema.json',
+      profiles: [{ type: 'sampled', name: `ClickHouse Query: ${queryId}`, unit: 'milliseconds', startValue: 0, endValue: totalWeight, samples, weights }],
+      shared: { frames }
+    };
+
+    // Convert the JSON to a base64 data URL and open in Speedscope directly.
+    const jsonString = JSON.stringify(speedscopeData);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const url = `https://www.speedscope.app/#profileURL=${encodeURIComponent(e.target.result)}`;
+      window.open(url, '_blank');
+    };
+    reader.readAsDataURL(blob);
   }
 }

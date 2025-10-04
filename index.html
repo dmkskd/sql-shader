@@ -3,8 +3,6 @@
   <head>
     <meta charset="utf-8" />
     <title>PixelQL</title>
-    <!-- This script enables SharedArrayBuffer, which is required for DuckDB-WASM. It must be served from the same origin. -->
-    <script src="coi-serviceworker.js"></script>
     <!-- CodeMirror for syntax highlighting (from CDN) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
@@ -421,6 +419,22 @@
       }
       .inner-tab-content { display: none; }
       .inner-tab-content.active { display: block; }
+      #profile-container pre {
+      /* --- Export Button Styles --- */
+      .export-buttons {
+        display: inline-flex;
+        gap: 10px;
+      }
+      .export-btn {
+        padding: 4px 10px;
+        font-size: 0.9em;
+        background-color: #0066cc;
+        color: white;
+        border: none;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      .export-btn:hover { background: #0088ff; }
       #profile-container pre {
         white-space: pre; /* Preserve formatting from EXPLAIN ANALYZE */
         font-size: 12px; /* Make text a bit smaller to fit more */
