@@ -8,6 +8,28 @@ export class ClickHouseProfiler {
   constructor(engine) {
     this.engine = engine;
     this.client = engine.client; // Keep a direct reference to the client for commands
+    
+    // Initialize Mermaid with higher limits to handle complex graphs
+    mermaid.initialize({
+      maxTextSize: 50000,
+      maxEdges: 2000,
+      securityLevel: 'loose',
+      theme: 'dark',
+      themeVariables: {
+        darkMode: true,
+        primaryColor: '#ffc980',
+        primaryTextColor: '#eee',
+        primaryBorderColor: '#777',
+        lineColor: '#80bfff',
+        secondaryColor: '#333',
+        tertiaryColor: '#222'
+      },
+      flowchart: {
+        nodeSpacing: 30,
+        rankSpacing: 30,
+        curve: 'linear'
+      }
+    });
   }
 
   /**
@@ -21,7 +43,8 @@ export class ClickHouseProfiler {
     // Use the provided status callback, or a no-op function if none is given.
     statusCallback('Profiling...'); // Initial message
     const cleanedSql = sql.replace(/{[^}]+}/g, '1');
-    const queryId = `pixelql-${Date.now()}`;
+    // Try using a standard UUID format instead of custom query_id
+    const queryId = `${crypto.randomUUID()}`;
     let profileData = {};
 
     // 1. Get EXPLAIN PIPELINE graph
@@ -32,7 +55,6 @@ export class ClickHouseProfiler {
       const graphRows = await graphResultSet.json();
       profileData.pipelineGraph = graphRows.map(row => row.explain).join('\n');
     } catch (e) {
-      console.error('Failed to get EXPLAIN PIPELINE graph:', e);
       profileData.pipelineGraph = `Error: ${e.message}`;
     }
 
@@ -44,11 +66,12 @@ export class ClickHouseProfiler {
       const actionsRows = await actionsResultSet.json();
       profileData.actionsPlan = actionsRows.map(row => row.explain).join('\n');
     } catch (e) {
-      console.error('Failed to get EXPLAIN actions/indexes:', e);
       profileData.actionsPlan = `Error: ${e.message}`;
     }
 
-    // 3. Execute the actual query and fetch logs
+    // 3. OpenTelemetry data will be collected after query execution
+
+    // 4. Execute the actual query and fetch logs
     let finalSql = sql
       .replace('{width:UInt32}', params[0])
       .replace('{height:UInt32}', params[1])
@@ -56,27 +79,26 @@ export class ClickHouseProfiler {
       .replace('{mx:Float64}', params[3])
       .replace('{my:Float64}', params[4]);
 
+    // No need to append SETTINGS - OpenTelemetry is configured at client level
+
     statusCallback('Profiling: Executing...');
 
     try {
-      // Execute the query. We rely on the server-side user profile to have the
-      // correct profiling settings enabled, but we also explicitly enable logging.
+      // Execute the shader query - OpenTelemetry is configured at client level
       await this.client.exec({
         query: finalSql,
         query_id: queryId,
         clickhouse_settings: {
+          // CRITICAL: This setting must be a string "1.0" to be correctly interpreted by the server via HTTP.
+          opentelemetry_start_trace_probability: '1.0',
           log_queries: 1,
-        },
-        // We don't need the output, just for the query to run and be logged.
-        // The exec method is used to avoid the client adding its own query_id.
+        }
       });
     } catch (e) {
       // If the query fails, we might still have received logs before the error.
       if (e.response && e.response.logs) {
         profileData.serverTextLog = e.response.logs;
-        console.log(`[Debug] Captured ${profileData.serverTextLog.length} server text log entries from a failed query.`);
       }
-      console.warn('Shader query failed during profiling, but attempting to fetch logs anyway.', e);
     }
 
     // Force ClickHouse to flush its log buffers to the system tables.
@@ -86,12 +108,8 @@ export class ClickHouseProfiler {
     statusCallback(`Profiling: Flushing logs (waiting ${waitDuration}ms)...`);
     try {
       await this.client.command({ query: 'SYSTEM FLUSH LOGS' });
-      // Read the configurable wait duration from settings, with a safe default.
-      console.log(`[Debug] Waiting for ${waitDuration}ms to ensure all server logs are flushed...`);
       await new Promise(resolve => setTimeout(resolve, waitDuration));
-      console.log('[engine.tracing] Flushed system logs successfully.');
     } catch (e) {
-      console.warn('Failed to execute SYSTEM FLUSH LOGS, falling back to a timeout. This might happen due to user permissions.', e);
       await new Promise(resolve => setTimeout(resolve, 500)); // Use a slightly longer fallback timeout
     }
 
@@ -106,12 +124,10 @@ export class ClickHouseProfiler {
         // Attempt to fetch query_log if we don't have it yet
         if (!profileData.queryLog) {
           const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
-          console.log("[Profiler] Executing query for 'Query Summary' and 'Events' tabs:", queryLogQuery);
           const queryLogResultSet = await this.client.query({ query: queryLogQuery, format: 'JSONEachRow' });
           const queryLogData = await queryLogResultSet.json();
           if (queryLogData.length > 0) {
             profileData.queryLog = queryLogData[0];
-            console.log(`[Profiler] Found data for 'Query Summary' and 'Events' tabs in system.query_log after ${i + 1} attempt(s).`);
           }
         }
 
@@ -123,26 +139,22 @@ export class ClickHouseProfiler {
             WHERE query_id = '${queryId}' AND trace_type = 'CPU'
             GROUP BY trace
           `;
-          console.log('[Profiler] Executing CPU Trace (FlameGraph) query:', traceQuery.trim());
           const traceResultSet = await this.client.query({
             query: traceQuery, format: 'JSONEachRow', clickhouse_settings: { allow_introspection_functions: 1 }
           });
           const resolvedTraces = await traceResultSet.json();
           if (resolvedTraces.length > 0) {
             profileData.traceLog = resolvedTraces.map(row => ({ trace: row.stack.split(';'), value: row.value }));
-            console.log(`[Profiler] Found CPU Trace data for FlameGraph in system.trace_log after ${i + 1} attempt(s).`);
           }
         }
 
         // Attempt to fetch server logs from system.text_log if we don't have them yet
         if (!profileData.serverTextLog || profileData.serverTextLog.length === 0) {
           const serverLogQuery = `SELECT event_time_microseconds, logger_name as source, thread_name, thread_id, level, message FROM system.text_log WHERE query_id = '${queryId}' ORDER BY event_time_microseconds`;
-          console.log('[Profiler] Executing Server Text Log (Trace Log tab) query:', serverLogQuery);
           const serverLogResultSet = await this.client.query({ query: serverLogQuery, format: 'JSONEachRow' });
           const serverLogData = await serverLogResultSet.json();
           if (serverLogData.length > 0) {
             profileData.serverTextLog = serverLogData;
-            console.log(`[Profiler] Found Server Text Log data for the 'Trace Log' tab in system.text_log after ${i + 1} attempt(s).`);
           }
         }
 
@@ -157,17 +169,429 @@ export class ClickHouseProfiler {
         await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
     } catch (e) {
-      console.error('Failed during log polling:', e);
+      // Errors during polling are not fatal, as some logs might be missing.
     }
 
-    // Add final status logging after polling is complete.
-    console.log(`[Profiler] Polling finished. Found Query Summary data: ${!!profileData.queryLog}`);
-    console.log(`[Profiler] Polling finished. Found Server Text Log entries (for 'Trace Log' tab): ${profileData.serverTextLog ? profileData.serverTextLog.length : 0}`);
-    console.log(`[Profiler] Polling finished. Found CPU Trace entries (for FlameGraph): ${profileData.traceLog ? profileData.traceLog.length : 0}`);
-
-    statusCallback('Profiling: Rendering...');
-    console.log('[engine.profile] Profiling data collection complete.');
+    // 5. Collect OpenTelemetry tracing data AFTER query execution
+    statusCallback('Profiling: OpenTelemetry...');
+    try {
+      profileData.openTelemetry = await this.collectOpenTelemetryTracing(queryId);
+    } catch (e) {
+      profileData.openTelemetry = { 
+        error: `OpenTelemetry collection failed: ${e.message}`,
+        note: "OpenTelemetry tracing may not be enabled in ClickHouse configuration"
+      };
+    }
     return profileData;
+  }
+
+  /**
+   * Collects OpenTelemetry tracing data from ClickHouse system tables.
+   * @param {string} queryId The query ID to look for in trace spans.
+   * @returns {Promise<object>} OpenTelemetry span data from system.opentelemetry_span_log.
+   */
+  async collectOpenTelemetryTracing(queryId) {
+    // Query for OpenTelemetry spans related to our query
+    const spanQuery = `
+      SELECT 
+        trace_id,
+        span_id,
+        parent_span_id,
+        operation_name,
+        start_time_us,
+        finish_time_us,
+        (finish_time_us - start_time_us) * 1000 as duration_ns,
+        attribute
+      FROM system.opentelemetry_span_log 
+      WHERE trace_id IN (
+        SELECT trace_id 
+        FROM system.opentelemetry_span_log 
+        WHERE attribute['clickhouse.query_id'] = '${queryId}'
+      )
+      ORDER BY start_time_us ASC
+      LIMIT 100
+    `;
+
+    try {
+      const spanResult = await this.client.query({ 
+        query: spanQuery, 
+        format: 'JSONEachRow'
+      });
+      const spans = await spanResult.json();
+
+      // No fallback - if we don't find our query, something is wrong
+      if (spans.length === 0) {
+        return {
+          error: `No OpenTelemetry spans found for query_id '${queryId}'`,
+          note: "This means either: 1) The query didn't generate traces, 2) opentelemetry_start_trace_probability setting failed, or 3) There's a timing issue with span logging",
+          queryId: queryId,
+        };
+      }
+
+      // Also get span overview without ARRAY JOIN to see span structure
+      const spanOverviewQuery = `
+        SELECT 
+          trace_id,
+          span_id,
+          parent_span_id,
+          operation_name,
+          start_time_us,
+          finish_time_us,
+          (finish_time_us - start_time_us) * 1000 as duration_ns,
+          length(mapKeys(attribute)) as num_attributes
+        FROM system.opentelemetry_span_log 
+        WHERE finish_time_us >= now() - INTERVAL 5 MINUTE
+        ORDER BY start_time_us DESC
+        LIMIT 50
+      `;
+
+      const overviewResult = await this.client.query({ 
+        query: spanOverviewQuery, 
+        format: 'JSONEachRow'
+      });
+      const overview = await overviewResult.json();
+
+      return {
+        spans: spans,
+        overview: overview,
+        queryId: queryId,
+      };
+    } catch (e) {
+      // OpenTelemetry might not be enabled
+      return {
+        error: `OpenTelemetry not available: ${e.message}`,
+        note: "OpenTelemetry tracing must be enabled in ClickHouse config (opentelemetry_span_log element)",
+        spans: [],
+        overview: []
+      };
+    }
+  }
+
+  /**
+   * Returns empty recommendations - we don't pretend to optimize ClickHouse.
+   */
+  generateQueryPerformanceRecommendations(totalMs, jitMs, memoryMB) {
+    return [];
+  }
+
+  /**
+   * Renders OpenTelemetry tracing information as interactive timeline.
+   * @param {object} data OpenTelemetry tracing data.
+   * @returns {string} HTML representation of OpenTelemetry traces.
+   */
+  renderOpenTelemetry(data) {
+    if (data.error) {
+      return `
+        <div class="error-container">
+          <h3>OpenTelemetry Traces Not Found</h3>
+          <p><strong>Error:</strong> ${data.error}</p>
+          <div class="config-help">
+            <h4>Possible Solutions:</h4>
+            <ul>
+              <li>Check console logs for query execution details</li>
+              <li>Verify opentelemetry_start_trace_probability setting is working</li>
+              <li>Check if query actually executed successfully</li>
+              <li>Wait a few seconds and try again (span logging delay)</li>
+            </ul>
+          </div>
+        </div>
+      `;
+    }
+
+    if (!data.overview || data.overview.length === 0) {
+      return `
+        <div class="no-data">
+          <h3>No OpenTelemetry Spans Found</h3>
+          <p>No recent tracing spans found in system.opentelemetry_span_log</p>
+          <p>Run a query to generate trace data, or check if tracing is properly configured.</p>
+        </div>
+      `;
+    }
+
+    // Group spans by trace_id
+    const traceGroups = {};
+    data.overview.forEach(span => {
+      if (!traceGroups[span.trace_id]) {
+        traceGroups[span.trace_id] = [];
+      }
+      traceGroups[span.trace_id].push(span);
+    });
+
+    let html = `
+      <div class="opentelemetry-container">
+        <h3>OpenTelemetry Traces for Query: ${data.queryId}</h3>
+        <div class="query-summary">
+          <p><strong>Query ID:</strong> <code>${data.queryId}</code></p>
+          <p class="success">✅ Found ${data.overview.length} spans for this specific query</p>
+          ${Object.keys(traceGroups).length > 1 ? 
+            `<p class="warning">⚠️ Multiple traces found: ${Object.keys(traceGroups).length} separate traces</p>` : 
+            `<p>Single trace with ${data.overview.length} spans</p>`
+          }
+        </div>
+        
+        <div class="timing-summary">
+          <h4>⚡ Quick Timing Summary</h4>
+          ${(() => {
+            // Calculate simple metrics from all spans
+            const allSpans = data.overview || [];
+            if (allSpans.length === 0) return '<p>No timing data available</p>';
+            
+            const totalDuration = Math.max(...allSpans.map(s => s.finish_time_us)) - Math.min(...allSpans.map(s => s.start_time_us));
+            const totalDurationMs = totalDuration / 1000;
+            
+            // Find key operations
+            const executeSpan = allSpans.find(s => s.operation_name.includes('execute'));
+            const analyzeSpan = allSpans.find(s => s.operation_name.includes('Analyzer'));
+            
+            return `
+              <div class="quick-stats">
+                <div class="stat"><span class="label">Total Execution:</span> <span class="value">${totalDurationMs.toFixed(2)}ms</span></div>
+                ${executeSpan ? `<div class="stat"><span class="label">Execution Phase:</span> <span class="value">${((executeSpan.finish_time_us - executeSpan.start_time_us) / 1000).toFixed(2)}ms</span></div>` : ''}
+                ${analyzeSpan ? `<div class="stat"><span class="label">Analysis Phase:</span> <span class="value">${((analyzeSpan.finish_time_us - analyzeSpan.start_time_us) / 1000).toFixed(2)}ms</span></div>` : ''}
+                <div class="stat"><span class="label">Total Spans:</span> <span class="value">${allSpans.length}</span></div>
+              </div>
+            `;
+          })()}
+        </div>
+        
+        <div class="export-options">
+          <button onclick="exportToSpeedscope('${data.queryId}')" class="export-btn">📊 Export to Speedscope</button>
+          <button onclick="exportToJSON('${data.queryId}')" class="export-btn">💾 Export JSON</button>
+          <small>Export trace data for external analysis tools</small>
+        </div>
+    `;
+
+    Object.entries(traceGroups).forEach(([traceId, spans]) => {
+      // Sort spans by start time
+      spans.sort((a, b) => a.start_time_us - b.start_time_us);
+      
+      const minStartTime = Math.min(...spans.map(s => s.start_time_us));
+      const maxFinishTime = Math.max(...spans.map(s => s.finish_time_us));
+      const totalDuration = maxFinishTime - minStartTime;
+
+      html += `
+        <div class="trace-group">
+          <h4>Trace: ${traceId.substring(0, 16)}...</h4>
+          <div class="trace-info">
+            Total Duration: ${(totalDuration / 1000).toFixed(2)}ms | Spans: ${spans.length}
+          </div>
+          <div class="spans-timeline">
+      `;
+
+      spans.forEach(span => {
+        const relativeStart = ((span.start_time_us - minStartTime) / totalDuration) * 100;
+        const spanDuration = ((span.finish_time_us - span.start_time_us) / totalDuration) * 100;
+        const durationMs = (span.finish_time_us - span.start_time_us) / 1000;
+        
+        // Extract ClickHouse-specific attributes if available
+        const attrs = span.attribute || {};
+        const queryId = attrs['clickhouse.query_id'];
+        const queryStatus = attrs['clickhouse.query_status'];
+        const readRows = attrs['clickhouse.read_rows'];
+        const memoryUsage = attrs['clickhouse.memory_usage'];
+        const dbStatement = attrs['db.statement'];
+
+        html += `
+          <div class="span-bar" style="margin-left: ${relativeStart}%; width: ${Math.max(spanDuration, 2)}%">
+            <div class="span-info">
+              <strong>${span.operation_name}</strong><br>
+              Duration: ${durationMs.toFixed(2)}ms<br>
+              ${queryId ? `Query ID: ${queryId.substring(0, 8)}...` : `Span ID: ${span.span_id.toString().substring(0, 8)}...`}<br>
+              ${span.parent_span_id ? `Parent: ${span.parent_span_id.toString().substring(0, 8)}...` : 'Root span'}<br>
+              ${queryStatus ? `Status: ${queryStatus}` : ''}
+              ${readRows ? `<br>Rows: ${readRows}` : ''}
+              ${memoryUsage ? `<br>Memory: ${(parseInt(memoryUsage) / 1024).toFixed(0)}KB` : ''}
+              ${dbStatement && dbStatement.length < 50 ? `<br>SQL: ${dbStatement}` : ''}
+            </div>
+          </div>
+        `;
+      });
+
+      html += `
+          </div>
+        </div>
+      `;
+    });
+
+    html += `
+      </div>
+      <style>
+        .opentelemetry-container {
+          font-family: monospace;
+          margin: 10px;
+        }
+        .query-summary {
+          background: #2a2a2a;
+          padding: 10px;
+          border-radius: 4px;
+          margin: 10px 0;
+          border-left: 3px solid #4CAF50;
+        }
+        .query-summary .warning {
+          color: #ff9800;
+          font-weight: bold;
+        }
+        .query-summary .success {
+          color: #4CAF50;
+          font-weight: bold;
+        }
+        .timing-summary {
+          background: #1a1a1a;
+          padding: 10px;
+          border-radius: 4px;
+          margin: 10px 0;
+        }
+        .quick-stats {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 10px;
+          margin: 10px 0;
+        }
+        .stat {
+          display: flex;
+          justify-content: space-between;
+          padding: 5px 10px;
+          background: #333;
+          border-radius: 3px;
+        }
+        .stat .label {
+          color: #888;
+        }
+        .stat .value {
+          color: #4CAF50;
+          font-weight: bold;
+        }
+        .export-options {
+          margin: 15px 0;
+          padding: 10px;
+          background: #2a2a2a;
+          border-radius: 4px;
+          text-align: center;
+        }
+        .export-btn {
+          background: #0066cc;
+          color: white;
+          border: none;
+          padding: 8px 15px;
+          margin: 0 5px;
+          border-radius: 3px;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .export-btn:hover {
+          background: #0088ff;
+        }
+        .trace-group {
+          margin: 20px 0;
+          border: 1px solid #444;
+          border-radius: 4px;
+          padding: 10px;
+          background: #1a1a1a;
+        }
+        .trace-info {
+          color: #888;
+          margin: 5px 0;
+          font-size: 12px;
+        }
+        .spans-timeline {
+          position: relative;
+          height: auto;
+          margin: 10px 0;
+          background: #2a2a2a;
+          border-radius: 3px;
+          padding: 5px;
+        }
+        .span-bar {
+          position: relative;
+          height: 60px;
+          background: linear-gradient(90deg, #0066cc, #0088ff);
+          margin: 2px 0;
+          border-radius: 2px;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+        .span-bar:hover {
+          opacity: 0.8;
+        }
+        .span-info {
+          position: absolute;
+          top: 2px;
+          left: 4px;
+          font-size: 10px;
+          color: white;
+          line-height: 1.2;
+          pointer-events: none;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .error-container, .no-data {
+          padding: 20px;
+          margin: 10px;
+          background: #2a2a2a;
+          border-radius: 4px;
+          color: #ccc;
+        }
+        .config-help {
+          margin-top: 15px;
+          padding: 10px;
+          background: #1a1a1a;
+          border-radius: 3px;
+        }
+        .config-help pre {
+          background: #333;
+          padding: 10px;
+          border-radius: 3px;
+          overflow-x: auto;
+          font-size: 11px;
+        }
+      </style>
+      
+      <script>
+        function exportToSpeedscope(queryId) {
+          // Convert OpenTelemetry spans to Speedscope format
+          const spans = ${JSON.stringify(data.overview || [])};
+          const speedscopeData = {
+            version: "0.0.1",
+            shared: { frames: [] },
+            profiles: [{
+              type: "evented",
+              name: "ClickHouse Query: " + queryId,
+              unit: "microseconds", 
+              startValue: Math.min(...spans.map(s => s.start_time_us)),
+              endValue: Math.max(...spans.map(s => s.finish_time_us)),
+              events: spans.flatMap(span => [
+                { type: "O", frame: span.operation_name, at: span.start_time_us },
+                { type: "C", frame: span.operation_name, at: span.finish_time_us }
+              ])
+            }]
+          };
+          
+          // Create downloadable file
+          const blob = new Blob([JSON.stringify(speedscopeData, null, 2)], {type: 'application/json'});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'clickhouse-trace-' + queryId + '.speedscope.json';
+          a.click();
+          URL.revokeObjectURL(url);
+          
+          alert('Exported! Open the file at https://speedscope.app');
+        }
+        
+        function exportToJSON(queryId) {
+          const data = ${JSON.stringify(data, null, 2)};
+          const blob = new Blob([data], {type: 'application/json'});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'clickhouse-otel-' + queryId + '.json';
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      </script>
+    `;
+
+    return html;
   }
 
   /**
@@ -358,16 +782,36 @@ export class ClickHouseProfiler {
       serverTextLogContent = '<p>No server text logs were found. This may be disabled by the server configuration.</p>';
     }
 
+    // --- Tab for Explain Plan (Raw + Structured) ---
+    const explainPlanContent = `
+      <div class="inner-tabs">
+        <button class="inner-tab active" data-inner-tab="raw-explain">Raw</button>
+        <button class="inner-tab" data-inner-tab="structured-explain">Structured</button>
+      </div>
+      <div id="inner-content-raw-explain" class="inner-tab-content active">
+        <pre>${profileData.actionsPlan || 'No data.'}</pre>
+      </div>
+      <div id="inner-content-structured-explain" class="inner-tab-content">
+        <div class="graph-controls" data-for-tab="structured-plan">
+          <button id="ch-expand-all-button" title="Expand All Nodes">Expand All</button>
+          <button id="ch-collapse-all-button" title="Collapse All Nodes">Collapse All</button>
+        </div>
+        <div class="tab-inner-content">
+          <pre>${formattedHtml}</pre>
+        </div>
+      </div>
+    `;
+
     // --- Dynamically build the HTML for the profiler ---
     const tabsConfig = [
       { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
-      { id: 'raw-plan', title: 'Raw Plan', content: `<pre>${profileData.actionsPlan || 'No data.'}</pre>`, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
-      { id: 'structured-plan', title: 'Structured Plan', content: `<pre>${formattedHtml}</pre>`, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
-      { id: 'pipeline-plan', title: 'Pipeline Plan', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>' },
+      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>` },
+      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>' },
+      { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
+      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>' },
       { id: 'flamegraph', title: 'FlameGraph', content: '', header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
       { id: 'call-graph', title: 'Call Graph', content: '', header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.' },
-      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>' },
-      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>` },
+      { id: 'opentelemetry', title: 'OpenTelemetry', content: this.renderOpenTelemetry(profileData.openTelemetry || {}), header: 'Distributed tracing spans from system.opentelemetry_span_log' },
     ];
 
     let tabsHtml = '<div class="profiler-tabs">';
@@ -379,13 +823,6 @@ export class ClickHouseProfiler {
       contentHtml += `<div id="profile-content-${tab.id}" class="profiler-tab-content ${activeClass}">
                         <h3>${tab.title}</h3>
                         <p>${tab.header}</p>`;
-      // Add tree-view controls specifically for the structured plan tab
-      if (tab.id === 'structured-plan') {
-        contentHtml += `<div class="graph-controls" style="display: none;" data-for-tab="structured-plan">
-                          <button id="ch-expand-all-button" title="Expand All Nodes">Expand All</button>
-                          <button id="ch-collapse-all-button" title="Collapse All Nodes">Collapse All</button>
-                       </div>`;
-      }
       if (tab.id === 'pipeline-plan') {
         contentHtml += `<div class="graph-controls" style="display: none;" data-for-tab="pipeline-plan">
                           <button id="ch-zoom-in-button" title="Zoom In">+</button>
@@ -434,11 +871,6 @@ export class ClickHouseProfiler {
         const activeContent = mainContainer.querySelector(contentId);
         activeContent.classList.add('active');
 
-        // Show/hide the tree controls based on the active tab
-        mainContainer.querySelectorAll('.graph-controls').forEach(controls => {
-            const isForActiveTab = controls.dataset.forTab === tab.dataset.tab;
-            controls.style.display = isForActiveTab ? 'inline-block' : 'none';
-        });
       });
     });
 
@@ -490,8 +922,21 @@ export class ClickHouseProfiler {
     // Add event listeners for the newly created tree-view buttons
     const expandBtn = mainContainer.querySelector('#ch-expand-all-button');
     if (expandBtn) {
-        expandBtn.addEventListener('click', () => mainContainer.querySelector('#profile-content-structured-plan').querySelectorAll('details').forEach(d => d.open = true));
-        mainContainer.querySelector('#ch-collapse-all-button').addEventListener('click', () => mainContainer.querySelector('#profile-content-structured-plan').querySelectorAll('details').forEach(d => d.open = false));
+        expandBtn.addEventListener('click', () => mainContainer.querySelector('#inner-content-structured-explain').querySelectorAll('details').forEach(d => d.open = true));
+        mainContainer.querySelector('#ch-collapse-all-button').addEventListener('click', () => mainContainer.querySelector('#inner-content-structured-explain').querySelectorAll('details').forEach(d => d.open = false));
+    }
+
+    // Add event listeners for the new inner tabs
+    const explainPlanContainer = mainContainer.querySelector('#profile-content-explain-plan');
+    if (explainPlanContainer) {
+      explainPlanContainer.querySelectorAll('.inner-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          explainPlanContainer.querySelectorAll('.inner-tab').forEach(t => t.classList.remove('active'));
+          explainPlanContainer.querySelectorAll('.inner-tab-content').forEach(c => c.classList.remove('active'));
+          tab.classList.add('active');
+          explainPlanContainer.querySelector(`#inner-content-${tab.dataset.innerTab}`).classList.add('active');
+        });
+      });
     }
 
     // Render the Pipeline Plan graph and set up its controls
@@ -563,10 +1008,25 @@ export class ClickHouseProfiler {
    * @param {Set<string>} [nodesToRender=null] An optional set of node IDs to filter the graph.
    */
   async renderPipelineGraph(dotString, container, nodesToRender = null) {
-    const mermaidGraph = this.dotToMermaid(dotString, nodesToRender);
-    const { svg } = await mermaid.render('ch-mermaid-graph', mermaidGraph);
-    container.innerHTML = svg;
-    this.setupPipelineGraphZoom(dotString, container);
+    try {
+      const mermaidGraph = this.dotToMermaid(dotString, nodesToRender);
+      const { svg } = await mermaid.render('ch-mermaid-graph', mermaidGraph);
+      container.innerHTML = svg;
+      this.setupPipelineGraphZoom(dotString, container);
+    } catch (error) {
+      console.error('Mermaid rendering failed:', error.message);
+      container.innerHTML = `
+        <div style="padding: 20px; text-align: center; color: #666; font-family: monospace;">
+          <h4>Graph Too Complex</h4>
+          <p>Pipeline graph has too many connections to display.</p>
+          <p>Error: ${error.message}</p>
+          <details>
+            <summary>Raw DOT Graph</summary>
+            <pre style="text-align: left; font-size: 10px; max-height: 300px; overflow: auto;">${dotString}</pre>
+          </details>
+        </div>
+      `;
+    }
   }
 
   /**
@@ -853,7 +1313,6 @@ export class ClickHouseProfiler {
       return;
     }
 
-    console.log(`[Debug] Building aggregated call graph from ${traceLog.length} unique stacks.`);
     container.innerHTML = ''; // Clear container before rendering
     // First, build the same hierarchical data structure as the flame graph.
     const root = { name: "Total CPU Time", value: 0, children: [] };
@@ -928,20 +1387,42 @@ export class ClickHouseProfiler {
       }
     }
 
-    // Generate edge definitions
+    // Generate edge definitions with safety limits
+    let edgeCount = 0;
+    const maxEdges = 1500; // Stay well below Mermaid's limit of 2000
+    
     for (const [edgeKey, value] of aggregatedEdges.entries()) {
+        if (edgeCount >= maxEdges) {
+          mermaidSyntax += `    note["Graph truncated - ${aggregatedEdges.size - maxEdges} more edges not shown"];\n`;
+          break;
+        }
+        
         const [parentName, childName] = edgeKey.split('|');
         const parentId = nameToId.get(parentName);
         const childId = nameToId.get(childName);
         if (parentId && childId) {
             mermaidSyntax += `    ${parentId} --> ${childId};\n`;
+            edgeCount++;
         }
     }
 
-    console.log(`[Debug] Mermaid diagram size: ${mermaidSyntax.length} characters`);
-
-    const { svg } = await mermaid.render('ch-call-graph', mermaidSyntax);
-    container.innerHTML = svg;
+    try {
+      const { svg } = await mermaid.render('ch-call-graph', mermaidSyntax);
+      container.innerHTML = svg;
+    } catch (error) {
+      console.error('Mermaid call graph rendering failed:', error.message);
+      container.innerHTML = `
+        <div style="padding: 20px; text-align: center; color: #666; font-family: monospace;">
+          <h4>Call Graph Too Complex</h4>
+          <p>Call graph has too many nodes/edges to display.</p>
+          <p>Error: ${error.message}</p>
+          <details>
+            <summary>Raw Mermaid Graph</summary>
+            <pre style="text-align: left; font-size: 10px; max-height: 300px; overflow: auto;">${mermaidSyntax}</pre>
+          </details>
+        </div>`;
+      return;
+    }
 
     // --- Add Tooltip Logic for the Call Graph ---
     const tooltipEl = document.createElement('div');
@@ -1010,6 +1491,11 @@ export class ClickHouseProfiler {
    */
   dotToMermaid(dotString, nodesToRender = null) {
     let mermaidString = 'graph LR;\n'; // LR = Left to Right
+    
+    // Add styling classes for dark theme compatibility
+    mermaidString += 'classDef default fill:#333,stroke:#777,stroke-width:2px,color:#eee;\n';
+    mermaidString += 'classDef nodeClass fill:#2a2a2a,stroke:#ffc980,stroke-width:2px,color:#eee;\n';
+    
     const nodeLabels = new Map();
     const edges = [];
 
@@ -1034,21 +1520,19 @@ export class ClickHouseProfiler {
       });
     }
 
-    edges.forEach(({ from: fromNode, to: toNode }) => {
-      if (finalNodes.has(fromNode) && finalNodes.has(toNode)) {
-      const fromLabel = nodeLabels.get(fromNode) || fromNode;
-      const toLabel = nodeLabels.get(toNode) || toNode;
-      mermaidString += `    ${fromNode}["${fromLabel}"] --> ${toNode}["${toLabel}"];\n`;
-      }
+    // First, define all nodes that will be included
+    finalNodes.forEach(nodeId => {
+      const label = nodeLabels.get(nodeId) || nodeId;
+      mermaidString += `    ${nodeId}["${label}"];\n`;
+      mermaidString += `    class ${nodeId} nodeClass;\n`;
     });
 
-    // If no edges were added (e.g., single selected node), define the node itself.
-    if (mermaidString.split('\n').length <= 2 && finalNodes.size > 0) {
-        finalNodes.forEach(nodeId => {
-            const label = nodeLabels.get(nodeId) || nodeId;
-            mermaidString += `    ${nodeId}["${label}"];\n`;
-        });
-    }
+    // Then add the edges between included nodes
+    edges.forEach(({ from: fromNode, to: toNode }) => {
+      if (finalNodes.has(fromNode) && finalNodes.has(toNode)) {
+        mermaidString += `    ${fromNode} --> ${toNode};\n`;
+      }
+    });
     return mermaidString;
   }
 }

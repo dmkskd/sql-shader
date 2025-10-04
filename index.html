@@ -402,6 +402,25 @@
       .profiler-tab-content.active {
         display: block;
       }
+      /* --- Inner Tab Styles --- */
+      .inner-tabs {
+        display: flex;
+        border-bottom: 1px solid #444;
+        margin-bottom: 10px;
+      }
+      .inner-tab {
+        padding: 8px 12px;
+        cursor: pointer;
+        border: none;
+        background: none;
+        color: #999;
+      }
+      .inner-tab.active {
+        color: #fff;
+        border-bottom: 2px solid #ffc980;
+      }
+      .inner-tab-content { display: none; }
+      .inner-tab-content.active { display: block; }
       #profile-container pre {
         white-space: pre; /* Preserve formatting from EXPLAIN ANALYZE */
         font-size: 12px; /* Make text a bit smaller to fit more */

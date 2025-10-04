@@ -48,6 +48,12 @@ class ClickHouseEngine {
       url: url, // Deprecated 'host' is replaced by 'url'
       username: username,
       password: password,
+      clickhouse_settings: {
+        // Enable OpenTelemetry tracing for all queries from this client
+        opentelemetry_start_trace_probability: 1.0,
+        // Also enable query logging
+        log_queries: 1,
+      },
     });
 
     this.profiler = new ClickHouseProfiler(this); // Pass the engine instance itself
@@ -239,7 +245,6 @@ class ClickHouseEngine {
       this.lastEventCounts['SelectQuery'] = selectQueryCount;
       this.lastEventCounts['FailedQuery'] = failedQueryCount;
       this.lastEventCounts['OSCPUVirtualTimeMicroseconds'] = cpuTimeMicroseconds;
-
       const formatBytes = (bytes) => {
         if (bytes === null || bytes === undefined) return 'N/A';
         if (bytes === 0) return '0 B';
@@ -248,7 +253,7 @@ class ClickHouseEngine {
       };
 
       const finalStats = [
-        // Correctly use the 'Query' value from system.metrics for active queries.
+        // Core server metrics
         { label: 'Active Queries', value: (metricsMap['Query'] || 0).toLocaleString(), rawValue: metricsMap['Query'] || 0, description: "Number of concurrently executing queries. From system.metrics (metric: 'Query')." },
         { label: 'CPU Usage', value: `${cpuUsagePercent.toFixed(1)}%`, rawValue: cpuUsagePercent, description: "Total server CPU usage percentage, calculated from the change in OSCPUVirtualTimeMicroseconds. From system.events." },
         { label: 'Memory', value: formatBytes(metricsMap['MemoryTracking']), rawValue: metricsMap['MemoryTracking'] || 0, description: "Total memory tracked by the server for queries. From system.metrics (metric: 'MemoryTracking')." },

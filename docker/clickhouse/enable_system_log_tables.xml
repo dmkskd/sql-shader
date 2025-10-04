@@ -52,5 +52,20 @@
     <buffer_size_rows_flush_threshold>524288</buffer_size_rows_flush_threshold>
     <flush_on_crash>false</flush_on_crash>
   </error_log>
- 
+
+  <!-- Add to ClickHouse config.xml -->
+  <opentelemetry>
+      <trace_processors>
+          <jaeger>
+              <endpoint>http://localhost:14268/api/traces</endpoint>
+          </jaeger>
+      </trace_processors>
+  </opentelemetry>
+
+  <!-- Enable span logging -->
+  <opentelemetry_span_log>
+      <database>system</database>
+      <table>opentelemetry_span_log</table>
+      <flush_interval_milliseconds>1500</flush_interval_milliseconds>
+  </opentelemetry_span_log>
 </clickhouse>
