@@ -49,6 +49,9 @@ export const dom = {
     shareModalClose: document.querySelector('#share-modal .modal-close-button'),
     shareLinkInput: document.getElementById('share-link-input'),
     copyLinkButton: document.getElementById('copy-link-button'),
+    unsavedChangesModal: document.getElementById('unsaved-changes-modal'),
+    unsavedChangesDiscardButton: document.getElementById('unsaved-changes-discard-button'),
+    unsavedChangesCancelButton: document.getElementById('unsaved-changes-cancel-button'),
 };
 
 export const updateInitStatus = (message) => {
@@ -102,6 +105,30 @@ let uiCallbacks = {};
 /** Updates the callbacks used by the UI event listeners. */
 export const updateUICallbacks = (newCallbacks) => {
     uiCallbacks = { ...uiCallbacks, ...newCallbacks };
+};
+
+/**
+ * Shows a custom confirmation modal for unsaved changes.
+ * @returns {Promise<'discard' | 'cancel'>} A promise that resolves with the user's choice.
+ */
+export const showUnsavedChangesModal = () => {
+    return new Promise((resolve) => {
+        dom.unsavedChangesModal.style.display = 'flex';
+
+        // Define named handlers to be able to remove them later.
+        const onDiscard = () => close('discard');
+        const onCancel = () => close('cancel');
+
+        function close(choice) {
+            dom.unsavedChangesModal.style.display = 'none';
+            dom.unsavedChangesDiscardButton.removeEventListener('click', onDiscard);
+            dom.unsavedChangesCancelButton.removeEventListener('click', onCancel);
+            resolve(choice);
+        }
+
+        dom.unsavedChangesDiscardButton.addEventListener('click', onDiscard);
+        dom.unsavedChangesCancelButton.addEventListener('click', onCancel);
+    });
 };
 
 /**

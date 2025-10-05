@@ -740,6 +740,55 @@
         <button id="copy-link-button">Copy to Clipboard</button>
       </div>
     </div>
+    <style>
+      /* --- Refined Styles for Unsaved Changes Modal --- */
+      #unsaved-changes-modal .modal-content {
+        border: 1px solid #555;
+      }
+      #unsaved-changes-modal h3 {
+        font-size: 1.2em; /* Smaller header text */
+        margin: 0;
+      }
+      #unsaved-changes-modal p {
+        font-size: 1em; /* Smaller body text */
+        color: #ccc;
+        margin: 15px 0 0 0;
+      }
+      #unsaved-changes-modal .modal-footer button {
+        /* Override generic modal button styles for a more compact look */
+        font-size: 0.9em;
+        padding: 6px 14px;
+        margin: 0; /* Remove the default margin-right */
+        border: 1px solid #666;
+        transition: background-color 0.15s ease;
+      }
+      #unsaved-changes-modal .button-secondary {
+        background-color: #555; /* A solid, neutral background */
+        border: 1px solid #777;
+      }
+      #unsaved-changes-modal .button-destructive {
+        background-color: #555; /* Same solid, neutral background */
+        border: 1px solid #777;
+      }
+    </style>
+    <!-- Unsaved Changes Confirmation Modal -->
+    <div id="unsaved-changes-modal" class="modal-overlay" style="display: none; z-index: 1001;">
+        <div class="modal-content" style="width: auto; height: auto; max-width: 450px;">
+            <div class="modal-header" style="padding-bottom: 10px;">
+                <h3 style="margin-bottom: 0;">Unsaved Changes</h3>
+            </div>
+            <div class="modal-body">
+                <p>You have unsaved changes in the editor. What would you like to do?</p>
+            </div>
+            <!-- Use flex-end to group buttons to the right, which is a common UX pattern. -->
+            <div class="modal-footer" style="justify-content: flex-end; padding-top: 15px; gap: 10px;">
+                <!-- "Cancel" is the secondary action. -->
+                <button id="unsaved-changes-cancel-button" class="button-secondary">Cancel</button>
+                <!-- "Discard" is the primary, more destructive action. Style it to stand out. -->
+                <button id="unsaved-changes-discard-button" class="button-destructive">⚠️ Discard Changes</button>
+            </div>
+        </div>
+    </div>
     <!-- 
       An import map allows us to use "bare" module specifiers like in Node.js.
       This is the modern way to resolve modules in the browser.

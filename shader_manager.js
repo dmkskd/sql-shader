@@ -17,8 +17,26 @@ export class ShaderManager {
         this.isPlaying = true;
         this.engineReady = false;
         this.wasPlayingBeforeError = true;
+        this.pristineSql = ''; // The original SQL of the loaded shader
+        this.currentShaderIndex = 0;
 
         this.debounceTimer = null;
+    }
+
+    /**
+     * Checks if the editor content has been modified since the last shader was loaded.
+     * @returns {boolean} True if the editor is "dirty".
+     */
+    isDirty() {
+        // Not dirty if nothing has been loaded yet.
+        if (this.pristineSql === '') return false;
+        // Compare the current editor value with the stored pristine version.
+        return this.editor.getValue() !== this.pristineSql;
+    }
+
+    /** @returns {number} The index of the currently loaded shader. */
+    getCurrentShaderIndex() {
+        return this.currentShaderIndex;
     }
 
     /**
@@ -41,11 +59,15 @@ export class ShaderManager {
         const shader = this.getShaders()[shaderIndex];
         if (!shader) return;
 
+        this.currentShaderIndex = shaderIndex;
+
         // Asynchronously load the shader content if it's from a file.
         // The engine is responsible for implementing this loader function.
         const sql = (await this.engine.loadShaderContent(shader)).trim();
 
         // Now that we have the actual SQL, set it in the editor.
+        // This also becomes the new "pristine" version to check against for changes.
+        this.pristineSql = sql;
         this.editor.setValue(sql);
 
         if (this.applyPerformanceHints(sql, RESOLUTIONS, ZOOM_LEVELS)) {

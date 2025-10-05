@@ -1,4 +1,4 @@
-import { dom, setupUI, updateUICallbacks, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal, updateProfileButtonText } from './ui_manager.js';
+import { dom, setupUI, updateUICallbacks, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal, updateProfileButtonText, showUnsavedChangesModal } from './ui_manager.js';
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 
@@ -173,7 +173,24 @@ const main = async (engine) => {
     };
 
     updateUICallbacks({ // This updates the callbacks for the already-set-up UI
-        onShaderSelect: (index) => shaderManager.loadShader(index, RESOLUTIONS, ZOOM_LEVELS),
+        onShaderSelect: async (newIndex) => {
+            const currentIndex = shaderManager.getCurrentShaderIndex();
+
+            if (shaderManager.isDirty()) {
+                const choice = await showUnsavedChangesModal();
+                if (choice === 'cancel') {
+                    dom.shaderSelect.value = currentIndex;
+                    return;
+                }
+                // If 'discard', do nothing and proceed.
+            }
+
+            // If confirmed or not dirty, proceed to load the new shader.
+            const shaderName = dom.shaderSelect.options[newIndex].textContent;
+            const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
+            document.title = `PixelQL - ${shaderName} (${engineName})`;
+            shaderManager.loadShader(newIndex, RESOLUTIONS, ZOOM_LEVELS);
+        },
         onResolutionChange: updateCanvasSizeAndResolution,
         onZoomChange: updateCanvasSizeAndResolution,
         onProfile: onProfile,
@@ -350,6 +367,8 @@ const main = async (engine) => {
 
         if (shaderIndex !== -1) {
             dom.shaderSelect.value = shaderIndex; // Set the dropdown to the correct shader
+            const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
+            document.title = `PixelQL - ${shaderName} (${engineName})`;
             shaderManager.loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS);
         } else {
             console.warn(`Shared shader "${shaderName}" not found. Loading default.`);
@@ -358,6 +377,12 @@ const main = async (engine) => {
     } else {
         // Default behavior: load from local storage
         dom.shaderSelect.value = savedIndex;
+        // Set title on initial load
+        if (dom.shaderSelect.value) {
+            const shaderName = dom.shaderSelect.options[dom.shaderSelect.value].textContent;
+            const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
+            document.title = `PixelQL - ${shaderName} (${engineName})`;
+        }
         if (savedSql) {
             editor.setValue(savedSql);
         } else {
