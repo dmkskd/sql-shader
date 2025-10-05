@@ -15,6 +15,9 @@ export class AssetManager {
         this.thumbnailResolution = { width: 160, height: 120 };
         this.queue = [];
         this.isProcessing = false;
+
+        // To manage the ESC key listener
+        this.boundHandleKeyDown = null;
     }
 
     /**
@@ -39,11 +42,18 @@ export class AssetManager {
                 reject(new Error('User cancelled selection.')); // Reject on cancel
             };
 
-            this.dom.closeButton.addEventListener('click', handleClose, { once: true });
-            this.dom.modal.addEventListener('click', (e) => {
-                if (e.target === this.dom.modal) handleClose();
-            }, { once: true });
+            // Bind the keydown handler once so it can be added and removed.
+            this.boundHandleKeyDown = (e) => {
+                if (e.key === 'Escape') {
+                    handleClose();
+                }
+            };
 
+            this.dom.closeButton.addEventListener('click', handleClose);
+            this.dom.modal.addEventListener('click', (e) => { // Click outside to close
+                if (e.target === this.dom.modal) handleClose();
+            });
+            window.addEventListener('keydown', this.boundHandleKeyDown);
             this.dom.modal.style.display = 'flex';
         });
     }
@@ -53,6 +63,12 @@ export class AssetManager {
         // Stop any ongoing thumbnail generation by clearing the queue
         this.queue = [];
         this.isProcessing = false;
+
+        // --- Cleanup Event Listeners ---
+        // Remove listeners to prevent memory leaks and duplicate events.
+        // A simple way to remove all listeners is to replace the node with a clone.
+        this.dom.closeButton.replaceWith(this.dom.closeButton.cloneNode(true));
+        window.removeEventListener('keydown', this.boundHandleKeyDown);
     }
 
     _createAssetRow(shaderInfo, onSelect) {
