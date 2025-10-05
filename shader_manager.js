@@ -28,15 +28,48 @@ export class ShaderManager {
      * @returns {boolean} True if the editor is "dirty".
      */
     isDirty() {
+        // [STATE_DEBUG] This block can be removed after testing.
+        const currentSql = this.editor.getValue();
+        const isDirty = currentSql !== this.pristineSql;
+        console.log(`[STATE_DEBUG] isDirty() check. Result: ${isDirty}`);
+        if (isDirty) {
+            console.log('[STATE_DEBUG] Pristine SQL:\n', this.pristineSql);
+            console.log('[STATE_DEBUG] Current SQL:\n', currentSql);
+        }
         // Not dirty if nothing has been loaded yet.
         if (this.pristineSql === '') return false;
         // Compare the current editor value with the stored pristine version.
-        return this.editor.getValue() !== this.pristineSql;
+        return isDirty;
     }
 
     /** @returns {number} The index of the currently loaded shader. */
     getCurrentShaderIndex() {
         return this.currentShaderIndex;
+    }
+
+    /**
+     * Extracts the initial block of comments from a SQL string.
+     * @param {string} sql The SQL content.
+     * @returns {string} The extracted comment block, cleaned up.
+     */
+    extractDescription(sql) {
+        if (!sql) return '';
+        const lines = sql.split('\n');
+        const commentLines = [];
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine.startsWith('--')) {
+                // Remove the '--' and trim any leading/trailing space
+                commentLines.push(trimmedLine.substring(2).trim());
+            } else if (trimmedLine.length > 0) {
+                // Stop at the first non-comment, non-empty line
+                break;
+            }
+        }
+        // Join the lines, but filter out any that are just metadata hints like @run
+        return commentLines
+            .filter(line => !line.startsWith('@'))
+            .join(' ');
     }
 
     /**

@@ -1,6 +1,7 @@
 import { dom, setupUI, updateUICallbacks, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal, updateProfileButtonText, showUnsavedChangesModal } from './ui_manager.js';
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
+import { AssetManager } from './asset_manager.js';
 
 import { PerformanceMonitor } from './performance_monitor.js';
 console.log('Executing main.js - Debug Version: 1.4.0');
@@ -110,6 +111,7 @@ const main = async (engine) => {
     };
 
     const shaderManager = new ShaderManager(engine, editor, updateCanvasSizeAndResolution);
+    const assetManager = new AssetManager(engine);
 
     // --- Final Initialization Steps ---
     console.log('[Init] Setting up UI and event listeners...');
@@ -172,24 +174,45 @@ const main = async (engine) => {
         }
     };
 
-    updateUICallbacks({ // This updates the callbacks for the already-set-up UI
-        onShaderSelect: async (newIndex) => {
-            const currentIndex = shaderManager.getCurrentShaderIndex();
+    const handleShaderSelection = (newIndex) => {
+        // [STATE_DEBUG] This block can be removed after testing.
+        console.log(`[STATE_DEBUG] handleShaderSelection called for index: ${newIndex}. Proceeding to load.`);
+        // The dirty check is now handled *before* the asset manager is opened.
+        // We can just proceed to load the new shader.
+        const shader = shaderManager.getShaders()[newIndex];
+        const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
+        document.title = `PixelQL - ${shader.name} (${engineName})`;
+        dom.shaderSelectButton.textContent = shader.name; // Update button text
+        shaderManager.loadShader(newIndex, RESOLUTIONS, ZOOM_LEVELS);
+    };
 
+    updateUICallbacks({ // This updates the callbacks for the already-set-up UI
+        onOpenAssetManager: async () => {
             if (shaderManager.isDirty()) {
                 const choice = await showUnsavedChangesModal();
                 if (choice === 'cancel') {
-                    dom.shaderSelect.value = currentIndex;
-                    return;
+                    return; // User cancelled, so we don't open the asset manager.
                 }
-                // If 'discard', do nothing and proceed.
             }
+            try {
+                // Prepare shader info for the asset manager
+                const shaderDefs = shaderManager.getShaders();
+                const shaderInfos = await Promise.all(shaderDefs.map(async (shader) => {
+                    const sql = await shaderManager.engine.loadShaderContent(shader);
+                    return {
+                        name: shader.name,
+                        sql: sql,
+                        description: shaderManager.extractDescription(sql),
+                    };
+                }));
 
-            // If confirmed or not dirty, proceed to load the new shader.
-            const shaderName = dom.shaderSelect.options[newIndex].textContent;
-            const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
-            document.title = `PixelQL - ${shaderName} (${engineName})`;
-            shaderManager.loadShader(newIndex, RESOLUTIONS, ZOOM_LEVELS);
+                // Open the manager and wait for a selection
+                const selectedIndex = await assetManager.open(shaderInfos);
+                handleShaderSelection(selectedIndex);
+            } catch (error) {
+                // This catch block handles the user cancelling the modal.
+                console.log('[STATE_DEBUG] Asset selection cancelled.');
+            }
         },
         onResolutionChange: updateCanvasSizeAndResolution,
         onZoomChange: updateCanvasSizeAndResolution,
@@ -333,14 +356,6 @@ const main = async (engine) => {
     const savedSql = localStorage.getItem(LOCAL_STORAGE_KEY);
     const savedIndex = localStorage.getItem(SHADER_SELECT_KEY) || 0;
 
-    dom.shaderSelect.innerHTML = '';
-    SHADERS.forEach((shader, index) => {
-        const option = document.createElement('option');
-        option.value = index;
-        option.textContent = shader.name;
-        dom.shaderSelect.appendChild(option);
-    });
-
     const DEFAULT_RESOLUTION_INDEX = 2;
     RESOLUTIONS.forEach((res, index) => {
         const option = document.createElement('option');
@@ -366,31 +381,26 @@ const main = async (engine) => {
         const shaderIndex = SHADERS.findIndex(s => s.name === shaderName);
 
         if (shaderIndex !== -1) {
-            dom.shaderSelect.value = shaderIndex; // Set the dropdown to the correct shader
             const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
             document.title = `PixelQL - ${shaderName} (${engineName})`;
+            dom.shaderSelectButton.textContent = shaderName;
             shaderManager.loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS);
         } else {
             console.warn(`Shared shader "${shaderName}" not found. Loading default.`);
+            dom.shaderSelectButton.textContent = SHADERS[0].name;
             shaderManager.loadShader(0, RESOLUTIONS, ZOOM_LEVELS);
         }
     } else {
         // Default behavior: load from local storage
-        dom.shaderSelect.value = savedIndex;
+        const initialShader = SHADERS[savedIndex];
+        dom.shaderSelectButton.textContent = initialShader.name;
         // Set title on initial load
-        if (dom.shaderSelect.value) {
-            const shaderName = dom.shaderSelect.options[dom.shaderSelect.value].textContent;
-            const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
-            document.title = `PixelQL - ${shaderName} (${engineName})`;
-        }
-        if (savedSql) {
-            editor.setValue(savedSql);
-        } else {
-            shaderManager.loadShader(savedIndex, RESOLUTIONS, ZOOM_LEVELS);
-        }
-        if (shaderManager.applyPerformanceHints(editor.getValue(), RESOLUTIONS, ZOOM_LEVELS)) {
-            updateCanvasSizeAndResolution();
-        }
+        const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
+        document.title = `PixelQL - ${initialShader.name} (${engineName})`;
+
+        // Always load the shader from its source on startup to establish a clean pristine state.
+        // Do not use the potentially stale 'savedSql' from localStorage.
+        shaderManager.loadShader(savedIndex, RESOLUTIONS, ZOOM_LEVELS);
     }
 
     console.log('[Init] UI setup complete.');
@@ -398,7 +408,11 @@ const main = async (engine) => {
     // Before the first compile, ensure the editor contains a valid shader for the current engine.
     // This prevents a race condition where an old, incompatible shader from a previous session
     // is compiled against the new engine, causing an error.
-    await shaderManager.loadShader(dom.shaderSelect.value, RESOLUTIONS, ZOOM_LEVELS);
+    // We need to determine the correct index to load, respecting URL params over localStorage.
+    const urlParamsForInitialLoad = new URLSearchParams(window.location.search);
+    const initialShaderName = urlParamsForInitialLoad.get('shader');
+    const initialIndex = initialShaderName ? SHADERS.findIndex(s => s.name === decodeURIComponent(initialShaderName)) : savedIndex;
+    await shaderManager.loadShader(initialIndex > -1 ? initialIndex : 0, RESOLUTIONS, ZOOM_LEVELS);
 
     console.log('[Init] Initializing database engine connection...');
     updateInitStatus('Compiling initial shader...'); // Pass true for the initial compile
@@ -582,13 +596,11 @@ const main = async (engine) => {
         // Dynamically determine the correct storage key at the moment of saving.
         // This prevents saving a shader to the wrong engine's storage slot after switching.
         const currentEngineName = dom.engineSelect.value;
-        const currentLocalStorageKey = `${STORAGE_PREFIX}sql-for-${currentEngineName}`;
         const currentShaderSelectKey = `${STORAGE_PREFIX}shader-index-for-${currentEngineName}`;
-        localStorage.setItem(currentLocalStorageKey, editor.getValue());
-        localStorage.setItem(currentShaderSelectKey, dom.shaderSelect.value);
-        if (shaderManager.applyPerformanceHints(editor.getValue(), RESOLUTIONS, ZOOM_LEVELS)) {
-            updateCanvasSizeAndResolution();
-        }
+        // IMPORTANT: Only save the *index* of the current shader. Do not save the raw SQL content,
+        // as this was overwriting the pristine state and breaking the "dirty" check.
+        localStorage.setItem(currentShaderSelectKey, shaderManager.getCurrentShaderIndex());
+
         clearTimeout(shaderManager.debounceTimer);
         if (isAutocompileOn) {
             shaderManager.debounceTimer = setTimeout(() => shaderManager.updateShader(false, stats), 300);

@@ -14,7 +14,7 @@ export const dom = {
     resizeHandle: document.getElementById('resize-handle'),
     restartButton: document.getElementById('restart-button'),
     playToggleButton: document.getElementById('play-toggle-button'),
-    shaderSelect: document.getElementById('shader-select'),
+    shaderSelectButton: document.getElementById('shader-select-button'),
     resolutionSelect: document.getElementById('resolution-select'),
     zoomSelect: document.getElementById('zoom-select'),
     profileButton: document.getElementById('profile-button'),
@@ -224,7 +224,9 @@ export const setupUI = (initialCallbacks) => {
     });
 
     // Main Controls
-    dom.shaderSelect.addEventListener('change', () => uiCallbacks.onShaderSelect && uiCallbacks.onShaderSelect(dom.shaderSelect.value));
+    if (dom.shaderSelectButton) {
+        dom.shaderSelectButton.addEventListener('click', () => uiCallbacks.onOpenAssetManager && uiCallbacks.onOpenAssetManager());
+    }
     dom.resolutionSelect.addEventListener('change', () => uiCallbacks.onResolutionChange && uiCallbacks.onResolutionChange());
     dom.zoomSelect.addEventListener('change', () => uiCallbacks.onZoomChange && uiCallbacks.onZoomChange());
     dom.playToggleButton.addEventListener('click', () => uiCallbacks.onPlayToggle && uiCallbacks.onPlayToggle());
