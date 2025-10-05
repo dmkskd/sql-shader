@@ -135,6 +135,65 @@ export class DuckDBWasmProfiler {
       // Mount the DuckDB Explain Visualizer Vue app
       const visualizerContainer = mainContainer.querySelector('#duckdb-visualizer-app');
       if (visualizerContainer) {
+        // Add CSS isolation for the visualizer to prevent conflicts
+        visualizerContainer.style.cssText = `
+          position: relative !important;
+          overflow: hidden !important;
+          height: 80vh !important;
+          min-height: 800px !important;
+          max-height: 90vh !important;
+          contain: layout style !important;
+        `;
+        
+        // Add scoped CSS to prevent the visualizer from growing infinitely
+        if (!document.getElementById('duckdb-visualizer-isolation-styles')) {
+          const styleEl = document.createElement('style');
+          styleEl.id = 'duckdb-visualizer-isolation-styles';
+          styleEl.textContent = `
+            #duckdb-visualizer-app {
+              height: 80vh !important;
+              min-height: 800px !important;
+              max-height: 90vh !important;
+              overflow: hidden !important;
+            }
+            #duckdb-visualizer-app .overflow-auto {
+              max-height: calc(80vh - 100px) !important;
+              overflow-y: auto !important;
+            }
+            #duckdb-visualizer-app .flex-grow-1 {
+              flex-grow: 1 !important;
+              max-height: calc(80vh - 100px) !important;
+            }
+            #duckdb-visualizer-app .tab-content {
+              height: calc(80vh - 150px) !important;
+              max-height: calc(80vh - 150px) !important;
+              overflow: hidden !important;
+            }
+            #duckdb-visualizer-app .d-flex {
+              max-height: inherit !important;
+            }
+            /* Allow the left panel resizer to work */
+            #duckdb-visualizer-app .resizable,
+            #duckdb-visualizer-app [style*="resize"],
+            #duckdb-visualizer-app .split-pane {
+              height: 100% !important;
+              max-height: none !important;
+            }
+            /* Prevent infinite card scrolling in right panel */
+            #duckdb-visualizer-app .card {
+              position: static !important;
+              transform: none !important;
+              margin-bottom: 10px !important;
+            }
+            /* Ensure right panel has proper scrolling */
+            #duckdb-visualizer-app .overflow-auto:not(.flex-grow-1) {
+              overflow-y: auto !important;
+              max-height: calc(80vh - 200px) !important;
+            }
+          `;
+          document.head.appendChild(styleEl);
+        }
+        
         const planSource = JSON.stringify(profileData.json);
 
         const app = createApp({
