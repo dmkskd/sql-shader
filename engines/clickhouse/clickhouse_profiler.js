@@ -67,7 +67,7 @@ export class ClickHouseProfiler {
         query: finalSql,
         query_id: queryId,
         clickhouse_settings: {
-          // CRITICAL: This setting must be a string "1.0" to be correctly interpreted by the server via HTTP.
+          // This setting must be a string "1.0" to be correctly interpreted by the server via HTTP.
           opentelemetry_start_trace_probability: '1.0',
           log_queries: 1,
         }

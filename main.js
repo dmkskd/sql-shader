@@ -138,8 +138,8 @@ const main = async (engine) => {
             // Clear previous content
             const profilerContentContainer = document.getElementById('profiler-content-container');
             profilerContentContainer.innerHTML = 'Loading profile...';
-            
-            // --- CRITICAL: Zombie Tooltip Cleanup ---
+
+            // --- Zombie Tooltip Cleanup ---
             // The d3-flame-graph library can leave a tooltip attached to the document body,
             // which captures mouse events globally and causes massive performance degradation.
             // We must explicitly find and remove it before rendering any new profile.

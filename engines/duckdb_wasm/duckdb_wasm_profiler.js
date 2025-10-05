@@ -1,7 +1,9 @@
 import * as d3 from 'd3';
 import mermaid from 'mermaid';
 // Use a namespace import to robustly handle this non-standard module.
+import { createApp } from 'vue';
 import * as d3_flame_graph from 'd3-flame-graph';
+import * as duckdbExplainVisualizer from 'duckdb-explain-visualizer';
 
 export class DuckDBWasmProfiler {
   constructor(connection) {
@@ -37,14 +39,19 @@ export class DuckDBWasmProfiler {
       // Now, get the JSON plan for the structured view
       await this.connection.query("PRAGMA enable_profiling = 'json'");
       const jsonResult = await this.connection.query(explainedSql);
-      const jsonString = jsonResult.getChild('explain_value').get(0);
-      const jsonPlan = JSON.parse(jsonString);
-      console.log('[engine.profile] Successfully retrieved JSON query plan.');
+      const fullJsonString = jsonResult.getChild('explain_value').get(0);
+      const fullJsonPlan = JSON.parse(fullJsonString);
+
+      // The actual plan is nested. The visualizer expects the root of the plan tree directly.
+      // We traverse down to find the actual root node of the query plan.
+      const jsonPlan = fullJsonPlan?.children?.[0]?.children?.[0];
+
+      console.log('[engine.profile] Successfully retrieved and extracted JSON query plan.');
       
       // Return the raw text for the first tab, and null for the structured one for now.
       return { raw: rawPlan, json: jsonPlan };
     } finally {
-      // CRITICAL: Disable profiling to restore normal connection behavior for the render loop.
+      // Disable profiling to restore normal connection behavior for the render loop.
       await this.connection.query("PRAGMA disable_profiling");
       console.log('[engine.profile] Profiling disabled, connection restored to normal state.');
     }
@@ -65,7 +72,8 @@ export class DuckDBWasmProfiler {
       tabsConfig.push(
         { id: 'structured-plan', title: 'Structured Plan', content: this.parsePlanToHtml(profileData.json), header: "Generated from the JSON output of <code>EXPLAIN ANALYZE</code>" },
         { id: 'graph-plan', title: 'Graph Plan', content: '', header: "Generated from the JSON output of <code>EXPLAIN ANALYZE</code>" },
-        { id: 'flamegraph', title: 'FlameGraph', content: '', header: "Generated from the timing information in the JSON output of <code>EXPLAIN ANALYZE</code>" }
+        { id: 'flamegraph', title: 'FlameGraph', content: '', header: "Generated from the timing information in the JSON output of <code>EXPLAIN ANALYZE</code>" },
+        { id: 'visualizer', title: 'Visualizer', content: '<div id="duckdb-visualizer-app"></div>', header: "Powered by duckdb-explain-visualizer" }
       );
     }
 
@@ -122,6 +130,23 @@ export class DuckDBWasmProfiler {
           });
         };
         flamegraphTab.addEventListener('click', renderFlamegraphOnFirstClick);
+      }
+
+      // Mount the DuckDB Explain Visualizer Vue app
+      const visualizerContainer = mainContainer.querySelector('#duckdb-visualizer-app');
+      if (visualizerContainer) {
+        const planSource = JSON.stringify(profileData.json);
+
+        const app = createApp({
+          data() {
+            return {
+              plan: planSource,
+            }
+          },
+          template: `<duckdb-explain-visualizer :plan-source="plan" plan-query="" />`
+        });
+        app.component("duckdb-explain-visualizer", duckdbExplainVisualizer.Plan);
+        app.mount(visualizerContainer);
       }
     }
   }

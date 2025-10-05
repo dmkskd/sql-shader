@@ -114,7 +114,7 @@ export const setupUI = (initialCallbacks) => {
     const closeModal = () => {
         dom.profileModal.style.display = 'none';
 
-        // --- CRITICAL: Zombie Tooltip Cleanup ---
+        // --- Zombie Tooltip Cleanup ---
         // The d3-flame-graph library can leave tooltips attached to the document body.
         // These tooltips have global mousemove listeners that cause massive performance degradation
         // if they are not removed when the modal is closed.

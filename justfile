@@ -13,6 +13,16 @@ default: help
 help:
 	@just --list
 
+# Download vendored frontend dependencies into the ./vendor directory
+vendor:
+	@echo "Downloading vendored dependencies..."
+	@mkdir -p vendor
+	@curl -fL "https://unpkg.com/vue@3.2.45/dist/vue.global.prod.js" -o "vendor/vue.global.prod-3.2.45.js" # For main app if needed
+	@curl -fL "https://unpkg.com/vue@3.2.45/dist/vue.esm-browser.prod.js" -o "vendor/vue.esm-browser.prod-3.2.45.js" # For profiler
+	@curl -fL "https://unpkg.com/duckdb-explain-visualizer@1.1.4/dist/duckdb-explain-visualizer.mjs" -o "vendor/duckdb-explain-visualizer.es.js"
+	@curl -fL "https://unpkg.com/duckdb-explain-visualizer@1.1.4/dist/duckdb-explain-visualizer.css" -o "vendor/style.css"
+	@echo "✅ Vendored dependencies downloaded successfully."
+
 # Starts all required services for development (ClickHouse and Caddy).
 run: start-clickhouse start-caddy
 

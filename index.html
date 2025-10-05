@@ -10,6 +10,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
     <!-- FlameGraph CSS -->
     <link rel="stylesheet" type="text/css" href="css/d3-flame-graph.css">
+    <link
+      href="https://unpkg.com/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/vendor/style.css" />
 
     <style>
       /* --- Visual Effect Styles --- */
@@ -747,7 +752,9 @@
           "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm",
           "mermaid": "https://esm.sh/mermaid@10",
           "d3": "https://esm.sh/d3@7",
-          "d3-flame-graph": "https://esm.sh/d3-flame-graph@4"
+          "d3-flame-graph": "https://esm.sh/d3-flame-graph@4",
+          "duckdb-explain-visualizer": "/vendor/duckdb-explain-visualizer.es.js",
+          "vue": "/vendor/vue.esm-browser.prod-3.2.45.js"
         }
       }
     </script>
