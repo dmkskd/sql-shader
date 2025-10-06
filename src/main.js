@@ -24,7 +24,7 @@ const main = async (engine) => {
   // --- Generic First-Time Configuration Check ---
   // This logic is now inside main(), ensuring all UI callbacks are set up
   // before we potentially open the settings modal.
-  const engineMeta = (await (await fetch('./engines/engines.json')).json()).find(e => e.id === dom.engineSelect.value);
+  const engineMeta = (await (await fetch('src/engines/engines.json')).json()).find(e => e.id === dom.engineSelect.value);
   if (engineMeta && engineMeta.requiresConfiguration) {
       const hasConfig = !!localStorage.getItem(`${STORAGE_PREFIX}${dom.engineSelect.value}-settings`);
       if (!hasConfig) {
@@ -675,7 +675,7 @@ const main = async (engine) => {
  */
 const initializeEngine = async () => {
     // --- 1. Load the engine manifest ---
-    const engineManifest = await (await fetch('./engines/engines.json')).json();
+    const engineManifest = await (await fetch('src/engines/engines.json')).json();
 
     // --- 2. Populate the engine dropdown from the manifest ---
     const engineSelect = document.getElementById('engine-select');

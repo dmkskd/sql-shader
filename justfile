@@ -17,10 +17,10 @@ help:
 vendor:
 	@echo "Downloading vendored dependencies..."
 	@mkdir -p vendor
-	@curl -fL "https://unpkg.com/vue@3.2.45/dist/vue.global.prod.js" -o "vendor/vue.global.prod-3.2.45.js" # For main app if needed
-	@curl -fL "https://unpkg.com/vue@3.2.45/dist/vue.esm-browser.prod.js" -o "vendor/vue.esm-browser.prod-3.2.45.js" # For profiler
-	@curl -fL "https://unpkg.com/duckdb-explain-visualizer@1.1.4/dist/duckdb-explain-visualizer.mjs" -o "vendor/duckdb-explain-visualizer.es.js"
-	@curl -fL "https://unpkg.com/duckdb-explain-visualizer@1.1.4/dist/duckdb-explain-visualizer.css" -o "vendor/style.css"
+	@curl -fL "https://unpkg.com/vue@3.2.45/dist/vue.global.prod.js" -o "assets/vendor/vue.global.prod-3.2.45.js" # For main app if needed
+	@curl -fL "https://unpkg.com/vue@3.2.45/dist/vue.esm-browser.prod.js" -o "assets/vendor/vue.esm-browser.prod-3.2.45.js" # For profiler
+	@curl -fL "https://unpkg.com/duckdb-explain-visualizer@1.1.4/dist/duckdb-explain-visualizer.mjs" -o "assets/vendor/duckdb-explain-visualizer.es.js"
+	@curl -fL "https://unpkg.com/duckdb-explain-visualizer@1.1.4/dist/duckdb-explain-visualizer.css" -o "assets/vendor/style.css"
 	@echo "✅ Vendored dependencies downloaded successfully."
 
 # Starts all required services for development (ClickHouse and Caddy).
