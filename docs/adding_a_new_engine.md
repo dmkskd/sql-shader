@@ -45,21 +45,28 @@ Your `my_new_engine_engine.js` file must export a constant named `engine` which 
 
 #### `async prepare(sql)`
 
-*   **Purpose**: To validate the provided SQL and prepare it for execution. It should return an object with a `query` method.
-*   **Return Value**: `Promise<{ query: function(...args): Promise<{table: ArrowTable, timings: object}> }>`
-*   **Details**: This method is the ideal place to perform syntax validation. A good implementation will catch compilation errors here, rather than during the render loop.
-*   **Differences**:
-    *   **Stateful Engines**: Engines that support prepared statements (like DuckDB-WASM) can perform validation and return a prepared statement object directly.
-    *   **Stateless Engines**: For engines with a stateless request/response model (like many HTTP-based APIs), there may not be a formal "prepare" step. In this case, to provide good editor feedback, it is best practice to run a lightweight validation query (e.g., `EXPLAIN PLAN`). This allows the engine to catch syntax errors before the main render loop begins. See `clickhouse_engine.js` for an example of this pattern.
+- **Purpose**: To validate the provided SQL and prepare it for execution. It should return an object with a `query` method.
+- **Return Value**: `Promise<{ query: function(uniforms): Promise<{table: ArrowTable, timings: object}> }>`
+- **Details**: This method is the ideal place to perform syntax validation. A good implementation will catch compilation errors here, rather than during the render loop.
+- **Differences**:
+  - **Stateful Engines**: Engines that support prepared statements (like DuckDB-WASM) can perform validation and return a closure that captures the prepared statement.
+  - **Stateless Engines**: For engines with a stateless request/response model (like many HTTP-based APIs), there may not be a formal "prepare" step. In this case, to provide good editor feedback, it is best practice to run a lightweight validation query (e.g., `EXPLAIN PLAN`). This allows the engine to catch syntax errors before the main render loop begins. See `clickhouse_engine.js` for an example of this pattern.
 
 ---
 
-#### `async executeQuery(sql, params)`
+#### `async query(uniforms)` (Internal Implementation)
 
-*   **Purpose**: To run the actual query with runtime parameters and return the pixel data. This method is typically called by the function returned from `prepare`.
-*   **`params`**: An array of uniform values: `[width, height, iTime, mx, my]`.
-    *   `mx` and `my` represent the mouse's X and Y coordinates, scaled to the shader's internal pixel space (e.g., from `0` to `width-1` and `0` to `height-1`).
-*   **Return Value**: `Promise<{table: ArrowTable, timings: object}>`. The `table` must be an Apache Arrow Table with `r`, `g`, and `b` columns (Float32). The `timings` object can provide a breakdown of execution time (e.g., `query`, `network`, `processing`).
+- **Purpose**: To run the actual query with runtime parameters and return the pixel data. This method is typically called by the function returned from `prepare`.
+- **`uniforms`**: A ShaderToy-style uniform object containing:
+  - `iResolution`: `[width, height, depth]` - Canvas resolution
+  - `iTime`: Current time in seconds
+  - `iMouse`: `[mouseX, mouseY, clickX, clickY]` - Mouse coordinates
+  - `iDate`: `[year, month, day, timeOfDay]` - Current date/time
+  - `iFrame`: Frame counter
+  - `iAudio`: Audio analysis data (volume, bass, mid, treble)
+  - And other ShaderToy-compatible uniforms
+- **Return Value**: `Promise<{table: ArrowTable, timings: object}>`. The `table` must be an Apache Arrow Table with `r`, `g`, and `b` columns (Float32). The `timings` object can provide a breakdown of execution time (e.g., `query`, `network`, `processing`).
+- **Note**: Each engine implements this method internally. The public interface only uses the `query` function returned by `prepare()`.
 
 ---
 

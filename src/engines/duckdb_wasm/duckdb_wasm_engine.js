@@ -84,7 +84,7 @@ class DuckDBWasmEngine {
     
     // Return an object that conforms to the engine interface
     return {
-      query: async (uniforms) => this.executeQuery(sql, preparedStatement, uniforms)
+      query: async (uniforms) => this.query(sql, preparedStatement, uniforms)
     };
   }
 
@@ -95,7 +95,7 @@ class DuckDBWasmEngine {
    * @param {object} uniforms - Pure JS uniforms from UniformBuilder
    * @returns {Promise<{table: ArrowTable, timings: object}>}
    */
-  async executeQuery(sql, preparedStatement, uniforms) {
+  async query(sql, preparedStatement, uniforms) {
     const t0 = performance.now();
     
     // DuckDB-specific translation: flatten arrays to dot notation for json_extract

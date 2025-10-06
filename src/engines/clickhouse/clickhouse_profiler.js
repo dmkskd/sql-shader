@@ -820,7 +820,7 @@ export class ClickHouseProfiler {
                           <span style="font-size: 0.8em; color: #ffc980;"> (Experimental)</span>
                           <div class="export-buttons" style="margin-left: 20px;">
                             <button id="ch-speedscope-export-button" class="export-btn" title="Open CPU trace in Speedscope">Open in Speedscope</button>
-                            <button id="ch-perfetto-export-button" class="export-btn" title="Perfetto integration is temporarily disabled due to browser security policy issues." disabled style="background-color: #555; cursor: not-allowed;">Open in Perfetto</button>
+                            <button id="ch-perfetto-export-button" class="export-btn" title="Perfetto integration is temporarily disabled as it's not working." disabled style="background-color: #555; cursor: not-allowed;">Open in Perfetto</button>
                           </div>
                        </div>`;
       }

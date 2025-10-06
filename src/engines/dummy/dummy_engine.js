@@ -64,16 +64,19 @@ class DummyEngine {
    */
   async prepare(sql) {
     return {
-      query: async (...args) => this.executeQuery(sql, args)
+      query: async (uniforms) => this.query(sql, null, uniforms)
     };
   }
 
   /**
    * "Executes" a query by returning a static, pre-defined Arrow table.
    * This always returns a single grey pixel, regardless of the input SQL.
+   * @param {string} sql The SQL query string (ignored)
+   * @param {any} preparedStatement Not used for dummy engine (always null)
+   * @param {object} uniforms The uniform object (ignored)
    * @returns {Promise<{table: ArrowTable, timings: object}>}
    */
-  async executeQuery(sql, params) {
+  async query(sql, preparedStatement, uniforms) {
     // Create a 1x1 pixel table with a grey color.
     const r = new Float32Array([0.5]);
     const g = new Float32Array([0.5]);
