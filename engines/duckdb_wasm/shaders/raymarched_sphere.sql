@@ -1,12 +1,20 @@
 -- DuckDB Raymarching Sphere + Box with Metaball Blending
 -- Returns RGB color values for each pixel
 -- @run: resolution=80x60, zoom=4
+-- MIGRATED: 2025-10-05 from legacy 5-parameter to JSON style
 
 WITH
 uniforms AS (
+  SELECT ?::JSON AS iUniforms
+),
+parsed AS (
   SELECT
-    ?::BIGINT AS width, ?::BIGINT AS height,
-    ?::DOUBLE AS iTime, ?::DOUBLE AS mx, ?::DOUBLE AS my
+    CAST(json_extract(iUniforms, '$."iResolution.x"') AS BIGINT) AS width,
+    CAST(json_extract(iUniforms, '$."iResolution.y"') AS BIGINT) AS height,
+    CAST(json_extract(iUniforms, '$.iTime') AS DOUBLE) AS iTime,
+    CAST(json_extract(iUniforms, '$."iMouse.x"') AS DOUBLE) AS mx,
+    CAST(json_extract(iUniforms, '$."iMouse.y"') AS DOUBLE) AS my
+  FROM uniforms
 ),
 
 -- Generate all pixels and calculate everything in one go
@@ -44,7 +52,7 @@ pixels AS (
         -- Metaball blending strength
         0.3 as blend_strength
         
-    FROM uniforms u
+    FROM parsed u
     CROSS JOIN generate_series(0, u.width - 1) as t(x)
     CROSS JOIN generate_series(0, u.height - 1) as s(y)
 ),
@@ -262,7 +270,7 @@ SELECT
             ))
         ELSE 
             -- Animated background
-            0.05 + (x::DOUBLE / uniforms.width) * 0.1 + sin(lighting.iTime * 0.4) * 0.03
+            0.05 + (x::DOUBLE / width) * 0.1 + sin(lighting.iTime * 0.4) * 0.03
     END as r,
     
     CASE 
@@ -272,7 +280,7 @@ SELECT
                 (0.5 + cos(lighting.iTime * 1.5 + hit_x * 2.5 + hit_z * 3.0) * 0.3)
             ))
         ELSE 
-            0.08 + (y::DOUBLE / uniforms.height) * 0.15 + cos(lighting.iTime * 0.3) * 0.04
+            0.08 + (y::DOUBLE / height) * 0.15 + cos(lighting.iTime * 0.3) * 0.04
     END as g,
     
     CASE 
@@ -282,9 +290,9 @@ SELECT
                 (0.4 + sin(lighting.iTime * 1.8 + hit_y * 4.0 + hit_z * 2.0) * 0.4)
             ))
         ELSE 
-            0.1 + ((x + y)::DOUBLE / (uniforms.width + uniforms.height)) * 0.2 + sin(lighting.iTime * 0.6) * 0.02
+            0.1 + ((x + y)::DOUBLE / (width + height)) * 0.2 + sin(lighting.iTime * 0.6) * 0.02
     END as b
 
 FROM lighting
-CROSS JOIN uniforms
+CROSS JOIN parsed
 ORDER BY y, x;

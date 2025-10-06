@@ -2,6 +2,8 @@
  * This module encapsulates all functionality for the Asset Manager modal,
  * including populating it with shaders and generating their thumbnails.
  */
+import { UniformBuilder } from './uniform_builder.js';
+
 export class AssetManager {
     constructor(engine) {
         this.engine = engine;
@@ -121,7 +123,24 @@ export class AssetManager {
 
     async _generateThumbnail(sql) {
         const prepared = await this.engine.prepare(sql);
-        const { table } = await prepared.query(this.thumbnailResolution.width, this.thumbnailResolution.height, 5, this.thumbnailResolution.width / 2, this.thumbnailResolution.height / 2);
+        
+        const uniformBuilder = new UniformBuilder();
+        
+        const thumbnailParams = {
+            width: this.thumbnailResolution.width,
+            height: this.thumbnailResolution.height,
+            iTime: 5, // Fixed time for consistent thumbnails
+            mouseX: this.thumbnailResolution.width / 2,
+            mouseY: this.thumbnailResolution.height / 2,
+            audio: { isActive: false } // No audio for thumbnails
+        };
+        
+        // Build pure JS uniforms - engine handles its own translation
+        const uniforms = uniformBuilder.build(thumbnailParams);
+        
+        // Pass to engine - engine handles translation internally
+        const queryResult = await prepared.query(uniforms);
+        const { table } = queryResult;
 
         const imageData = new ImageData(this.thumbnailResolution.width, this.thumbnailResolution.height);
         const r = table.getChild('r').toArray();

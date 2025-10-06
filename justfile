@@ -68,3 +68,7 @@ stop-clickhouse:
 stop-caddy:
 	@echo "Stopping any container using port {{caddy_port}}..."
 	@docker ps -q --filter "publish={{caddy_port}}" | xargs -r docker stop > /dev/null 2>&1 || true
+
+# Run all tests
+test:
+	@node test/run_tests.js

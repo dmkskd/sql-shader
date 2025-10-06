@@ -81,17 +81,54 @@ class DuckDBWasmEngine {
    */
   async prepare(sql) {
     const preparedStatement = await this.connection.prepare(sql);
-    // Return an object that conforms to the new interface, which expects
-    // the query result to be wrapped in an object with `table` and `timings` properties.
+    
+    // Return an object that conforms to the engine interface
     return {
-      query: async (...args) => {
-        const t0 = performance.now();
-        const table = await preparedStatement.query(...args);
-        const t1 = performance.now();
-        const timings = { query: t1 - t0 };
-        return { table, timings };
-      }
+      query: async (uniforms) => this.executeQuery(sql, preparedStatement, uniforms)
     };
+  }
+
+  /**
+   * Execute query with proper parameter translation for DuckDB
+   * @param {string} sql - The SQL query 
+   * @param {object} preparedStatement - DuckDB prepared statement
+   * @param {object} uniforms - Pure JS uniforms from UniformBuilder
+   * @returns {Promise<{table: ArrowTable, timings: object}>}
+   */
+  async executeQuery(sql, preparedStatement, uniforms) {
+    const t0 = performance.now();
+    
+    // DuckDB-specific translation: flatten arrays to dot notation for json_extract
+    const duckdbParams = {
+      'iResolution.x': uniforms.iResolution[0],
+      'iResolution.y': uniforms.iResolution[1], 
+      'iResolution.z': uniforms.iResolution[2],
+      'iMouse.x': uniforms.iMouse[0],
+      'iMouse.y': uniforms.iMouse[1],
+      'iMouse.z': uniforms.iMouse[2],
+      'iMouse.w': uniforms.iMouse[3],
+      'iDate.year': uniforms.iDate[0],
+      'iDate.month': uniforms.iDate[1],
+      'iDate.day': uniforms.iDate[2],
+      'iDate.time': uniforms.iDate[3],
+      'iTime': uniforms.iTime,
+      'iTimeDelta': uniforms.iTimeDelta,
+      'iFrameRate': uniforms.iFrameRate,
+      'iFrame': uniforms.iFrame,
+      'iSampleRate': uniforms.iSampleRate,
+      'iAudio.volume': uniforms.iAudio.volume,
+      'iAudio.bass': uniforms.iAudio.bass,
+      'iAudio.mid': uniforms.iAudio.mid,
+      'iAudio.treble': uniforms.iAudio.treble,
+      'iAudio.isActive': uniforms.iAudio.isActive
+    };
+    
+    // Execute with DuckDB-formatted parameters
+    const table = await preparedStatement.query(JSON.stringify(duckdbParams));
+    const t1 = performance.now();
+    const timings = { query: t1 - t0 };
+    
+    return { table, timings };
   }
 
   /**

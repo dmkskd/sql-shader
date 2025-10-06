@@ -82,8 +82,16 @@ class ClickHouseEngine {
     // To provide immediate feedback on compilation errors, we run an EXPLAIN PLAN check.
     // This validates the query syntax and table existence on the server without executing it,
     // catching a wide range of errors early.
-    // We must replace the parameter placeholders with dummy values for the syntax check to pass.
-    const syntaxCheckSql = `EXPLAIN PLAN ${sql.replace(/{[^}]+}/g, '1')}`;
+    let syntaxCheckSql;
+    
+    if (sql.includes('?::JSON') || sql.includes('?::String')) {
+      // For JSON format, replace ? with a dummy JSON object
+      syntaxCheckSql = `EXPLAIN PLAN ${sql.replace(/\?/g, "'{\"iResolution\":[800,600,1],\"iTime\":0,\"iMouse\":[0,0,0,0]}'")}`;;
+    } else {
+      // For legacy format, replace {parameter:Type} with dummy values
+      syntaxCheckSql = `EXPLAIN PLAN ${sql.replace(/{[^}]+}/g, '1')}`;
+    }
+    
     try {
       await this.client.exec({ query: syntaxCheckSql });
     } catch (e) {
@@ -93,23 +101,43 @@ class ClickHouseEngine {
 
     return {
       // The query function will now return both the result table and detailed timings.
-      query: async (...args) => this.executeQuery(sql, args)
+      query: async (uniforms) => this.executeQuery(sql, null, uniforms)
     };
   }
 
   /**
-   * Executes a "prepared" query with the given parameters.
+   * Executes a "prepared" query with the given uniforms.
    * @param {string} sql The SQL query string from the prepare step.
-   * @param {Array<any>} params The parameters for the query.
+   * @param {any} preparedStatement Not used for ClickHouse HTTP client.
+   * @param {Object} uniforms The uniform object containing all shader parameters.
    * @returns {Promise<{table: import('@apache/arrow').Table, timings: object}>} An object containing the result table and a breakdown of timings.
    */
-  async executeQuery(sql, params) {
-    let finalSql = sql
-      .replace('{width:UInt32}', params[0])
-      .replace('{height:UInt32}', params[1])
-      .replace('{iTime:Float64}', params[2])
-      .replace('{mx:Float64}', params[3])
-      .replace('{my:Float64}', params[4]);
+  async executeQuery(sql, preparedStatement, uniforms) {
+    let finalSql = sql;
+
+    // Handle different parameter formats
+    // 1. New JSON format: Single parameter with JSON object
+    if (sql.includes('?::JSON') || sql.includes('?::String')) {
+      // Convert uniforms to JSON string for ClickHouse
+      const uniformsJson = JSON.stringify(uniforms);
+      finalSql = sql.replace(/\?/g, `'${uniformsJson.replace(/'/g, "\\'")}'`);
+    } 
+    // 2. Legacy format: Individual {parameter:Type} placeholders
+    else {
+      // Extract individual parameters for backwards compatibility
+      const width = uniforms.iResolution[0];
+      const height = uniforms.iResolution[1];
+      const iTime = uniforms.iTime;
+      const mx = uniforms.iMouse[0];
+      const my = uniforms.iMouse[1];
+
+      finalSql = sql
+        .replace('{width:UInt32}', width)
+        .replace('{height:UInt32}', height)
+        .replace('{iTime:Float64}', iTime)
+        .replace('{mx:Float64}', mx)
+        .replace('{my:Float64}', my);
+    }
 
     // Strategy pattern to handle different data formats.
     if (this.dataFormat === 'Arrow') {

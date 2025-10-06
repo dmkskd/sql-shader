@@ -2,6 +2,8 @@ import { dom, setupUI, updateUICallbacks, updateInitStatus, updateStatsPanel, up
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 import { AssetManager } from './asset_manager.js';
+import { AudioManager } from './audio_manager.js';
+import { UniformBuilder } from './uniform_builder.js';
 
 import { PerformanceMonitor } from './performance_monitor.js';
 console.log('Executing main.js - Debug Version: 1.4.0');
@@ -40,6 +42,47 @@ const main = async (engine) => {
     onOpenSettings: () => {
         openSettingsModal(activeEngine);
     },
+    onAudioToggle: async () => {
+        const audioButton = document.getElementById('audio-toggle-button');
+        const audioStatus = audioButton.querySelector('.perf-status');
+        const micButton = document.getElementById('microphone-button');
+        const fileButton = document.getElementById('audio-file-button');
+        
+        if (!audioManager.isInitialized) {
+            try {
+                await audioManager.initialize();
+                audioStatus.textContent = 'ON';
+                audioStatus.className = 'perf-status perf-status-on';
+                micButton.style.display = 'inline-block';
+                fileButton.style.display = 'inline-block';
+            } catch (error) {
+                console.error('Failed to initialize audio:', error);
+                alert('Failed to initialize audio: ' + error.message);
+            }
+        } else {
+            audioManager.stop();
+            audioStatus.textContent = 'OFF';
+            audioStatus.className = 'perf-status perf-status-off';
+            micButton.style.display = 'none';
+            fileButton.style.display = 'none';
+        }
+    },
+    onMicrophoneToggle: async () => {
+        try {
+            await audioManager.connectMicrophone();
+        } catch (error) {
+            console.error('Failed to connect microphone:', error);
+            alert('Failed to connect microphone: ' + error.message);
+        }
+    },
+    onAudioFileLoad: async (file) => {
+        try {
+            await audioManager.connectAudioFile(file);
+        } catch (error) {
+            console.error('Failed to load audio file:', error);
+            alert('Failed to load audio file: ' + error.message);
+        }
+    },
   });
 
   updateInitStatus('Initializing...');
@@ -50,6 +93,12 @@ const main = async (engine) => {
   // Initialize the performance monitor with its canvas
   const perfMonitor = new PerformanceMonitor(document.getElementById('timing-chart-canvas'));
 
+  // Initialize audio manager for music reactivity
+  const audioManager = new AudioManager();
+  
+  // Initialize uniform builder (pure JS uniforms, no engine logic)
+  const uniformBuilder = new UniformBuilder();
+  
   let isPerfVisible = true;
   let statsPollIntervalId = null;
   let isAutocompileOn = true;
@@ -477,7 +526,7 @@ const main = async (engine) => {
         stats.pixelR = null; // Indicate mouse is outside the valid area
       }
       // Directly update the UI on mouse move for real-time feedback
-      updateStatsPanel(stats, resolution);
+      updateStatsPanel(stats, resolution, audioManager ? audioManager.getLastAudioParams() : null);
     });
 
     /**
@@ -520,12 +569,15 @@ const main = async (engine) => {
 
     const renderFrame = async (t) => {
       const iTime = (performance.now() - startTime) / 1000.0;
+      
+      // Update audio analysis
+      const audioParams = audioManager.update();
 
       // If there is no valid prepared statement (e.g., due to a compilation error),
       // skip rendering but keep the animation loop alive.
       if (!shaderManager.prepared || shaderManager.hasCompilationError) {
         // Still update stats so the UI doesn't get stuck on "Initializing..."
-        updateStatsPanel(stats, resolution); // Use imported function
+        updateStatsPanel(stats, resolution, audioParams); // Use imported function
         // Keep the animation loop going to allow for live editing.
         if (shaderManager.isPlaying) requestAnimationFrame(renderFrame); 
         return;
@@ -542,13 +594,19 @@ const main = async (engine) => {
         const localImageData = ctx.createImageData(frameWidth, frameHeight);
 
         const t0 = performance.now();
-        const { table: result, timings } = await shaderManager.prepared.query(
-          frameWidth,
-          frameHeight,
-          iTime,
-          iMouse.x,
-          iMouse.y
-        );
+        
+        // === ENGINE-AGNOSTIC: Build pure JS uniforms ===
+        const uniforms = uniformBuilder.build({
+          width: frameWidth,
+          height: frameHeight,
+          iTime: iTime,
+          mouseX: iMouse.x,
+          mouseY: iMouse.y,
+          audio: audioParams
+        });
+        
+        // Pass pure JS uniforms to engine - engine handles its own translation
+        const queryResult = await shaderManager.prepared.query(uniforms);        const { table: result, timings } = queryResult;
         const t1 = performance.now();
         stats.queryTime = t1 - t0;
         
@@ -581,7 +639,7 @@ const main = async (engine) => {
         frameCount = 0;
       }
       // Update the stats panel on every frame for real-time feedback
-      updateStatsPanel(stats, resolution); // Use imported function
+      updateStatsPanel(stats, resolution, audioManager ? audioManager.getLastAudioParams() : null); // Use imported function
 
       if (shaderManager.isPlaying) {
         requestAnimationFrame(renderFrame); // Continue the loop only if playing

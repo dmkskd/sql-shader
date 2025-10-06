@@ -1,0 +1,411 @@
+/**
+ * AudioManager - Handles audio analysis and provides audio-reactive parameters for shaders
+ * Supports Strudel.cc integration and generic audio input
+ */
+export class AudioManager {
+  constructor() {
+    this.audioContext = null;
+    this.analyser = null;
+    this.dataArray = null;
+    this.frequencyData = null;
+    this.waveformData = null;
+    this.bufferLength = 2048; // FFT size
+    
+    // Audio reactive parameters (similar to Shadertoy)
+    this.audioParams = {
+      volume: 0.0,        // Overall volume level (0-1)
+      bass: 0.0,          // Bass frequencies (20-250 Hz)
+      mid: 0.0,           // Mid frequencies (250-4000 Hz) 
+      treble: 0.0,        // Treble frequencies (4000+ Hz)
+      kick: 0.0,          // Kick drum detection
+      snare: 0.0,         // Snare detection
+      hihat: 0.0,         // Hi-hat detection
+      spectrum: [],       // Full frequency spectrum (array)
+      waveform: [],       // Raw waveform data (array)
+      beat: 0.0,          // Beat detection (0-1)
+      beatTime: 0.0,      // Time since last beat
+      isActive: false,    // Whether audio is currently active
+    };
+    
+    // Beat detection state
+    this.beatHistory = [];
+    this.lastBeatTime = 0;
+    this.beatThreshold = 1.2; // Configurable beat sensitivity
+    
+    this.isInitialized = false;
+    this.isPlaying = false;
+    
+    // Audio source references
+    this.currentSource = null;
+    this.currentAudio = null;
+    this.currentStream = null;
+  }
+
+  /**
+   * Initialize audio context and analyzer
+   */
+  async initialize() {
+    try {
+      // Create AudioContext
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Create analyzer node
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = this.bufferLength;
+      this.analyser.smoothingTimeConstant = 0.8;
+      
+      // Create data arrays
+      const bufferLength = this.analyser.frequencyBinCount;
+      this.frequencyData = new Uint8Array(bufferLength);
+      this.waveformData = new Uint8Array(bufferLength);
+      
+      this.isInitialized = true;
+      console.log('[AudioManager] Initialized successfully');
+      return true;
+    } catch (error) {
+      console.error('[AudioManager] Failed to initialize:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Connect to microphone input
+   */
+  async connectMicrophone() {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+    
+    try {
+      // Stop any existing audio
+      this.stop();
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        } 
+      });
+      
+      const source = this.audioContext.createMediaStreamSource(stream);
+      source.connect(this.analyser);
+      
+      // Store references
+      this.currentSource = source;
+      this.currentStream = stream;
+      
+      this.isPlaying = true;
+      console.log('[AudioManager] Connected to microphone');
+      return true;
+    } catch (error) {
+      console.error('[AudioManager] Failed to connect microphone:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Connect to an HTML audio element
+   */
+  connectAudioElement(audioElement) {
+    if (!this.isInitialized) {
+      this.initialize();
+    }
+    
+    try {
+      const source = this.audioContext.createMediaElementSource(audioElement);
+      source.connect(this.analyser);
+      source.connect(this.audioContext.destination); // Also play the audio
+      
+      this.isPlaying = true;
+      console.log('[AudioManager] Connected to audio element');
+      return true;
+    } catch (error) {
+      console.error('[AudioManager] Failed to connect audio element:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Connect to an audio file
+   * @param {File} file - Audio file to analyze
+   */
+  async connectAudioFile(file) {
+    if (!this.isInitialized) {
+      throw new Error('AudioManager not initialized');
+    }
+
+    try {
+      // Stop any existing audio
+      this.stop();
+
+      // Create audio element
+      const audio = document.createElement('audio');
+      audio.src = URL.createObjectURL(file);
+      audio.loop = true;
+      audio.crossOrigin = 'anonymous';
+
+      // Create MediaElementSource
+      const source = this.audioContext.createMediaElementSource(audio);
+      
+      // Connect to analyser
+      source.connect(this.analyser);
+      source.connect(this.audioContext.destination); // Also play the audio
+
+      // Store references
+      this.currentSource = source;
+      this.currentAudio = audio;
+
+      // Start playing
+      await audio.play();
+      this.isPlaying = true;
+
+      console.log('Audio file connected successfully');
+    } catch (error) {
+      console.error('Error connecting to audio file:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop audio playback and analysis
+   */
+  stop() {
+    this.isPlaying = false;
+    
+    if (this.currentSource) {
+      this.currentSource.disconnect();
+      this.currentSource = null;
+    }
+    
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio.src = '';
+      URL.revokeObjectURL(this.currentAudio.src);
+      this.currentAudio = null;
+    }
+    
+    if (this.currentStream) {
+      this.currentStream.getTracks().forEach(track => track.stop());
+      this.currentStream = null;
+    }
+  }
+
+  /**
+   * Connect to Strudel.cc (when available)
+   * This will be called from Strudel integration
+   */
+  connectStrudel(strudelAudioNode) {
+    if (!this.isInitialized) {
+      this.initialize();
+    }
+    
+    try {
+      strudelAudioNode.connect(this.analyser);
+      this.isPlaying = true;
+      console.log('[AudioManager] Connected to Strudel');
+      return true;
+    } catch (error) {
+      console.error('[AudioManager] Failed to connect to Strudel:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get the last audio parameters without updating analysis
+   * @returns {Object} The last audio parameters
+   */
+  getLastAudioParams() {
+    return this.audioParams;
+  }
+
+  /**
+   * Update audio analysis - call this every frame
+   */
+  update() {
+    if (!this.isInitialized || !this.isPlaying || !this.analyser) {
+      this.audioParams.isActive = false;
+      return this.audioParams;
+    }
+
+    // Get frequency and waveform data
+    this.analyser.getByteFrequencyData(this.frequencyData);
+    this.analyser.getByteTimeDomainData(this.waveformData);
+
+    // Calculate overall volume (RMS)
+    let sum = 0;
+    for (let i = 0; i < this.frequencyData.length; i++) {
+      sum += this.frequencyData[i] * this.frequencyData[i];
+    }
+    this.audioParams.volume = Math.sqrt(sum / this.frequencyData.length) / 255.0;
+
+    // Calculate frequency bands (based on typical frequency ranges)
+    const nyquist = this.audioContext.sampleRate / 2;
+    const freqPerBin = nyquist / this.frequencyData.length;
+    
+    // Bass: 20-250 Hz
+    const bassStart = Math.floor(20 / freqPerBin);
+    const bassEnd = Math.floor(250 / freqPerBin);
+    this.audioParams.bass = this.getAverageFrequency(bassStart, bassEnd);
+    
+    // Mid: 250-4000 Hz  
+    const midStart = bassEnd;
+    const midEnd = Math.floor(4000 / freqPerBin);
+    this.audioParams.mid = this.getAverageFrequency(midStart, midEnd);
+    
+    // Treble: 4000+ Hz
+    const trebleStart = midEnd;
+    this.audioParams.treble = this.getAverageFrequency(trebleStart, this.frequencyData.length);
+
+    // Beat detection based on bass energy
+    this.detectBeat();
+
+    // Copy arrays for shader use (convert to 0-1 range)
+    this.audioParams.spectrum = Array.from(this.frequencyData).map(v => v / 255.0);
+    this.audioParams.waveform = Array.from(this.waveformData).map(v => (v - 128) / 128.0);
+    
+    // Mark as active when audio is playing
+    this.audioParams.isActive = this.isPlaying;
+
+    return this.audioParams;
+  }
+
+  /**
+   * Get Shadertoy-style audio texture data
+   * Returns frequency data formatted for SQL texture sampling
+   * @returns {Array} Array of frequency amplitudes for current frame
+   */
+  getAudioTextureData() {
+    if (!this.isPlaying || !this.frequencyData) {
+      // Return silence if no audio
+      return new Array(512).fill(0.0);
+    }
+
+    // Convert frequency data to 0-1 range for texture sampling
+    return Array.from(this.frequencyData).map(v => v / 255.0);
+  }
+
+  /**
+   * Get audio texture data with time history (Shadertoy-style)
+   * @param {number} historyFrames - Number of previous frames to include
+   * @returns {Object} Audio texture data with current and historical frames
+   */
+  getAudioTextureWithHistory(historyFrames = 64) {
+    // Initialize history buffer if needed
+    if (!this.audioHistory) {
+      this.audioHistory = [];
+    }
+
+    // Get current frame data
+    const currentFrame = this.getAudioTextureData();
+    
+    // Add current frame to history
+    this.audioHistory.unshift(currentFrame);
+    
+    // Limit history size
+    if (this.audioHistory.length > historyFrames) {
+      this.audioHistory = this.audioHistory.slice(0, historyFrames);
+    }
+
+    return {
+      width: currentFrame.length,  // Frequency bins (typically 512)
+      height: this.audioHistory.length,  // Time frames
+      data: this.audioHistory
+    };
+  }
+
+  /**
+   * Sample audio texture at specific UV coordinates (Shadertoy equivalent)
+   * Equivalent to: texture(iChannel0, vec2(u, v)).x
+   * @param {number} u - Frequency position (0-1)
+   * @param {number} v - Time position (0-1, where 0 = current frame)
+   * @returns {number} Audio amplitude at that position
+   */
+  sampleAudioTexture(u, v = 0.0) {
+    const audioTexture = this.getAudioTextureWithHistory();
+    
+    // Convert UV to array indices
+    const freqBin = Math.floor(u * (audioTexture.width - 1));
+    const timeFrame = Math.floor(v * (audioTexture.height - 1));
+    
+    // Bounds check
+    if (timeFrame >= audioTexture.data.length || freqBin >= audioTexture.width) {
+      return 0.0;
+    }
+    
+    return audioTexture.data[timeFrame][freqBin] || 0.0;
+  }
+
+  /**
+   * Calculate average frequency in a range
+   */
+  getAverageFrequency(startBin, endBin) {
+    let sum = 0;
+    let count = 0;
+    for (let i = startBin; i < endBin && i < this.frequencyData.length; i++) {
+      sum += this.frequencyData[i];
+      count++;
+    }
+    return count > 0 ? (sum / count) / 255.0 : 0;
+  }
+
+  /**
+   * Simple beat detection algorithm
+   */
+  detectBeat() {
+    const currentTime = performance.now() / 1000.0;
+    
+    // Use bass energy for beat detection
+    const energy = this.audioParams.bass;
+    
+    // Keep history of recent bass energy
+    this.beatHistory.push(energy);
+    if (this.beatHistory.length > 10) {
+      this.beatHistory.shift();
+    }
+    
+    // Calculate average energy
+    const avgEnergy = this.beatHistory.reduce((a, b) => a + b, 0) / this.beatHistory.length;
+    
+    // Beat detected if current energy is significantly higher than average
+    const isBeat = energy > avgEnergy * this.beatThreshold && 
+                   (currentTime - this.lastBeatTime) > 0.2; // Minimum gap between beats
+    
+    if (isBeat) {
+      this.audioParams.beat = 1.0;
+      this.lastBeatTime = currentTime;
+      this.audioParams.beatTime = 0.0;
+    } else {
+      this.audioParams.beat = Math.max(0, this.audioParams.beat - 0.05); // Decay
+      this.audioParams.beatTime = currentTime - this.lastBeatTime;
+    }
+  }
+
+  /**
+   * Resume audio context (required for user interaction)
+   */
+  async resume() {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+      console.log('[AudioManager] Audio context resumed');
+    }
+  }
+
+  /**
+   * Get current audio parameters for shader
+   */
+  getAudioParams() {
+    return this.audioParams;
+  }
+
+  /**
+   * Cleanup
+   */
+  dispose() {
+    if (this.audioContext) {
+      this.audioContext.close();
+    }
+    this.isInitialized = false;
+    this.isPlaying = false;
+  }
+}

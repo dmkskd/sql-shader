@@ -18,6 +18,7 @@ export class ShaderManager {
         this.engineReady = false;
         this.wasPlayingBeforeError = true;
         this.pristineSql = ''; // The original SQL of the loaded shader
+        this.currentSQL = ''; // The currently compiled SQL
         this.currentShaderIndex = 0;
 
         this.debounceTimer = null;
@@ -186,6 +187,7 @@ export class ShaderManager {
             const t1 = performance.now();
 
             this.prepared = newPrepared;
+            this.currentSQL = sql; // Store the SQL for parameter style detection
             stats.prepareTime = t1 - t0;
             this.hasCompilationError = false;
             stats.errorMessage = null;
