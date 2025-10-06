@@ -52,11 +52,11 @@ export const dom = {
     unsavedChangesModal: document.getElementById('unsaved-changes-modal'),
     unsavedChangesDiscardButton: document.getElementById('unsaved-changes-discard-button'),
     unsavedChangesCancelButton: document.getElementById('unsaved-changes-cancel-button'),
-    // Audio controls
-    audioToggleButton: document.getElementById('audio-toggle-button'),
-    microphoneButton: document.getElementById('microphone-button'),
-    audioFileButton: document.getElementById('audio-file-button'),
-    audioFileInput: document.getElementById('audio-file-input'),
+    // Audio controls - temporarily disabled
+    // audioToggleButton: document.getElementById('audio-toggle-button'),
+    // microphoneButton: document.getElementById('microphone-button'),
+    // audioFileButton: document.getElementById('audio-file-button'),
+    // audioFileInput: document.getElementById('audio-file-input'),
 };
 
 export const updateInitStatus = (message) => {
@@ -251,15 +251,15 @@ export const setupUI = (initialCallbacks) => {
     // The compile button is now in the editor status bar, but the listener is still attached here.
     document.getElementById('compile-button').addEventListener('click', () => uiCallbacks.onCompile && uiCallbacks.onCompile());
     
-    // --- Audio Controls ---
-    dom.audioToggleButton.addEventListener('click', () => uiCallbacks.onAudioToggle && uiCallbacks.onAudioToggle());
-    dom.microphoneButton.addEventListener('click', () => uiCallbacks.onMicrophoneToggle && uiCallbacks.onMicrophoneToggle());
-    dom.audioFileButton.addEventListener('click', () => dom.audioFileInput.click());
-    dom.audioFileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
-            uiCallbacks.onAudioFileLoad && uiCallbacks.onAudioFileLoad(e.target.files[0]);
-        }
-    });
+    // --- Audio Controls - temporarily disabled ---
+    // dom.audioToggleButton.addEventListener('click', () => uiCallbacks.onAudioToggle && uiCallbacks.onAudioToggle());
+    // dom.microphoneButton.addEventListener('click', () => uiCallbacks.onMicrophoneToggle && uiCallbacks.onMicrophoneToggle());
+    // dom.audioFileButton.addEventListener('click', () => dom.audioFileInput.click());
+    // dom.audioFileInput.addEventListener('change', (e) => {
+    //     if (e.target.files.length > 0) {
+    //         uiCallbacks.onAudioFileLoad && uiCallbacks.onAudioFileLoad(e.target.files[0]);
+    //     }
+    // });
     
     // --- Visual Effect Selector ---
     dom.effectSelect.addEventListener('change', (e) => {
