@@ -389,6 +389,7 @@ const main = async (engine) => {
             // Save general settings
             const generalSettings = {
                 pollInterval: document.getElementById('stats-poll-interval').value,
+                autocompileDelay: document.getElementById('autocompile-delay').value,
             };
             localStorage.setItem('pixelql.general-settings', JSON.stringify(generalSettings));
 
@@ -661,7 +662,9 @@ const main = async (engine) => {
 
         clearTimeout(shaderManager.debounceTimer);
         if (isAutocompileOn) {
-            shaderManager.debounceTimer = setTimeout(() => shaderManager.updateShader(false, stats), 300);
+            const generalSettings = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}general-settings`)) || {};
+            const autocompileDelay = parseInt(generalSettings.autocompileDelay, 10) || 300;
+            shaderManager.debounceTimer = setTimeout(() => shaderManager.updateShader(false, stats), autocompileDelay);
         }
     });
   } catch (e) {

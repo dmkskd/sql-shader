@@ -300,6 +300,7 @@ export const openSettingsModal = (engine) => {
     // Populate general settings
     const storedGeneralSettings = JSON.parse(localStorage.getItem('pixelql.general-settings')) || {};
     document.getElementById('stats-poll-interval').value = storedGeneralSettings.pollInterval || 250;
+    document.getElementById('autocompile-delay').value = storedGeneralSettings.autocompileDelay || 300;
 
     // Clear any previous engine-specific settings
     dom.engineSettingsContainer.innerHTML = '';

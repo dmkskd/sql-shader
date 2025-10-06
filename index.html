@@ -724,6 +724,13 @@
               How often to refresh the engine performance stats. Lower values are more real-time but may have a slight overhead.
             </p>
           </div>
+          <div class="settings-form-group">
+            <label for="autocompile-delay">Autocompile Delay (ms)</label>
+            <input type="number" id="autocompile-delay" value="300" min="0" step="50">
+            <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">
+              How long to wait after typing stops before automatically compiling the shader. Set to 0 for instant compilation.
+            </p>
+          </div>
         </div>
         <hr>
         <div id="engine-specific-settings">
