@@ -399,8 +399,9 @@ class ClickHouseEngine {
       <h3>ClickHouse Connection</h3>
       <p style="font-size: 0.9em; color: #ccc; margin-top: 0; border-left: 3px solid #ffc980; padding-left: 10px;">
         <b>Disclaimer:</b> The ClickHouse engine requires a running server instance accessible from your browser.
-        By default, PixelQL attempts to connect to <code>http://localhost:8123</code>.
-        Please see the project's <code>README.md</code> for instructions on running ClickHouse via Docker.
+        By default, it attempts to connect to <code>http://localhost:8123</code>.<br>
+        Be aware of any <b>security implications</b> when allowing this program to connect to your ClickHouse server.<br>
+        Please see the project's <code>README.md</code> for instructions on running <b>ClickHouse via Docker</b>.
       </p>
       <div class="settings-form-group">
         <label for="ch-url">Server URL</label>
