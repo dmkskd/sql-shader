@@ -10,6 +10,7 @@ import { ClickHouseProfilerOpenTelemetry } from './profiler/opentelemetry.js';
 import { ClickHouseProfilerQuerySummary } from './profiler/querysummary.js';
 import { ClickHouseProfilerEvents } from './profiler/events.js';
 import { ClickHouseProfilerTraceLogs } from './profiler/tracelogs.js';
+import { ClickHouseProfilerExplainPlan } from './profiler/explainplan.js';
 
 export class ClickHouseProfiler {
   constructor(engine) {
@@ -22,6 +23,7 @@ export class ClickHouseProfiler {
     this.querysummary = new ClickHouseProfilerQuerySummary();
     this.events = new ClickHouseProfilerEvents();
     this.tracelogs = new ClickHouseProfilerTraceLogs();
+    this.explainplan = new ClickHouseProfilerExplainPlan();
   }
 
   /**
@@ -191,38 +193,9 @@ export class ClickHouseProfiler {
    * @returns {Promise<void>}
    */
   async renderProfile(profileData, mainContainer) {
-
-
     // --- Tab 2: Structured Plan ---
-    // The parsed, collapsible, and highlighted version of the actions plan
-    const planText = profileData.actionsPlan || 'No data.';
-    let formattedHtml = '';
-    let inActionsBlock = false;
-    const lines = planText.split('\n');
-
-    for (const line of lines) {
-      let processedLine = line.replace(/(Expression|Join|Sorting|ReadFromSystemNumbers|FUNCTION|COLUMN|ALIAS)/g, '<span class="time-warm">$1</span>');
-
-      if (line.trim().startsWith('Actions:')) {
-        inActionsBlock = true;
-        // Start a collapsible section. The summary is the "Actions:" line itself.
-        formattedHtml += `<details><summary>${processedLine}</summary><pre>`;
-      } else if (inActionsBlock) {
-        // Check for the end of the Actions block. It ends when a line is not indented
-        // or is the 'Positions:' line.
-        if (!line.startsWith(' ') || line.trim().startsWith('Positions:')) {
-          inActionsBlock = false;
-          formattedHtml += `</pre></details>`; // Close the collapsible section
-          formattedHtml += processedLine + '\n'; // Add the current line outside
-        } else {
-          formattedHtml += line + '\n'; // Add action line inside the <pre>
-        }
-      } else {
-        formattedHtml += processedLine + '\n';
-      }
-    }
-    // In case the file ends while inside an actions block
-    if (inActionsBlock) formattedHtml += `</pre></details>`;
+    // Use the explain plan module for this content
+    const explainPlanContent = this.explainplan.renderExplainPlan(profileData.actionsPlan);
 
     // --- Tab 3: Query Summary (from system.query_log) ---
     const querySummaryContent = this.querysummary.renderQuerySummary(profileData.queryLog);
@@ -244,36 +217,16 @@ export class ClickHouseProfiler {
     // --- Tab 6: Server Trace Log (from send_logs_level='trace') ---
     const serverTextLogContent = this.tracelogs.renderTraceLogs(profileData.serverTextLog);
 
-    // --- Tab for Explain Plan (Raw + Structured) ---
-    const explainPlanContent = `
-      <div class="inner-tabs">
-        <button class="inner-tab active" data-inner-tab="raw-explain">Raw</button>
-        <button class="inner-tab" data-inner-tab="structured-explain">Structured</button>
-      </div>
-      <div id="inner-content-raw-explain" class="inner-tab-content active">
-        <pre>${profileData.actionsPlan || 'No data.'}</pre>
-      </div>
-      <div id="inner-content-structured-explain" class="inner-tab-content">
-        <div class="graph-controls" data-for-tab="structured-plan">
-          <button id="ch-expand-all-button" title="Expand All Nodes">Expand All</button>
-          <button id="ch-collapse-all-button" title="Collapse All Nodes">Collapse All</button>
-        </div>
-        <div class="tab-inner-content">
-          <pre>${formattedHtml}</pre>
-        </div>
-      </div>
-    `;
-
     // --- Dynamically build the HTML for the profiler ---
     const tabsConfig = [
-      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
-      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>` },
-      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>' },
-      { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>'},
-      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>' },
-      { id: 'flamegraph', title: 'FlameGraph', content: '', header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
-      { id: 'call-graph', title: 'Call Graph', content: '', header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.' },
-      { id: 'opentelemetry', title: 'OpenTelemetry', content: this.opentelemetry.renderOpenTelemetry(profileData.openTelemetry || {}), header: 'Distributed tracing spans from system.opentelemetry_span_log' },
+      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>`, module: null },
+      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>`, module: null },
+      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>', module: null },
+      { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>', module: null },
+      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>', module: this.pipeline },
+      { id: 'flamegraph', title: 'FlameGraph', content: '', header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>', module: this.flamegraph },
+      { id: 'call-graph', title: 'Call Graph', content: '', header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.', module: this.callgraph },
+      { id: 'opentelemetry', title: 'OpenTelemetry', content: this.opentelemetry.renderOpenTelemetry(profileData.openTelemetry || {}), header: 'Distributed tracing spans from system.opentelemetry_span_log', module: null },
     ];
 
     let tabsHtml = '<div class="profiler-tabs">';
@@ -285,37 +238,12 @@ export class ClickHouseProfiler {
       contentHtml += `<div id="profile-content-${tab.id}" class="profiler-tab-content ${activeClass}">
                         <h3>${tab.title}</h3>
                         <p>${tab.header}</p>`;
-      if (tab.id === 'pipeline-plan') {
-        contentHtml += `<div class="graph-controls" style="display: none;" data-for-tab="pipeline-plan">
-                          <button id="ch-zoom-in-button" title="Zoom In">+</button>
-                          <button id="ch-zoom-out-button" title="Zoom Out">-</button>
-                          <button id="ch-zoom-reset-button" title="Reset Zoom">1:1</button>
-                       </div>`;
+      
+      // Add module-specific controls if the module provides them
+      if (tab.module && typeof tab.module.getControlsHtml === 'function') {
+        contentHtml += tab.module.getControlsHtml();
       }
-      if (tab.id === 'flamegraph') {
-        contentHtml += `<div class="graph-controls" style="display: none;" data-for-tab="flamegraph">
-                          <label for="ch-flamegraph-group-by">Group By: </label>
-                          <select id="ch-flamegraph-group-by">
-                            <option value="none" selected>None</option>
-                            <option value="method">Method Name</option>
-                            <option value="class">By Class</option>
-                            <option value="system">By System</option>
-                          </select>
-                          <span style="font-size: 0.8em; color: #ffc980;"> (Experimental)</span>
-                          <div class="export-buttons" style="margin-left: 20px;">
-                            <button id="ch-speedscope-export-button" class="export-btn" title="Open CPU trace in Speedscope">Open in Speedscope</button>
-                            <button id="ch-perfetto-export-button" class="export-btn" title="Perfetto integration is temporarily disabled as it's not working." disabled style="background-color: #555; cursor: not-allowed;">Open in Perfetto</button>
-                          </div>
-                       </div>`;
-      }
-      if (tab.id === 'call-graph') {
-        contentHtml += `<div class="graph-controls" style="display: none;" data-for-tab="call-graph">
-                          <button id="cg-zoom-in-button" title="Zoom In">+</button>
-                          <button id="cg-zoom-out-button" title="Zoom Out">-</button>
-                          <button id="cg-zoom-reset-button" title="Reset Zoom">1:1</button>
-                          <button id="cg-switch-direction-button" title="Switch Graph Direction">Switch Direction</button>
-                       </div>`;
-      }
+      
       contentHtml += `  <div class="tab-inner-content">${tab.content || ''}</div>
                       </div>`;
     });

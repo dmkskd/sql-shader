@@ -324,4 +324,25 @@ export class ClickHouseProfilerFlamegraph {
     };
     reader.readAsDataURL(blob);
   }
+
+  /**
+   * Generates HTML controls for the flamegraph tab.
+   * @returns {string} HTML string for flamegraph controls.
+   */
+  getControlsHtml() {
+    return `<div class="graph-controls" style="display: none;" data-for-tab="flamegraph">
+              <label for="ch-flamegraph-group-by">Group By: </label>
+              <select id="ch-flamegraph-group-by">
+                <option value="none" selected>None</option>
+                <option value="method">Method Name</option>
+                <option value="class">By Class</option>
+                <option value="system">By System</option>
+              </select>
+              <span style="font-size: 0.8em; color: #ffc980;"> (Experimental)</span>
+              <div class="export-buttons" style="margin-left: 20px;">
+                <button id="ch-speedscope-export-button" class="export-btn" title="Open CPU trace in Speedscope">Open in Speedscope</button>
+                <button id="ch-perfetto-export-button" class="export-btn" title="Perfetto integration is temporarily disabled as it's not working." disabled style="background-color: #555; cursor: not-allowed;">Open in Perfetto</button>
+              </div>
+           </div>`;
+  }
 }

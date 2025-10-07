@@ -197,4 +197,17 @@ export class ClickHouseProfilerCallGraph {
     updateButtonText();
     button.addEventListener('click', button.handler);
   }
+
+  /**
+   * Generates HTML controls for the call graph tab.
+   * @returns {string} HTML string for call graph controls.
+   */
+  getControlsHtml() {
+    return `<div class="graph-controls" style="display: none;" data-for-tab="call-graph">
+              <button id="cg-zoom-in-button" title="Zoom In">+</button>
+              <button id="cg-zoom-out-button" title="Zoom Out">-</button>
+              <button id="cg-zoom-reset-button" title="Reset Zoom">1:1</button>
+              <button id="cg-switch-direction-button" title="Switch Graph Direction">Switch Direction</button>
+           </div>`;
+  }
 }

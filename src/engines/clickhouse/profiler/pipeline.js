@@ -175,4 +175,16 @@ export class ClickHouseProfilerPipelineGraph {
     });
     return mermaidString;
   }
+
+  /**
+   * Generates HTML controls for the pipeline graph tab.
+   * @returns {string} HTML string for pipeline graph controls.
+   */
+  getControlsHtml() {
+    return `<div class="graph-controls" style="display: none;" data-for-tab="pipeline-plan">
+              <button id="ch-zoom-in-button" title="Zoom In">+</button>
+              <button id="ch-zoom-out-button" title="Zoom Out">-</button>
+              <button id="ch-zoom-reset-button" title="Reset Zoom">1:1</button>
+           </div>`;
+  }
 }
