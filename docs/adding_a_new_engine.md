@@ -1,23 +1,23 @@
 # How to Add a New Engine to PixelQL
 
-This document outlines the process for integrating a new database engine into the PixelQL application. The architecture is designed to be modular, allowing for different SQL-based backends to be used as rendering engines.
+This document outlines the process for integrating a new database engine into the application. The architecture is designed to be modular, allowing for different SQL-based backends to be used as rendering engines.
 
 ## Core Concept: The Engine Interface
 
-The application interacts with different databases through a consistent "Engine" interface, which relies on duck-typing. This means that as long as your engine object provides the required methods, the application will be able to use it.
+The application interacts with different databases through an "Engine" interface.
 
 An engine's responsibilities include:
 
 - its own initialization
 - query execution
 - profiling
-- providing a list of its specific shaders.
+- providing a list of shaders.
 
-The best starting point is to review the `engines/dummy/dummy_engine.js` file. It provides a minimal, non-functional implementation of the engine interface that is useful as a template.
+The best starting point is to review the `src/engines/dummy/dummy_engine.js` file. It provides a minimal, non-functional implementation of the engine interface that is useful as a template.
 
 ## 1. File Structure
 
-First, create a new directory for your engine inside the `engines/` folder. The directory name should match the `value` you will use in the main `index.html` dropdown.
+First, create a new directory for your engine inside the `src/engines/` folder. The directory name should match the `value` you will use in the main `index.html` dropdown.
 
 ```
 engines/
@@ -54,17 +54,17 @@ Your `my_new_engine_engine.js` file must export a constant named `engine` which 
 
 ---
 
-#### `async query(uniforms)` (Internal Implementation)
+#### `async query(uniforms)`
 
 - **Purpose**: To run the actual query with runtime parameters and return the pixel data. This method is typically called by the function returned from `prepare`.
-- **`uniforms`**: A ShaderToy-style uniform object containing:
+- **`uniforms`**: A ShaderToy-style [uniform](../src/uniform_builder.js) object containing:
   - `iResolution`: `[width, height, depth]` - Canvas resolution
   - `iTime`: Current time in seconds
   - `iMouse`: `[mouseX, mouseY, clickX, clickY]` - Mouse coordinates
   - `iDate`: `[year, month, day, timeOfDay]` - Current date/time
   - `iFrame`: Frame counter
-  - `iAudio`: Audio analysis data (volume, bass, mid, treble)
-  - And other ShaderToy-compatible uniforms
+  - ... And other ShaderToy-compatible uniforms
+  
 - **Return Value**: `Promise<{table: ArrowTable, timings: object}>`. The `table` must be an Apache Arrow Table with `r`, `g`, and `b` columns (Float32). The `timings` object can provide a breakdown of execution time (e.g., `query`, `network`, `processing`).
 - **Note**: Each engine implements this method internally. The public interface only uses the `query` function returned by `prepare()`.
 

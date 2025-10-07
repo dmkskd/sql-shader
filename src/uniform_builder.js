@@ -1,6 +1,5 @@
 /**
- * Uniform Builder - Creates pure JavaScript uniform structures
- * No engine knowledge - just builds the best JS structure
+ * Uniform Builder - Creates a generic uniform structures
  */
 export class UniformBuilder {
   constructor() {
@@ -10,9 +9,9 @@ export class UniformBuilder {
   }
 
   /**
-   * Build uniforms (pure JS, no engine-specific logic)
+   * Build uniforms (no engine-specific logic)
    * @param {Object} params - Input parameters
-   * @returns {Object} Clean JavaScript uniform object
+   * @returns {Object} uniform object
    */
   build(params) {
     const now = performance.now();

@@ -1,6 +1,6 @@
 # SQL Shader Development Guide
 
-This document provides an architectural overview of the SQL Shader application for developers working on the codebase.
+This document provides an architectural overview of the application for developers working on the codebase.
 
 ## Core Concept
 
@@ -13,21 +13,21 @@ The application treats SQL databases as GPU-like shader processors. SQL queries 
 │                       Application Architecture                  │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  ┌─────────────┐    ┌──────────────┐    ┌─────────────────┐    │
-│  │   HTML UI   │    │   main.js    │    │   Engine Layer  │    │
-│  │             │◄──►│              │◄──►│                 │    │
-│  │ - Canvas    │    │ - Render     │    │ - DuckDB WASM   │    │
-│  │ - Editor    │    │   Loop       │    │ - ClickHouse    │    │
-│  │ - Controls  │    │ - UI Mgmt    │    │ - Custom Engines│    │
-│  └─────────────┘    └──────────────┘    └─────────────────┘    │
+│  ┌─────────────┐    ┌──────────────┐    ┌─────────────────┐     │
+│  │   HTML UI   │    │   main.js    │    │   Engine Layer  │     │
+│  │             │◄──►│              │◄──►│                 │     │
+│  │ - Canvas    │    │ - Render     │    │ - DuckDB WASM   │     │
+│  │ - Editor    │    │   Loop       │    │ - ClickHouse    │     │
+│  │ - Controls  │    │ - UI Mgmt    │    │ - Custom Engines│     │
+│  └─────────────┘    └──────────────┘    └─────────────────┘     │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│                     Supporting Modules                         │
+│                     Supporting Modules                          │
 │                                                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐            │
-│  │ Shader      │  │ Uniform     │  │ Performance │            │
-│  │ Manager     │  │ Builder     │  │ Monitor     │            │
-│  └─────────────┘  └─────────────┘  └─────────────┘            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │ Shader      │  │ Uniform     │  │ Performance │              │
+│  │ Manager     │  │ Builder     │  │ Monitor     │              │
+│  └─────────────┘  └─────────────┘  └─────────────┘              │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -65,15 +65,15 @@ Frame Start
 └─────────┬───────┘
           │
           ▼
-┌─────────────────┐
-│ SQL Execution   │  ← Database processes pixel grid query
-│                 │
-│ WITH pixels AS  │    Example: 800x600 = 480,000 rows
+┌────────────────────────────────────────────────────────┐
+│ SQL Execution                                          │  ← Database processes pixel grid query
+│                                                        │
+│ WITH pixels AS                                         │    Example: 800x600 = 480,000 rows
 │ (SELECT i::DOUBLE AS x, j::DOUBLE AS y                 │
 │  FROM generate_series(0, 799) AS t(i)                  │
 │  CROSS JOIN generate_series(0, 599) AS t2(j))          │
 │ SELECT r, g, b FROM pixels, uniforms WHERE ...         │
-└─────────┬───────┘
+└─────────┬──────────────────────────────────────────────┘
           │
           ▼
 ┌─────────────────┐
@@ -87,17 +87,17 @@ Frame Start
 └─────────┬───────┘
           │
           ▼
-┌─────────────────┐
-│ Canvas Drawing  │  ← Direct transfer to ImageData
-│                 │
-│ for (i=0; i<len; i++) {                     │
+┌────────────────────────────────────────────┐
+│ Canvas Drawing                             │  ← Direct transfer to ImageData
+│                                            │
+│ for (i=0; i<len; i++) {                    │
 │   imageData[i*4+0] = r[i] * 255; // Red    │
 │   imageData[i*4+1] = g[i] * 255; // Green  │
 │   imageData[i*4+2] = b[i] * 255; // Blue   │
 │   imageData[i*4+3] = 255;        // Alpha  │
 │ }                                          │
 │ ctx.putImageData(imageData, 0, 0);         │
-└─────────┬───────┘
+└─────────┬──────────────────────────────────┘
           │
           ▼
      Frame Complete
@@ -156,7 +156,6 @@ Each engine implements a consistent interface but handles preparation and execut
 ## Key Components
 
 ### 1. Main Application (`main.js`)
-- **Size**: 757 lines (monolithic, could be refactored)
 - **Responsibilities**:
   - Engine initialization and switching
   - Render loop coordination
@@ -175,7 +174,7 @@ Each engine implements a consistent interface but handles preparation and execut
 - **Pattern**: Manages lifecycle from editor to prepared statements
 
 ### 4. Uniform Builder (`uniform_builder.js`)
-- **Purpose**: Creates pure JavaScript uniform objects
+- **Purpose**: Creates uniform objects
 - **Format**: ShaderToy-compatible (iTime, iResolution, iMouse, etc.)
 - **Engine-agnostic**: Each engine translates as needed
 
@@ -366,7 +365,4 @@ ORDER BY y, x;  -- Critical: maintain pixel order
 
 ## Future Architecture Improvements
 
-1. **Modularize main.js**: Split into EngineManager, RenderPipeline, UIController
-2. **Standardize uniform handling**: Create UniformAdapter for consistent translation
-3. **Add engine test framework**: Automated validation for new engines
-4. **Improve error boundaries**: Better isolation between engine and UI errors
+...
