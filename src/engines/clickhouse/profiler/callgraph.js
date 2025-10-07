@@ -1,0 +1,200 @@
+import mermaid from 'mermaid';
+
+/**
+ * ClickHouse Profiler Call Graph Module
+ * 
+ * Handles rendering of aggregated call graphs from trace data using Mermaid.js.
+ * Provides interactive zoom, direction switching, and tooltip functionality.
+ */
+export class ClickHouseProfilerCallGraph {
+  constructor(flamegraph) {
+    this.flamegraph = flamegraph; // Reference to flamegraph module for function name simplification
+  }
+
+  /**
+   * Renders a Mermaid.js call graph from the ClickHouse trace log data.
+   * @param {Array<object>} traceLog The data from system.trace_log.
+   * @param {HTMLElement} container The DOM element to render the chart into.
+   * @param {string} direction The graph direction: 'TD' (top-down) or 'BT' (bottom-up).
+   */
+  async renderCallGraph(traceLog, container, direction = 'TD') {
+    if (!traceLog || traceLog.length === 0) {
+      container.innerHTML = '<p>No data to render call graph.</p>';
+      return;
+    }
+
+    container.innerHTML = ''; // Clear container before rendering
+    
+    // First, build the same hierarchical data structure as the flame graph.
+    const root = { name: "Total CPU Time", value: 0, children: [] };
+    let totalValue = 0;
+    
+    traceLog.forEach(row => {
+      totalValue += row.value;
+      let currentNode = root;
+      const stack = row.trace.reverse();
+      stack.forEach(fullName => {
+        const functionName = this.flamegraph.simplifyFunctionName(fullName);
+        let childNode = currentNode.children.find(c => c.name === functionName);
+        if (!childNode) {
+          childNode = { name: functionName, value: 0, children: [], fullName: fullName };
+          currentNode.children.push(childNode);
+        }
+        childNode.value += row.value;
+        currentNode = childNode;
+      });
+    });
+    root.value = totalValue;
+
+    // Aggregate the hierarchical data into a flat list of nodes and edges for the graph.
+    const aggregatedNodes = new Map();
+    const aggregatedEdges = new Map();
+
+    function processNode(node, parentName = null) {
+        const simplifiedName = node.name;
+
+        // Aggregate node value
+        if (!aggregatedNodes.has(simplifiedName)) {
+            aggregatedNodes.set(simplifiedName, { value: 0, fullName: node.fullName });
+        }
+        aggregatedNodes.get(simplifiedName).value += node.value;
+
+        // Aggregate edge
+        if (parentName) {
+            const edgeKey = `${parentName}|${simplifiedName}`;
+            aggregatedEdges.set(edgeKey, (aggregatedEdges.get(edgeKey) || 0) + node.value);
+        }
+
+        (node.children || []).forEach(child => processNode(child, simplifiedName));
+    }
+    processNode(root);
+
+    // --- Convert aggregated data to Mermaid syntax ---
+    let mermaidSyntax = `graph ${direction};\n`;
+    mermaidSyntax += 'classDef timeHot fill:#5c2828,stroke:#ff8080,stroke-width:2px,color:#fff;\n';
+    mermaidSyntax += 'classDef timeWarm fill:#5a4e3a,stroke:#ffc980,stroke-width:2px,color:#fff;\n';
+    mermaidSyntax += 'classDef timeGood fill:#2a4a3a,stroke:#80ff80,stroke-width:2px,color:#fff;\n';
+
+    // Create a unique ID for each function name
+    const nameToId = new Map();
+    let nodeIdCounter = 0;
+    for (const name of aggregatedNodes.keys()) {
+        nameToId.set(name, `n${nodeIdCounter++}`);
+    }
+
+    // Generate node definitions
+    for (const [name, data] of aggregatedNodes.entries()) {
+      const nodeId = nameToId.get(name);
+      const percent = totalValue > 0 ? ((data.value / totalValue) * 100) : 0;
+      let nodeText = `<div title='${data.fullName || name}'><strong>${name}</strong><br/>${data.value.toLocaleString()} samples<br/>${percent.toFixed(1)}%</div>`;
+      nodeText = nodeText.replace(/"/g, '#quot;');
+      mermaidSyntax += `    ${nodeId}["${nodeText}"];\n`;
+
+      if (percent >= 50) {
+        mermaidSyntax += `    class ${nodeId} timeHot;\n`;
+      } else if (percent >= 5) {
+        mermaidSyntax += `    class ${nodeId} timeWarm;\n`;
+      } else {
+        mermaidSyntax += `    class ${nodeId} timeGood;\n`;
+      }
+    }
+
+    // Generate edge definitions with safety limits
+    let edgeCount = 0;
+    const maxEdges = 1500; // Stay well below Mermaid's limit of 2000
+    
+    for (const [edgeKey, value] of aggregatedEdges.entries()) {
+        if (edgeCount >= maxEdges) {
+          mermaidSyntax += `    note["Graph truncated - ${aggregatedEdges.size - maxEdges} more edges not shown"];\n`;
+          break;
+        }
+        
+        const [parentName, childName] = edgeKey.split('|');
+        const parentId = nameToId.get(parentName);
+        const childId = nameToId.get(childName);
+        if (parentId && childId) {
+            mermaidSyntax += `    ${parentId} --> ${childId};\n`;
+            edgeCount++;
+        }
+    }
+
+    // Log the size of the generated graph definition for debugging.
+    console.log(`[Profiler] Generated Call Graph Mermaid syntax size: ${mermaidSyntax.length} characters.`);
+
+    try {
+      const { svg } = await mermaid.render('ch-call-graph', mermaidSyntax);
+      container.innerHTML = svg;
+    } catch (error) {
+      console.error('Mermaid call graph rendering failed:', error.message);
+      container.innerHTML = `
+        <div style="padding: 20px; text-align: center; color: #666; font-family: monospace;">
+          <h4>Call Graph Too Complex</h4>
+          <p>Call graph has too many nodes/edges to display.</p>
+          <p>Error: ${error.message}</p>
+          <details>
+            <summary>Raw Mermaid Graph</summary>
+            <pre style="text-align: left; font-size: 10px; max-height: 300px; overflow: auto;">${mermaidSyntax}</pre>
+          </details>
+        </div>`;
+      return;
+    }
+
+    // --- Add Tooltip Logic for the Call Graph ---
+    const tooltipEl = document.createElement('div');
+    tooltipEl.id = 'ch-call-graph-tooltip';
+    tooltipEl.style.position = 'fixed';
+    tooltipEl.style.display = 'none';
+    tooltipEl.style.background = '#2a2a2a';
+    tooltipEl.style.padding = '10px';
+    tooltipEl.style.border = '1px solid #777';
+    tooltipEl.style.borderRadius = '3px';
+    tooltipEl.style.pointerEvents = 'none';
+    tooltipEl.style.zIndex = '1003'; // Ensure it's on top
+    container.appendChild(tooltipEl);
+
+    container.querySelectorAll('.node').forEach(nodeEl => {
+      nodeEl.addEventListener('mousemove', (e) => {
+        const title = nodeEl.querySelector('div')?.title;
+        if (title) {
+          tooltipEl.innerHTML = `<strong>Full Name:</strong><br>${title}`;
+          tooltipEl.style.display = 'block';
+          tooltipEl.style.left = `${e.clientX + 15}px`;
+          tooltipEl.style.top = `${e.clientY + 15}px`;
+        }
+      });
+      nodeEl.addEventListener('mouseout', () => {
+        tooltipEl.style.display = 'none';
+      });
+    });
+  }
+
+  /**
+   * Sets up the event listeners for the Call Graph controls (zoom, direction).
+   * @param {Array<object>} traceLog The raw trace log data needed for re-rendering.
+   * @param {HTMLElement} container The container for the call graph.
+   */
+  setupCallGraphControls(traceLog, container) {
+    const button = document.getElementById('cg-switch-direction-button');
+    if (!button) return;
+
+    let currentLayout = 'TD'; // Top-Down
+
+    const updateButtonText = () => {
+      button.textContent = (currentLayout === 'TD') ? 'Switch to Bottom Up' : 'Switch to Top Down';
+    };
+
+    // Remove any old listener before adding a new one to prevent conflicts on re-profiling.
+    if (button.handler) {
+      button.removeEventListener('click', button.handler);
+    }
+
+    button.handler = () => {
+      currentLayout = (currentLayout === 'TD') ? 'BT' : 'TD';
+      this.renderCallGraph(traceLog, container, currentLayout);
+      updateButtonText();
+    };
+
+    updateButtonText();
+    button.addEventListener('click', button.handler);
+  }
+}
