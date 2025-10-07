@@ -176,6 +176,23 @@ export const setupUI = (initialCallbacks) => {
         if (e.key === 'Escape' && dom.profileModal.style.display !== 'none') {
             closeModal();
         }
+
+        // --- Global Keyboard Shortcuts ---
+        // Check if the active element is an input, textarea, or the CodeMirror editor.
+        const activeEl = document.activeElement;
+        const isEditing = activeEl.tagName === 'INPUT' ||
+                          activeEl.tagName === 'TEXTAREA' ||
+                          activeEl.closest('.CodeMirror');
+
+        // Don't trigger shortcuts if the user is typing.
+        if (isEditing) {
+            return;
+        }
+
+        if (e.code === 'Space') {
+            e.preventDefault(); // Prevent the page from scrolling down.
+            uiCallbacks.onPlayToggle && uiCallbacks.onPlayToggle();
+        }
     });
     dom.profileButton.addEventListener('click', () => uiCallbacks.onProfile && uiCallbacks.onProfile());
 
