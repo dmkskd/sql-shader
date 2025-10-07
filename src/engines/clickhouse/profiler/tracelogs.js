@@ -1,0 +1,108 @@
+/**
+ * ClickHouse Trace Logs Module
+ * Handles processing and rendering of server text logs from system.text_log.
+ */
+export class ClickHouseProfilerTraceLogs {
+  constructor() {
+    // No dependencies needed for this module
+  }
+
+  /**
+   * Gets a color class based on percentage of total execution time.
+   * @param {number} percent Percentage of total time spent.
+   * @returns {string} CSS class name for color coding.
+   */
+  getPercentColorClass(percent) {
+    if (percent >= 50) return 'time-hot';
+    if (percent >= 5) return 'time-warm';
+    return 'time-good';
+  }
+
+  /**
+   * Gets a color based on log level for visual distinction.
+   * @param {string} level Log level (Error, Warning, Information, etc.).
+   * @returns {string} Hex color code for the level.
+   */
+  getLevelColor(level) {
+    switch (level) {
+      case 'Error': return '#ff8080'; // Red
+      case 'Warning': return '#ffc980'; // Orange
+      case 'Information': return '#80ff80'; // Green
+      case 'Debug': return '#80bfff'; // Blue
+      case 'Trace': return '#b3b3b3'; // Gray
+      default: return '#eee'; // Default text color
+    }
+  }
+
+  /**
+   * Generates a consistent HSL color from a string for source identification.
+   * @param {string} str String to generate color from.
+   * @param {number} s Saturation percentage (default 75%).
+   * @param {number} l Lightness percentage (default 55%).
+   * @returns {string} HSL color string.
+   */
+  stringToHslColor(str, s = 75, l = 55) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h = hash % 360;
+    return `hsl(${h}, ${s}%, ${l}%)`;
+  }
+
+  /**
+   * Processes server text logs to add duration calculations between log entries.
+   * @param {Array} serverTextLog Array of log entries from system.text_log.
+   * @returns {Array} Log entries with added durationMs property.
+   */
+  processLogsWithDuration(serverTextLog) {
+    return serverTextLog.map((log, i, arr) => {
+      let durationMs = 0;
+      if (i < arr.length - 1) {
+        // The timestamp string needs to be parsed correctly.
+        const currentTime = new Date(arr[i].event_time_microseconds.replace(' ', 'T') + 'Z').getTime();
+        const nextTime = new Date(arr[i + 1].event_time_microseconds.replace(' ', 'T') + 'Z').getTime();
+        durationMs = nextTime - currentTime;
+      }
+      return { ...log, durationMs };
+    });
+  }
+
+  /**
+   * Renders server text logs as an interactive table with timing analysis.
+   * @param {Array} serverTextLog Array of log entries from system.text_log.
+   * @returns {string} HTML representation of server trace logs.
+   */
+  renderTraceLogs(serverTextLog) {
+    if (!serverTextLog || serverTextLog.length === 0) {
+      return '<p>No server text logs were found. This may be disabled by the server configuration.</p>';
+    }
+
+    let content = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
+    content += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Timestamp</th><th>Time Taken</th><th>Source</th><th>Thread</th><th>Level</th><th>Message</th></tr></thead>';
+    content += '<tbody>';
+
+    // Process logs to calculate durations
+    const logsWithDuration = this.processLogsWithDuration(serverTextLog);
+    
+    // Calculate total duration after computing all individual durations
+    const totalDurationMs = logsWithDuration.reduce((sum, log) => sum + log.durationMs, 0);
+
+    for (const log of logsWithDuration) {
+      const percentOfTotal = totalDurationMs > 0 ? (log.durationMs / totalDurationMs) * 100 : 0;
+      const colorClass = this.getPercentColorClass(percentOfTotal);
+
+      content += `<tr style="border-bottom: 1px solid #444; padding: 3px 0;">
+                    <td style="white-space: nowrap;">${log.event_time_microseconds}</td>
+                    <td class="${colorClass}" style="white-space: nowrap; text-align: right; padding-right: 10px;">${log.durationMs.toFixed(2)}ms (${percentOfTotal.toFixed(1)}%)</td>
+                    <td style="color: ${this.stringToHslColor(log.source)}; font-weight: bold;">${log.source}</td>
+                    <td style="white-space: nowrap;">${log.thread_name}(${log.thread_id})</td>
+                    <td style="color: ${this.getLevelColor(log.level)}; font-weight: bold;">${log.level}</td>
+                    <td style="white-space: pre-wrap;">${log.message}</td>
+                  </tr>`;
+    }
+    content += '</tbody></table>';
+
+    return content;
+  }
+}
