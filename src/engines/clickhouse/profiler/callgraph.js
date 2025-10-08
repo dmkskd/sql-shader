@@ -12,6 +12,97 @@ export class ClickHouseProfilerCallGraph {
   }
 
   /**
+   * Simple interface: returns HTML for call graph container and controls.
+   * Note: Call graph requires async DOM manipulation, so this returns a placeholder.
+   * Use renderCallGraph() for actual rendering.
+   * @param {Array<object>} traceLog The trace log data.
+   * @returns {string} HTML container for call graph.
+   */
+  render(traceLog) {
+    return `
+      <div class="tab-inner-content">
+        <div id="call-graph-container" style="min-height: 400px;">
+          <!-- Call graph will be rendered here via renderCallGraph() -->
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Simple interface: sets up event handlers for call graph panel.
+   * @param {string} containerId The ID of the container element.
+   * @param {Array<object>} traceLog The trace log data.
+   */
+  setupEventHandlers(containerId, traceLog) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Set up zoom controls
+    const zoomInBtn = container.querySelector('#cg-zoom-in-button');
+    const zoomOutBtn = container.querySelector('#cg-zoom-out-button');
+    const zoomResetBtn = container.querySelector('#cg-zoom-reset-button');
+    const switchDirectionBtn = container.querySelector('#cg-switch-direction-button');
+    
+    const graphContainer = container.querySelector('#call-graph-container');
+    
+    if (zoomInBtn && zoomOutBtn && zoomResetBtn) {
+      let currentGraphZoom = 1.0;
+      const zoomStep = 0.4;
+      
+      const updateGraphZoom = () => {
+        const svg = graphContainer?.querySelector('svg');
+        if (svg) {
+          svg.style.transform = `scale(${currentGraphZoom})`;
+          svg.style.transformOrigin = 'top left';
+        }
+      };
+
+      zoomInBtn.addEventListener('click', () => {
+        currentGraphZoom += zoomStep;
+        updateGraphZoom();
+      });
+
+      zoomOutBtn.addEventListener('click', () => {
+        currentGraphZoom = Math.max(0.1, currentGraphZoom - zoomStep);
+        updateGraphZoom();
+      });
+
+      zoomResetBtn.addEventListener('click', () => {
+        currentGraphZoom = 1.0;
+        updateGraphZoom();
+      });
+    }
+
+    // Set up direction switching
+    if (switchDirectionBtn && graphContainer) {
+      let currentLayout = 'TD'; // Top-Down
+
+      const updateButtonText = () => {
+        switchDirectionBtn.textContent = (currentLayout === 'TD') ? 'Switch to Bottom Up' : 'Switch to Top Down';
+      };
+
+      // Remove any old listener before adding a new one
+      if (switchDirectionBtn.handler) {
+        switchDirectionBtn.removeEventListener('click', switchDirectionBtn.handler);
+      }
+
+      switchDirectionBtn.handler = () => {
+        currentLayout = (currentLayout === 'TD') ? 'BT' : 'TD';
+        this.renderCallGraph(traceLog, graphContainer, currentLayout);
+        updateButtonText();
+      };
+
+      updateButtonText();
+      switchDirectionBtn.addEventListener('click', switchDirectionBtn.handler);
+    }
+
+    // Render the actual call graph into the container
+    if (graphContainer && traceLog && traceLog.length > 0) {
+      this.renderCallGraph(traceLog, graphContainer, 'TD'); // Initial render is Top-Down
+    }
+  }
+
+  /**
    * Renders a Mermaid.js call graph from the ClickHouse trace log data.
    * @param {Array<object>} traceLog The data from system.trace_log.
    * @param {HTMLElement} container The DOM element to render the chart into.

@@ -69,11 +69,11 @@ export class ClickHouseProfilerTraceLogs {
   }
 
   /**
-   * Renders server text logs as an interactive table with timing analysis.
+   * Simple interface: renders server text logs as an interactive table with timing analysis.
    * @param {Array} serverTextLog Array of log entries from system.text_log.
    * @returns {string} HTML representation of server trace logs.
    */
-  renderTraceLogs(serverTextLog) {
+  render(serverTextLog) {
     if (!serverTextLog || serverTextLog.length === 0) {
       return '<p>No server text logs were found. This may be disabled by the server configuration.</p>';
     }
@@ -104,5 +104,23 @@ export class ClickHouseProfilerTraceLogs {
     content += '</tbody></table>';
 
     return content;
+  }
+
+  /**
+   * Simple interface: sets up event handlers for trace logs panel.
+   * @param {string} containerId The ID of the container element.
+   * @param {Array} serverTextLog Array of log entries (not used for static table display).
+   */
+  setupEventHandlers(containerId, serverTextLog) {
+    // Trace logs uses static table display, no additional JS handlers needed
+  }
+
+  /**
+   * Legacy interface: delegates to render() for backward compatibility.
+   * @param {Array} serverTextLog Array of log entries from system.text_log.
+   * @returns {string} HTML representation of server trace logs.
+   */
+  renderTraceLogs(serverTextLog) {
+    return this.render(serverTextLog);
   }
 }

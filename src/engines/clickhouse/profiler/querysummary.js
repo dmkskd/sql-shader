@@ -8,11 +8,11 @@ export class ClickHouseProfilerQuerySummary {
   }
 
   /**
-   * Renders query summary information from system.query_log data.
+   * Simple render method - returns HTML content for the panel.
    * @param {object} queryLog Query log data from system.query_log.
-   * @returns {string} HTML representation of query summary.
+   * @returns {string} HTML content for query summary.
    */
-  renderQuerySummary(queryLog) {
+  render(queryLog) {
     if (queryLog && !queryLog.error) {
       return `<p><strong>Server-Side Execution Time:</strong> ${queryLog.query_duration_ms.toLocaleString()} ms</p>
               <p><strong>Peak Memory Usage:</strong> ${(queryLog.memory_usage / 1024 / 1024).toFixed(2)} MB</p>
@@ -25,5 +25,23 @@ export class ClickHouseProfilerQuerySummary {
       }
       return content;
     }
+  }
+
+  /**
+   * Sets up event handlers for the Query Summary panel.
+   * @param {string} containerId The ID of the container where HTML was inserted.
+   * @param {object} queryLog The query log data.
+   */
+  setupEventHandlers(containerId, queryLog) {
+    // Query Summary has no interactive elements, so no event handlers needed
+  }
+
+  /**
+   * Renders query summary information from system.query_log data.
+   * @param {object} queryLog Query log data from system.query_log.
+   * @returns {string} HTML representation of query summary.
+   */
+  renderQuerySummary(queryLog) {
+    return this.render(queryLog); // Delegate to new simple interface
   }
 }

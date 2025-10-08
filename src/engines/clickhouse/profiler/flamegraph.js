@@ -11,6 +11,86 @@ export class ClickHouseProfilerFlamegraph {
   }
 
   /**
+   * Simple interface: returns HTML for flamegraph container and controls.
+   * Note: Flamegraph requires complex D3.js DOM manipulation, so this returns a placeholder.
+   * Use renderFlamegraph() for actual rendering.
+   * @param {Array<object>} traceLog The trace log data.
+   * @returns {string} HTML container for flamegraph.
+   */
+  render(traceLog) {
+    return `
+      <div class="tab-inner-content">
+        <div id="flamegraph-container" style="min-height: 400px;">
+          <!-- Flamegraph will be rendered here via renderFlamegraph() -->
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Simple interface: sets up event handlers for flamegraph panel.
+   * @param {string} containerId The ID of the container element.
+   * @param {Array<object>} traceLog The trace log data.
+   */
+  setupEventHandlers(containerId, traceLog) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const graphContainer = container.querySelector('#flamegraph-container');
+    const groupBySelect = container.querySelector('#ch-flamegraph-group-by');
+    const speedscopeBtn = container.querySelector('#ch-speedscope-export-button');
+    const perfettoBtn = container.querySelector('#ch-perfetto-export-button');
+
+    // Set up grouping dropdown
+    if (groupBySelect && graphContainer) {
+      groupBySelect.addEventListener('change', () => {
+        this.renderFlamegraph(traceLog, graphContainer, groupBySelect.value);
+      });
+    }
+
+    // Set up export buttons
+    if (speedscopeBtn) {
+      speedscopeBtn.addEventListener('click', () => {
+        this.exportTraceToSpeedscope(traceLog, 'query-from-module');
+      });
+    }
+
+    if (perfettoBtn) {
+      perfettoBtn.addEventListener('click', (e) => e.preventDefault());
+    }
+
+    // Render the actual flamegraph into the container
+    if (graphContainer && traceLog && traceLog.length > 0) {
+      // Check if the tab is currently active
+      const tabContent = container.closest('.profiler-tab-content');
+      const isTabActive = tabContent && tabContent.classList.contains('active');
+      
+      const renderGraph = () => {
+        // Use requestAnimationFrame for proper rendering
+        requestAnimationFrame(() => {
+          console.log(`[Debug] Rendering ClickHouse flame graph in container with width: ${graphContainer.clientWidth}px`);
+          this.renderFlamegraph(traceLog, graphContainer, 'none');
+        });
+      };
+
+      if (isTabActive) {
+        // Tab is active, render immediately
+        renderGraph();
+      } else {
+        // Tab is not active, set up one-time listener for when it becomes active
+        const flamegraphTab = document.querySelector('.profiler-tab[data-tab="flamegraph"]');
+        if (flamegraphTab) {
+          const onTabClick = () => {
+            renderGraph();
+            flamegraphTab.removeEventListener('click', onTabClick);
+          };
+          flamegraphTab.addEventListener('click', onTabClick);
+        }
+      }
+    }
+  }
+
+  /**
    * Renders a FlameGraph from the ClickHouse trace log.
    * @param {Array<object>} traceLog The data from system.trace_log.
    * @param {HTMLElement} container The DOM element to render the chart into.
@@ -340,9 +420,28 @@ export class ClickHouseProfilerFlamegraph {
               </select>
               <span style="font-size: 0.8em; color: #ffc980;"> (Experimental)</span>
               <div class="export-buttons" style="margin-left: 20px;">
-                <button id="ch-speedscope-export-button" class="export-btn" title="Open CPU trace in Speedscope">Open in Speedscope</button>
-                <button id="ch-perfetto-export-button" class="export-btn" title="Perfetto integration is temporarily disabled as it's not working." disabled style="background-color: #555; cursor: not-allowed;">Open in Perfetto</button>
+                <button id="ch-speedscope-export-button" class="export-btn flamegraph-btn" title="Open CPU trace in Speedscope">Open in Speedscope</button>
+                <button id="ch-perfetto-export-button" class="export-btn flamegraph-btn" title="Perfetto integration is temporarily disabled as it's not working." disabled style="background-color: #555; cursor: not-allowed;">Open in Perfetto</button>
               </div>
-           </div>`;
+           </div>
+           <style>
+           .flamegraph-btn {
+             background: #0066cc;
+             color: white;
+             border: none;
+             padding: 4px 8px;
+             margin: 0 3px;
+             border-radius: 2px;
+             cursor: pointer;
+             font-size: 11px;
+             font-weight: 500;
+           }
+           .flamegraph-btn:hover:not(:disabled) {
+             background: #0088ff;
+           }
+           .flamegraph-btn:disabled {
+             opacity: 0.6;
+           }
+           </style>`;
   }
 }

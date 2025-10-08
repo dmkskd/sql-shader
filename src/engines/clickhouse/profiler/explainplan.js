@@ -49,7 +49,12 @@ export class ClickHouseProfilerExplainPlan {
    * @param {string} planText Raw explain plan text.
    * @returns {string} HTML representation of explain plan with nested tabs.
    */
-  renderExplainPlan(planText) {
+  /**
+   * Simple interface: renders explain plan with raw and structured views.
+   * @param {string} planText Raw explain plan text.
+   * @returns {string} HTML representation of explain plan with tabs.
+   */
+  render(planText) {
     const formattedHtml = this.formatStructuredPlan(planText || 'No data.');
     
     return `
@@ -67,6 +72,62 @@ export class ClickHouseProfilerExplainPlan {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Simple interface: sets up event handlers for explain plan panel.
+   * @param {string} containerId The ID of the container element.
+   * @param {string} planText Plan text data (not used for static display).
+   */
+  setupEventHandlers(containerId, planText) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Tab switching for Raw/Structured views
+    const innerTabs = container.querySelectorAll('.inner-tab');
+    innerTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const targetTab = tab.getAttribute('data-inner-tab');
+        
+        // Update active tab
+        innerTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Show/hide content
+        container.querySelectorAll('.inner-tab-content').forEach(content => {
+          content.classList.remove('active');
+        });
+        const targetContent = container.querySelector(`#inner-content-${targetTab}`);
+        if (targetContent) {
+          targetContent.classList.add('active');
+        }
+      });
+    });
+
+    // Expand/Collapse controls for structured view
+    const expandAllBtn = container.querySelector('#ch-expand-all-button');
+    const collapseAllBtn = container.querySelector('#ch-collapse-all-button');
+    
+    if (expandAllBtn) {
+      expandAllBtn.addEventListener('click', () => {
+        container.querySelectorAll('details').forEach(details => details.open = true);
+      });
+    }
+    
+    if (collapseAllBtn) {
+      collapseAllBtn.addEventListener('click', () => {
+        container.querySelectorAll('details').forEach(details => details.open = false);
+      });
+    }
+  }
+
+  /**
+   * Legacy interface: delegates to render() for backward compatibility.
+   * @param {string} planText Raw explain plan text.
+   * @returns {string} HTML representation of explain plan with tabs.
+   */
+  renderExplainPlan(planText) {
+    return this.render(planText);
   }
 
   /**

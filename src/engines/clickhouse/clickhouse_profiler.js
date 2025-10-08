@@ -187,48 +187,60 @@ export class ClickHouseProfiler {
   }
 
   /**
-   * Renders the multi-faceted profile data into the modal.
+   * Renders the multi-faceted profile data into the modal using modular architecture.
+   * Each module provides render(data) for HTML content and setupEventHandlers(containerId, data) for interactions.
+   * 
    * @param {object} profileData The data object from the profile() method.
    * @param {HTMLElement} mainContainer The single container element for the profiler UI.
    * @returns {Promise<void>}
    */
   async renderProfile(profileData, mainContainer) {
+    // PHASE 1: CONTENT GENERATION - Each module's render() method converts raw data into HTML.
+    
     // --- Tab 2: Structured Plan ---
     // Use the explain plan module for this content
-    const explainPlanContent = this.explainplan.renderExplainPlan(profileData.actionsPlan);
+    const explainPlanContent = this.explainplan.render(profileData.actionsPlan);
 
     // --- Tab 3: Query Summary (from system.query_log) ---
-    const querySummaryContent = this.querysummary.renderQuerySummary(profileData.queryLog);
+    const querySummaryContent = this.querysummary.render(profileData.queryLog);
 
     // --- Tab 5: Profile Events (from system.query_log) ---
-    const eventsContent = this.events.renderEvents(profileData.queryLog);
+    const eventsContent = this.events.render(profileData.queryLog);
 
     // --- Tab 4: Pipeline Plan (from EXPLAIN PIPELINE) ---
     let pipelinePlanContent;
     if (profileData.pipelineGraph && profileData.pipelineGraph.trim().startsWith('digraph')) {
-      const mermaidGraph = this.pipeline.dotToMermaid(profileData.pipelineGraph);
-      // We render the graph inside the post-render logic to attach event listeners.
-      // For now, we just prepare the content.
-      pipelinePlanContent = '';
+      // Use the new pipeline interface
+      pipelinePlanContent = this.pipeline.render(profileData.pipelineGraph);
     } else {
       pipelinePlanContent = `<p>Could not generate graph.</p><pre>${profileData.pipelineGraph || 'No data.'}</pre>`;
     }
 
     // --- Tab 6: Server Trace Log (from send_logs_level='trace') ---
-    const serverTextLogContent = this.tracelogs.renderTraceLogs(profileData.serverTextLog);
+    const serverTextLogContent = this.tracelogs.render(profileData.serverTextLog);
 
+    // --- Tab 7: Call Graph ---
+    const callGraphContent = this.callgraph.render(profileData.traceLog);
+
+    // --- Tab 8: Flamegraph ---
+    const flamegraphContent = this.flamegraph.render(profileData.traceLog);
+
+    // PHASE 2: TAB CONFIGURATION - Build tabsConfig array with each tab's properties including module references.
+    
     // --- Dynamically build the HTML for the profiler ---
     const tabsConfig = [
-      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>`, module: null },
-      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>`, module: null },
-      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>', module: null },
-      { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>', module: null },
-      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>', module: this.pipeline },
-      { id: 'flamegraph', title: 'FlameGraph', content: '', header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>', module: this.flamegraph },
-      { id: 'call-graph', title: 'Call Graph', content: '', header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.', module: this.callgraph },
-      { id: 'opentelemetry', title: 'OpenTelemetry', content: this.opentelemetry.renderOpenTelemetry(profileData.openTelemetry || {}), header: 'Distributed tracing spans from system.opentelemetry_span_log', module: null },
+      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>`, module: this.querysummary, moduleData: profileData.queryLog },
+      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>`, module: this.tracelogs, moduleData: profileData.serverTextLog },
+      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>', module: this.events, moduleData: profileData.queryLog },
+      { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>', module: this.explainplan, moduleData: profileData.actionsPlan },
+      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>', module: this.pipeline, moduleData: profileData.pipelineGraph },
+      { id: 'flamegraph', title: 'FlameGraph', content: flamegraphContent, header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>', module: this.flamegraph, moduleData: profileData.traceLog },
+      { id: 'call-graph', title: 'Call Graph', content: callGraphContent, header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.', module: this.callgraph, moduleData: profileData.traceLog },
+      { id: 'opentelemetry', title: 'OpenTelemetry', content: this.opentelemetry.render(profileData.openTelemetry || {}), header: 'Distributed tracing spans from system.opentelemetry_span_log', module: this.opentelemetry, moduleData: profileData.openTelemetry || {} },
     ];
 
+    // PHASE 3: HTML GENERATION - Generate tab buttons and content containers from the configuration.
+    
     let tabsHtml = '<div class="profiler-tabs">';
     let contentHtml = '';
 
@@ -242,6 +254,8 @@ export class ClickHouseProfiler {
       // Add module-specific controls if the module provides them
       if (tab.module && typeof tab.module.getControlsHtml === 'function') {
         contentHtml += tab.module.getControlsHtml();
+      } else if (tab.controls) {
+        contentHtml += tab.controls;
       }
       
       contentHtml += `  <div class="tab-inner-content">${tab.content || ''}</div>
@@ -249,8 +263,21 @@ export class ClickHouseProfiler {
     });
     tabsHtml += '</div>';
 
+    // PHASE 4: DOM INJECTION - Replace container HTML with generated tabs and content.
     mainContainer.innerHTML = tabsHtml + contentHtml;
 
+    // PHASE 5: EVENT HANDLER SETUP - Delegate to each module's setupEventHandlers() method.
+    
+    // Set up event handlers for modules using the new interface
+    tabsConfig.forEach(tab => {
+      if (tab.module && typeof tab.module.setupEventHandlers === 'function') {
+        // Call each module's setupEventHandlers with containerId and moduleData
+        tab.module.setupEventHandlers(`profile-content-${tab.id}`, tab.moduleData);
+      }
+    });
+
+    // PHASE 6: CORE UI EVENT HANDLERS - Handle basic tab switching functionality.
+    
     // --- Post-render logic for dynamic content ---
 
     // Re-attach tab switching logic
@@ -273,141 +300,5 @@ export class ClickHouseProfiler {
 
       });
     });
-
-    // On-demand rendering for the flame graph
-    if (profileData.traceLog && profileData.traceLog.length > 0) {
-      const flamegraphTab = mainContainer.querySelector('.profiler-tab[data-tab="flamegraph"]');
-      const flamegraphContainer = mainContainer.querySelector('#profile-content-flamegraph .tab-inner-content');
-
-      const renderFlamegraphOnFirstClick = () => {
-        requestAnimationFrame(() => {
-          console.log(`[Debug] Rendering ClickHouse flame graph in container with width: ${flamegraphContainer.clientWidth}px`);
-          this.flamegraph.renderFlamegraph(profileData.traceLog, flamegraphContainer, 'none');
-          // Set up the grouping dropdown listener
-          const groupBySelect = mainContainer.querySelector('#ch-flamegraph-group-by');
-          groupBySelect.addEventListener('change', () => {
-            this.flamegraph.renderFlamegraph(profileData.traceLog, flamegraphContainer, groupBySelect.value);
-          });
-          flamegraphTab.removeEventListener('click', renderFlamegraphOnFirstClick);
-        });
-
-        // Attach listeners for the new export buttons
-        const perfettoButton = mainContainer.querySelector('#ch-perfetto-export-button');
-        if (perfettoButton) {
-          // The button is disabled, but we prevent any accidental clicks.
-          perfettoButton.addEventListener('click', (e) => e.preventDefault());
-        }
-        mainContainer.querySelector('#ch-speedscope-export-button').addEventListener('click', () => {
-          this.flamegraph.exportTraceToSpeedscope(profileData.traceLog, profileData.queryLog?.query_id || 'unknown-query');
-        });
-      };
-      flamegraphTab.addEventListener('click', renderFlamegraphOnFirstClick);
-    } else {
-        const flamegraphContainer = mainContainer.querySelector('#profile-content-flamegraph');
-        if (flamegraphContainer) {
-            flamegraphContainer.querySelector('.tab-inner-content').innerHTML = '<p>No CPU trace data found. Ensure profiling is enabled on your server and that the query is long enough to be sampled.</p>';
-        }
-        const traceLogContainer = mainContainer.querySelector('#profile-content-trace-log');
-        if (traceLogContainer) {
-            traceLogContainer.querySelector('.tab-inner-content').innerHTML = '<p>No CPU trace data found.</p>';
-        }
-    }
-
-    // Render the Call Graph from the flame graph data
-    if (profileData.traceLog && profileData.traceLog.length > 0) {
-        const callGraphContainer = mainContainer.querySelector('#profile-content-call-graph .tab-inner-content');
-        this.callgraph.renderCallGraph(profileData.traceLog, callGraphContainer, 'TD'); // Initial render is Top-Down
-        this.callgraph.setupCallGraphControls(profileData.traceLog, callGraphContainer);
-    } else {
-        const flamegraphContainer = mainContainer.querySelector('#profile-content-flamegraph');
-        if (flamegraphContainer) {
-            flamegraphContainer.querySelector('.tab-inner-content').innerHTML = '<p>No CPU trace data found. Ensure profiling is enabled on your server and that the query is long enough to be sampled.</p>';
-        }
-        const traceLogContainer = mainContainer.querySelector('#profile-content-trace-log');
-        if (traceLogContainer) {
-            traceLogContainer.querySelector('.tab-inner-content').innerHTML = '<p>No CPU trace data found.</p>';
-        }
-    }
-
-    // Add event listeners for the newly created tree-view buttons
-    const expandBtn = mainContainer.querySelector('#ch-expand-all-button');
-    if (expandBtn) {
-        expandBtn.addEventListener('click', () => mainContainer.querySelector('#inner-content-structured-explain').querySelectorAll('details').forEach(d => d.open = true));
-        mainContainer.querySelector('#ch-collapse-all-button').addEventListener('click', () => mainContainer.querySelector('#inner-content-structured-explain').querySelectorAll('details').forEach(d => d.open = false));
-    }
-
-    // Add event listeners for the new inner tabs
-    const explainPlanContainer = mainContainer.querySelector('#profile-content-explain-plan');
-    if (explainPlanContainer) {
-      explainPlanContainer.querySelectorAll('.inner-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          explainPlanContainer.querySelectorAll('.inner-tab').forEach(t => t.classList.remove('active'));
-          explainPlanContainer.querySelectorAll('.inner-tab-content').forEach(c => c.classList.remove('active'));
-          tab.classList.add('active');
-          explainPlanContainer.querySelector(`#inner-content-${tab.dataset.innerTab}`).classList.add('active');
-        });
-      });
-    }
-
-    // Render the Pipeline Plan graph and set up its controls
-    if (profileData.pipelineGraph && profileData.pipelineGraph.trim().startsWith('digraph')) {
-      const pipelineContainer = mainContainer.querySelector('#profile-content-pipeline-plan .tab-inner-content');
-      this.pipeline.renderPipelineGraph(profileData.pipelineGraph, pipelineContainer);
-    }
-
-
-    // Add event listeners for the newly created graph-view buttons
-    const zoomInBtn = mainContainer.querySelector('#ch-zoom-in-button');
-    if (zoomInBtn) {
-        let currentGraphZoom = 1.0;
-        const zoomStep = 0.4; // Increased for more aggressive zoom
-        const pipelineContainer = mainContainer.querySelector('#profile-content-pipeline-plan .tab-inner-content');
-        const updateGraphZoom = () => {
-            const svg = pipelineContainer.querySelector('svg');
-            if (svg) {
-                svg.style.transform = `scale(${currentGraphZoom})`;
-                svg.style.transformOrigin = 'top left';
-            }
-        };
-        zoomInBtn.addEventListener('click', () => {
-            currentGraphZoom += zoomStep;
-            updateGraphZoom();
-        });
-        mainContainer.querySelector('#ch-zoom-out-button').addEventListener('click', () => {
-            currentGraphZoom = Math.max(0.2, currentGraphZoom - zoomStep);
-            updateGraphZoom();
-        });
-        mainContainer.querySelector('#ch-zoom-reset-button').addEventListener('click', () => {
-            currentGraphZoom = 1.0;
-            updateGraphZoom();
-        });
-    }
-
-    // Add event listeners for the newly created call-graph-view buttons
-    const cgZoomInBtn = mainContainer.querySelector('#cg-zoom-in-button');
-    if (cgZoomInBtn) {
-        let currentGraphZoom = 1.0;
-        const zoomStep = 0.6; // Make zoom even more aggressive
-        const callGraphContainer = mainContainer.querySelector('#profile-content-call-graph .tab-inner-content');
-        const updateGraphZoom = () => {
-            const svg = callGraphContainer.querySelector('svg');
-            if (svg) {
-                svg.style.transform = `scale(${currentGraphZoom})`;
-                svg.style.transformOrigin = 'top left';
-            }
-        };
-        cgZoomInBtn.addEventListener('click', () => {
-            currentGraphZoom += zoomStep;
-            updateGraphZoom();
-        });
-        mainContainer.querySelector('#cg-zoom-out-button').addEventListener('click', () => {
-            currentGraphZoom = Math.max(0.2, currentGraphZoom - zoomStep);
-            updateGraphZoom();
-        });
-        mainContainer.querySelector('#cg-zoom-reset-button').addEventListener('click', () => {
-            currentGraphZoom = 1.0;
-            updateGraphZoom();
-        });
-    }
   }
 }

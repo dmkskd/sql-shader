@@ -12,6 +12,73 @@ export class ClickHouseProfilerPipelineGraph {
   }
 
   /**
+   * Simple interface: returns HTML for pipeline graph container and controls.
+   * Note: Pipeline graph requires async DOM manipulation, so this returns a placeholder.
+   * Use renderPipelineGraph() for actual rendering.
+   * @param {string} dotString The raw DOT graph string.
+   * @returns {string} HTML container for pipeline graph.
+   */
+  render(dotString) {
+    return `
+      <div class="tab-inner-content">
+        <div id="pipeline-graph-container" style="min-height: 400px;">
+          <!-- Pipeline graph will be rendered here via renderPipelineGraph() -->
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Simple interface: sets up event handlers for pipeline graph panel.
+   * @param {string} containerId The ID of the container element.
+   * @param {string} dotString The DOT graph data.
+   */
+  setupEventHandlers(containerId, dotString) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Set up zoom controls
+    const zoomInBtn = container.querySelector('#ch-zoom-in-button');
+    const zoomOutBtn = container.querySelector('#ch-zoom-out-button');
+    const zoomResetBtn = container.querySelector('#ch-zoom-reset-button');
+    
+    if (zoomInBtn && zoomOutBtn && zoomResetBtn) {
+      let currentGraphZoom = 1.0;
+      const zoomStep = 0.4;
+      const graphContainer = container.querySelector('#pipeline-graph-container');
+      
+      const updateGraphZoom = () => {
+        const svg = graphContainer?.querySelector('svg');
+        if (svg) {
+          svg.style.transform = `scale(${currentGraphZoom})`;
+          svg.style.transformOrigin = 'top left';
+        }
+      };
+
+      zoomInBtn.addEventListener('click', () => {
+        currentGraphZoom += zoomStep;
+        updateGraphZoom();
+      });
+
+      zoomOutBtn.addEventListener('click', () => {
+        currentGraphZoom = Math.max(0.1, currentGraphZoom - zoomStep);
+        updateGraphZoom();
+      });
+
+      zoomResetBtn.addEventListener('click', () => {
+        currentGraphZoom = 1.0;
+        updateGraphZoom();
+      });
+    }
+
+    // Render the actual pipeline graph into the container
+    const graphContainer = container.querySelector('#pipeline-graph-container');
+    if (graphContainer && dotString) {
+      this.renderPipelineGraph(dotString, graphContainer);
+    }
+  }
+
+  /**
    * Renders the Pipeline graph and sets up its interactive features.
    * @param {string} dotString The raw DOT graph string from EXPLAIN.
    * @param {HTMLElement} container The container to render into.

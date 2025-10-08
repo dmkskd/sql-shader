@@ -91,8 +91,28 @@ export class ClickHouseProfilerOpenTelemetry {
   }
 
   /**
-   * Renders OpenTelemetry tracing information as interactive timeline.
-   * @param {object} data OpenTelemetry tracing data.
+   * Simple interface: renders OpenTelemetry tracing data.
+   * @param {object} data OpenTelemetry trace data.
+   * @returns {string} HTML representation of OpenTelemetry traces.
+   */
+  render(data) {
+    return this.renderOpenTelemetry(data);
+  }
+
+  /**
+   * Simple interface: sets up event handlers for OpenTelemetry panel.
+   * @param {string} containerId The ID of the container element.
+   * @param {object} data OpenTelemetry trace data (contains embedded JavaScript).
+   */
+  setupEventHandlers(containerId, data) {
+    // OpenTelemetry panel embeds JavaScript in template literals for export functions
+    // The event handlers are part of the rendered HTML and auto-initialize
+    // No additional setup needed as exportToSpeedscope() and exportToJSON() are inline
+  }
+
+  /**
+   * Renders OpenTelemetry tracing data with comprehensive trace analysis.
+   * @param {object} data OpenTelemetry trace data.
    * @returns {string} HTML representation of OpenTelemetry traces.
    */
   renderOpenTelemetry(data) {

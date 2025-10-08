@@ -24,11 +24,11 @@ export class ClickHouseProfilerEvents {
   }
 
   /**
-   * Renders ProfileEvents data as categorized, collapsible tables.
+   * Simple interface: renders ProfileEvents data as categorized, collapsible tables.
    * @param {object} queryLog Query log data containing ProfileEvents.
    * @returns {string} HTML representation of categorized profile events.
    */
-  renderEvents(queryLog) {
+  render(queryLog) {
     if (!queryLog || !queryLog.ProfileEvents) {
       return '<p>No ProfileEvents data found in the query log.</p>';
     }
@@ -69,5 +69,23 @@ export class ClickHouseProfilerEvents {
     }
 
     return eventsContent;
+  }
+
+  /**
+   * Simple interface: sets up event handlers for events panel.
+   * @param {string} containerId The ID of the container element.
+   * @param {object} queryLog Query log data (not used for static events display).
+   */
+  setupEventHandlers(containerId, queryLog) {
+    // Events panel uses native HTML details elements, no additional JS handlers needed
+  }
+
+  /**
+   * Legacy interface: delegates to render() for backward compatibility.
+   * @param {object} queryLog Query log data containing ProfileEvents.
+   * @returns {string} HTML representation of categorized profile events.
+   */
+  renderEvents(queryLog) {
+    return this.render(queryLog);
   }
 }
