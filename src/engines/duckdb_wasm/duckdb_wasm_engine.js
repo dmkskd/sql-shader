@@ -120,7 +120,12 @@ class DuckDBWasmEngine {
       'iAudio.bass': uniforms.iAudio.bass,
       'iAudio.mid': uniforms.iAudio.mid,
       'iAudio.treble': uniforms.iAudio.treble,
-      'iAudio.isActive': uniforms.iAudio.isActive
+      'iAudio.isActive': uniforms.iAudio.isActive,
+      // Individual audio parameters for direct access
+      'iAudioVolume': uniforms.iAudioVolume,
+      'iAudioBass': uniforms.iAudioBass,
+      'iAudioMid': uniforms.iAudioMid,
+      'iAudioTreble': uniforms.iAudioTreble
     };
     
     // Execute with DuckDB-formatted parameters

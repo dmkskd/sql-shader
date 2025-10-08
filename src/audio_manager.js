@@ -1,6 +1,8 @@
 /**
- * AudioManager - Handles audio analysis and provides audio-reactive parameters for shaders
- * Supports Strudel.cc integration and generic audio input
+ * AudioManager - Generic audio analysis and shader parameter provider
+ * 
+ * Handles any audio source (Strudel, MP3, live input, etc.) and provides
+ * standardized audio-reactive parameters for shaders.
  */
 export class AudioManager {
   constructor() {
@@ -35,19 +37,24 @@ export class AudioManager {
     this.isInitialized = false;
     this.isPlaying = false;
     
-    // Audio source references
-    this.currentSource = null;
-    this.currentAudio = null;
-    this.currentStream = null;
+    // Generic audio source management
+    this.currentInputSource = null;  // Current input source (Strudel, MP3, etc.)
+    this.inputSources = new Map();   // Registry of available input sources
+    this.currentConnection = null;   // Current audio connection to analyser
   }
 
   /**
    * Initialize audio context and analyzer
+   * @param {AudioContext} existingContext - Optional existing AudioContext to use
    */
-  async initialize() {
+  async initialize(existingContext = null) {
     try {
-      // Create AudioContext
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      // Use existing context if provided, otherwise create new one
+      if (existingContext) {
+        this.audioContext = existingContext;
+      } else {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
       
       // Create analyzer node
       this.analyser = this.audioContext.createAnalyser();
@@ -60,7 +67,6 @@ export class AudioManager {
       this.waveformData = new Uint8Array(bufferLength);
       
       this.isInitialized = true;
-      console.log('[AudioManager] Initialized successfully');
       return true;
     } catch (error) {
       console.error('[AudioManager] Failed to initialize:', error);
@@ -69,11 +75,108 @@ export class AudioManager {
   }
 
   /**
+   * Register an input source (Strudel, MP3 player, etc.)
+   * @param {string} name - Name of the input source
+   * @param {Object} inputSource - Input source instance
+   */
+  registerInputSource(name, inputSource) {
+    this.inputSources.set(name, inputSource);
+  }
+
+  /**
+   * Set the active input source
+   * @param {string} name - Name of the input source to activate
+   */
+  async setInputSource(name) {
+    if (!this.inputSources.has(name)) {
+      throw new Error(`Input source '${name}' not found`);
+    }
+
+    // Stop current source
+    if (this.currentInputSource) {
+      this.stop();
+    }
+
+    const inputSource = this.inputSources.get(name);
+    
+    // Initialize the input source if it hasn't been initialized yet
+    if (inputSource && typeof inputSource.initialize === 'function' && !inputSource.isReady()) {
+      try {
+        await inputSource.initialize(() => {});
+      } catch (error) {
+        console.error(`[AudioManager] Failed to initialize ${name}:`, error);
+        throw error;
+      }
+    }
+
+    this.currentInputSource = name;
+    
+    // Set up callback for when audio context is found (for lazy initialization)
+    if (inputSource && typeof inputSource === 'object') {
+      inputSource.onAudioContextFound = () => {
+        if (typeof inputSource.connectToAnalyser === 'function') {
+          const connected = inputSource.connectToAnalyser(this.analyser);
+          if (connected) {
+            this.isPlaying = true;
+          }
+        }
+      };
+    }
+    
+    // Try to connect the input source to the analyser for audio analysis
+    if (inputSource && typeof inputSource.connectToAnalyser === 'function') {
+      try {
+        const connected = inputSource.connectToAnalyser(this.analyser);
+        if (connected) {
+          this.isPlaying = true;
+        }
+      } catch (error) {
+        console.error(`[AudioManager] Error connecting ${name} to analyser:`, error);
+      }
+    }
+  }
+
+  /**
+   * Connect an audio source to the analyser
+   * @param {AudioNode} audioSource - Web Audio API audio source
+   */
+  connectAudioSource(audioSource) {
+    if (!this.isInitialized) {
+      throw new Error('AudioManager not initialized');
+    }
+
+    // Disconnect any existing source
+    if (this.currentConnection) {
+      this.currentConnection.disconnect();
+    }
+
+    // Connect new source to analyser
+    audioSource.connect(this.analyser);
+    this.currentConnection = audioSource;
+    this.isPlaying = true;
+    console.log('[AudioManager] Audio source connected');
+  }
+
+  /**
+   * Get the current input source instance
+   */
+  getCurrentInputSource() {
+    if (!this.currentInputSource) return null;
+    return this.inputSources.get(this.currentInputSource);
+  }
+
+  /**
    * Connect to microphone input
    */
   async connectMicrophone() {
     if (!this.isInitialized) {
       await this.initialize();
+    }
+    
+    // Resume AudioContext if suspended (required by modern browsers)
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+      console.log('[AudioManager] AudioContext resumed for microphone');
     }
     
     try {
@@ -135,6 +238,12 @@ export class AudioManager {
       throw new Error('AudioManager not initialized');
     }
 
+    // Resume AudioContext if suspended (required by modern browsers)
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+      console.log('[AudioManager] AudioContext resumed for audio file');
+    }
+
     try {
       // Stop any existing audio
       this.stop();
@@ -168,47 +277,17 @@ export class AudioManager {
   }
 
   /**
-   * Stop audio playback and analysis
+   * Stop all audio sources and disconnect
    */
   stop() {
     this.isPlaying = false;
     
-    if (this.currentSource) {
-      this.currentSource.disconnect();
-      this.currentSource = null;
+    if (this.currentConnection) {
+      this.currentConnection.disconnect();
+      this.currentConnection = null;
     }
     
-    if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.src = '';
-      URL.revokeObjectURL(this.currentAudio.src);
-      this.currentAudio = null;
-    }
-    
-    if (this.currentStream) {
-      this.currentStream.getTracks().forEach(track => track.stop());
-      this.currentStream = null;
-    }
-  }
-
-  /**
-   * Connect to Strudel.cc (when available)
-   * This will be called from Strudel integration
-   */
-  connectStrudel(strudelAudioNode) {
-    if (!this.isInitialized) {
-      this.initialize();
-    }
-    
-    try {
-      strudelAudioNode.connect(this.analyser);
-      this.isPlaying = true;
-      console.log('[AudioManager] Connected to Strudel');
-      return true;
-    } catch (error) {
-      console.error('[AudioManager] Failed to connect to Strudel:', error);
-      return false;
-    }
+    console.log('[AudioManager] Stopped audio input');
   }
 
   /**
@@ -266,7 +345,7 @@ export class AudioManager {
     
     // Mark as active when audio is playing
     this.audioParams.isActive = this.isPlaying;
-
+    
     return this.audioParams;
   }
 

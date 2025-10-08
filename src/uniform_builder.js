@@ -41,7 +41,7 @@ export class UniformBuilder {
         currentDate.getHours() * 3600 + currentDate.getMinutes() * 60 + currentDate.getSeconds()
       ],
       
-      // Audio
+      // Audio - both grouped and individual parameters for shader compatibility
       iSampleRate: params.sampleRate || 44100.0,
       iAudio: {
         volume: (params.audio?.isActive) ? (params.audio.volume || 0.0) : 0.0,
@@ -49,7 +49,13 @@ export class UniformBuilder {
         mid: (params.audio?.isActive) ? (params.audio.mid || 0.0) : 0.0,
         treble: (params.audio?.isActive) ? (params.audio.treble || 0.0) : 0.0,
         isActive: params.audio?.isActive || false
-      }
+      },
+      
+      // Individual audio parameters for direct shader use
+      iAudioVolume: (params.audio?.isActive) ? (params.audio.volume || 0.0) : 0.0,
+      iAudioBass: (params.audio?.isActive) ? (params.audio.bass || 0.0) : 0.0,
+      iAudioMid: (params.audio?.isActive) ? (params.audio.mid || 0.0) : 0.0,
+      iAudioTreble: (params.audio?.isActive) ? (params.audio.treble || 0.0) : 0.0
     };
     
     this.lastFrame = now;

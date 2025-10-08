@@ -4,9 +4,9 @@ import { ShaderManager } from './shader_manager.js';
 import { AssetManager } from './asset_manager.js';
 import { AudioManager } from './audio_manager.js';
 import { UniformBuilder } from './uniform_builder.js';
+import { StrudelInput } from './inputs/strudel_input.js';
 
 import { PerformanceMonitor } from './performance_monitor.js';
-console.log('Executing main.js - Debug Version: 1.4.0');
 
 /**
  * A module-level variable to hold the currently active engine instance.
@@ -42,45 +42,57 @@ const main = async (engine) => {
     onOpenSettings: () => {
         openSettingsModal(activeEngine);
     },
-    onAudioToggle: async () => {
-        const audioButton = document.getElementById('audio-toggle-button');
-        const audioStatus = audioButton.querySelector('.perf-status');
-        const micButton = document.getElementById('microphone-button');
-        const fileButton = document.getElementById('audio-file-button');
+    onStrudelPatternToggle: async () => {
+        const strudelButton = document.getElementById('strudel-pattern-button');
+        const strudelStatus = strudelButton.querySelector('.perf-status');
         
-        if (!audioManager.isInitialized) {
-            try {
-                await audioManager.initialize();
-                audioStatus.textContent = 'ON';
-                audioStatus.className = 'perf-status perf-status-on';
-                micButton.style.display = 'inline-block';
-                fileButton.style.display = 'inline-block';
-            } catch (error) {
-                console.error('Failed to initialize audio:', error);
-                alert('Failed to initialize audio: ' + error.message);
+        try {
+            const strudelInput = audioManager.inputSources.get('strudel');
+            
+            // CRITICAL: Initialize Strudel FIRST to get its audio context
+            if (strudelInput && !strudelInput.isReady()) {
+                await strudelInput.initialize(() => {});
             }
-        } else {
-            audioManager.stop();
-            audioStatus.textContent = 'OFF';
-            audioStatus.className = 'perf-status perf-status-off';
-            micButton.style.display = 'none';
-            fileButton.style.display = 'none';
-        }
-    },
-    onMicrophoneToggle: async () => {
-        try {
-            await audioManager.connectMicrophone();
+            
+            // Initialize audio with Strudel's context if needed
+            if (!audioManager.isInitialized) {
+                // Get Strudel's audio context
+                const strudelContext = (typeof window.strudel?.getAudioContext === 'function') 
+                    ? window.strudel.getAudioContext() 
+                    : null;
+                
+                if (strudelContext) {
+                    await audioManager.initialize(strudelContext);
+                } else {
+                    await audioManager.initialize();
+                }
+            }
+            
+            const currentInput = audioManager.getCurrentInputSource() || strudelInput;
+            
+            if (currentInput && currentInput.isPlaying) {
+                // Stop current pattern
+                strudelInput.stop();
+                audioManager.isPlaying = false;
+                strudelStatus.textContent = 'OFF';
+                strudelStatus.className = 'perf-status perf-status-off';
+            } else {
+                // Set Strudel as active input source
+                await audioManager.setInputSource('strudel');
+                
+                // Get a test pattern and play it
+                const patterns = strudelInput.getTestPatterns();
+                const simplePattern = patterns[1].pattern; // Index: 0=Simple, 1=Full Kit, 2=House, 3=Melody, 4=Complex
+                await strudelInput.playPattern(simplePattern);
+                
+                strudelStatus.textContent = 'ON';
+                strudelStatus.className = 'perf-status perf-status-on';
+            }
         } catch (error) {
-            console.error('Failed to connect microphone:', error);
-            alert('Failed to connect microphone: ' + error.message);
-        }
-    },
-    onAudioFileLoad: async (file) => {
-        try {
-            await audioManager.connectAudioFile(file);
-        } catch (error) {
-            console.error('Failed to load audio file:', error);
-            alert('Failed to load audio file: ' + error.message);
+            console.error('Failed to toggle Strudel pattern:', error);
+            strudelStatus.textContent = 'ERROR';
+            strudelStatus.className = 'perf-status perf-status-off';
+            alert('Failed to start Strudel pattern: ' + error.message);
         }
     },
   });
@@ -95,6 +107,10 @@ const main = async (engine) => {
 
   // Initialize audio manager for music reactivity
   const audioManager = new AudioManager();
+  
+  // Initialize and register input sources
+  const strudelInput = new StrudelInput();
+  audioManager.registerInputSource('strudel', strudelInput);
   
   // Initialize uniform builder (pure JS uniforms, no engine logic)
   const uniformBuilder = new UniformBuilder();
@@ -274,6 +290,9 @@ const main = async (engine) => {
         onPlayToggle: () => {
             shaderManager.isPlaying = !shaderManager.isPlaying;
             if (shaderManager.isPlaying) {
+                // Reset emergency stop and error counter when manually starting
+                emergencyStop = false;
+                consecutiveErrors = 0;
                 // Resuming: adjust startTime to account for pause duration
                 if (pauseStartTime !== null) {
                     pausedTime += (performance.now() - pauseStartTime);
@@ -585,12 +604,31 @@ const main = async (engine) => {
       drawResultToCanvas(resultTable, localImageData);
     };
 
+    // Circuit breaker to prevent infinite error loops
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 3;
+    let emergencyStop = false;
+
     const renderFrame = async (t) => {
+      // Emergency stop: completely halt rendering
+      if (emergencyStop) {
+        console.error(`[RenderFrame] Emergency stop activated`);
+        return;
+      }
+
+      // Circuit breaker: stop rendering after too many consecutive errors
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.error(`[RenderFrame] Stopped due to ${consecutiveErrors} consecutive errors`);
+        emergencyStop = true; // Activate emergency stop
+        shaderManager.isPlaying = false;
+        dom.playToggleButton.innerHTML = '▶ Play';
+        return;
+      }
+
       // Prevent concurrent frame processing
       if (isFrameProcessing) {
-        if (shaderManager.isPlaying) {
-          requestAnimationFrame(renderFrame);
-        }
+        // Don't schedule another frame if we're already processing one
+        // This prevents infinite recursion during errors
         return;
       }
       isFrameProcessing = true;
@@ -618,6 +656,7 @@ const main = async (engine) => {
         updateStatsPanel(stats, resolution, audioParams); // Use imported function
         // Keep the animation loop going to allow for live editing.
         if (shaderManager.isPlaying) requestAnimationFrame(renderFrame); 
+        isFrameProcessing = false; // Reset the flag before returning
         return;
       }
 
@@ -628,6 +667,7 @@ const main = async (engine) => {
         if (!ctx || dom.canvas.width !== resolution.width || dom.canvas.height !== resolution.height) {
           console.warn('[Render] Canvas size mismatch detected, skipping frame');
           if (shaderManager.isPlaying) requestAnimationFrame(renderFrame);
+          isFrameProcessing = false; // Reset the flag before returning
           return;
         }
 
@@ -645,6 +685,7 @@ const main = async (engine) => {
           console.error('Canvas width:', dom.canvas.width, 'height:', dom.canvas.height);
           console.error('Resolution object:', resolution);
           if (shaderManager.isPlaying) requestAnimationFrame(renderFrame);
+          isFrameProcessing = false; // Reset the flag before returning
           return;
         }
 
@@ -661,7 +702,8 @@ const main = async (engine) => {
         });
         
         // Pass pure JS uniforms to engine - engine handles its own translation
-        const queryResult = await shaderManager.prepared.query(uniforms);        const { table: result, timings } = queryResult;
+        const queryResult = await shaderManager.prepared.query(uniforms);
+        const { table: result, timings } = queryResult;
         const t1 = performance.now();
         stats.queryTime = t1 - t0;
         
@@ -677,8 +719,10 @@ const main = async (engine) => {
 
         drawResultToCanvas(result, localImageData);
         lastGoodResult = result; // Store the successful result
+        consecutiveErrors = 0; // Reset error counter on success
       } catch (e) {
         console.error("Query runtime error:", e);
+        consecutiveErrors++; // Increment error counter
         stats.errorMessage = `Runtime Error:\n${e.message}`;
         shaderManager.isPlaying = false; // Stop the animation on a runtime error
         dom.playToggleButton.innerHTML = '▶ Play';
@@ -688,8 +732,9 @@ const main = async (engine) => {
       updateStatsPanel(stats, resolution, audioManager ? audioManager.getLastAudioParams() : null); // Use imported function
 
       // Only request the next frame after this one is completely done
-      if (shaderManager.isPlaying) {
-        requestAnimationFrame(renderFrame); // Continue the loop only if playing
+      // Add extra safety check to prevent infinite recursion on errors
+      if (shaderManager.isPlaying && !stats.errorMessage && !emergencyStop) {
+        requestAnimationFrame(renderFrame); // Continue the loop only if playing and no errors
       }
       } finally {
         isFrameProcessing = false; // Always reset the flag
@@ -754,7 +799,7 @@ const initializeEngine = async () => {
         // If a shared link is used, its engine parameter takes top priority.
         selectedEngine = urlParams.get('engine');
     } else {
-        selectedEngine = localStorage.getItem(`${STORAGE_PREFIX}selected-engine`) || engineSelect.value;
+        selectedEngine = localStorage.getItem(`${STORAGE_PREFIX}selected-engine`) || 'duckdb_wasm'; // Default to DuckDB WASM
     }
     // Ensure the dropdown visually matches the engine being loaded.
     engineSelect.value = selectedEngine;

@@ -52,11 +52,8 @@ export const dom = {
     unsavedChangesModal: document.getElementById('unsaved-changes-modal'),
     unsavedChangesDiscardButton: document.getElementById('unsaved-changes-discard-button'),
     unsavedChangesCancelButton: document.getElementById('unsaved-changes-cancel-button'),
-    // Audio controls - temporarily disabled
-    // audioToggleButton: document.getElementById('audio-toggle-button'),
-    // microphoneButton: document.getElementById('microphone-button'),
-    // audioFileButton: document.getElementById('audio-file-button'),
-    // audioFileInput: document.getElementById('audio-file-input'),
+    // Strudel audio control
+    strudelPatternButton: document.getElementById('strudel-pattern-button'),
 };
 
 export const updateInitStatus = (message) => {
@@ -74,11 +71,6 @@ export const updateProfileButtonText = (text) => {
 export const updateStatsPanel = (stats, resolution, audioParams = null) => {
     const statsText = `FPS: ${stats.fps.toFixed(1)} | Prepare: ${stats.prepareTime.toFixed(2)}ms | Query: ${stats.queryTime.toFixed(2)}ms | Draw: ${stats.drawTime.toFixed(2)}ms | Resolution: ${resolution.width}x${resolution.height} | Time: ${stats.elapsedTime.toFixed(2)}s`;
     
-    let audioText = '';
-    if (audioParams && audioParams.isActive) {
-        audioText = ` | Vol: ${(audioParams.volume * 100).toFixed(0)}% | Bass: ${(audioParams.bass * 100).toFixed(0)}% | Mid: ${(audioParams.mid * 100).toFixed(0)}% | Treble: ${(audioParams.treble * 100).toFixed(0)}% | Beat: ${audioParams.beat ? '🔴' : '⚫'}`;
-    }
-    
     let pixelInspectorHtml = '';
 
     // Use `!= null` to check for both `null` and `undefined` in a single, safe check.
@@ -91,7 +83,7 @@ export const updateStatsPanel = (stats, resolution, audioParams = null) => {
     }
 
     // Use innerHTML to render the color swatch span
-    dom.statsPanel.innerHTML = statsText + audioText + pixelInspectorHtml;
+    dom.statsPanel.innerHTML = statsText + pixelInspectorHtml;
     updateErrorPanel(stats);
 };
 
@@ -268,15 +260,8 @@ export const setupUI = (initialCallbacks) => {
     // The compile button is now in the editor status bar, but the listener is still attached here.
     document.getElementById('compile-button').addEventListener('click', () => uiCallbacks.onCompile && uiCallbacks.onCompile());
     
-    // --- Audio Controls - temporarily disabled ---
-    // dom.audioToggleButton.addEventListener('click', () => uiCallbacks.onAudioToggle && uiCallbacks.onAudioToggle());
-    // dom.microphoneButton.addEventListener('click', () => uiCallbacks.onMicrophoneToggle && uiCallbacks.onMicrophoneToggle());
-    // dom.audioFileButton.addEventListener('click', () => dom.audioFileInput.click());
-    // dom.audioFileInput.addEventListener('change', (e) => {
-    //     if (e.target.files.length > 0) {
-    //         uiCallbacks.onAudioFileLoad && uiCallbacks.onAudioFileLoad(e.target.files[0]);
-    //     }
-    // });
+    // --- Strudel Audio Pattern Control ---
+    dom.strudelPatternButton.addEventListener('click', () => uiCallbacks.onStrudelPatternToggle && uiCallbacks.onStrudelPatternToggle());
     
     // --- Visual Effect Selector ---
     dom.effectSelect.addEventListener('change', (e) => {
