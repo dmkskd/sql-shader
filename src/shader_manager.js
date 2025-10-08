@@ -104,9 +104,8 @@ export class ShaderManager {
         this.pristineSql = sql;
         this.editor.setValue(sql);
 
-        if (this.applyPerformanceHints(sql, RESOLUTIONS, ZOOM_LEVELS)) {
-            this.onHintChange();
-        }
+        // Apply performance hints - the function will call onHintChange internally if needed
+        this.applyPerformanceHints(sql, RESOLUTIONS, ZOOM_LEVELS);
     }
 
     /**
@@ -140,7 +139,20 @@ export class ShaderManager {
                             settingsChanged = true;
                         }
                     } else {
-                        // It's a new custom resolution, so add it.
+                        // Remove any existing custom resolutions first
+                        for (let i = RESOLUTIONS.length - 1; i >= 0; i--) {
+                            if (RESOLUTIONS[i].name.startsWith('Custom (')) {
+                                RESOLUTIONS.splice(i, 1);
+                                dom.resolutionSelect.removeChild(dom.resolutionSelect.options[i]);
+                            }
+                        }
+                        
+                        // Rebuild the select options indices after removal
+                        for (let i = 0; i < dom.resolutionSelect.options.length; i++) {
+                            dom.resolutionSelect.options[i].value = i;
+                        }
+                        
+                        // Now add the new custom resolution
                         const option = document.createElement('option');
                         option.value = RESOLUTIONS.length;
                         option.textContent = customResName;
@@ -163,6 +175,11 @@ export class ShaderManager {
                     dom.zoomSelect.value = zoomValue;
                     settingsChanged = true;
                 }
+            }
+            
+            // Call the hint change callback immediately if settings changed
+            if (settingsChanged) {
+                this.onHintChange();
             }
         }
         return settingsChanged;

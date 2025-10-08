@@ -157,6 +157,11 @@ const main = async (engine) => {
       setTimeout(() => editor.refresh(), 50);
       iMouse.x = resolution.width / 2;
       iMouse.y = resolution.height / 2;
+      
+      // Force a new frame render with the updated canvas size to prevent black screen
+      if (shaderManager.prepared && !shaderManager.hasCompilationError) {
+        requestAnimationFrame(renderFrame);
+      }
     };
 
     const shaderManager = new ShaderManager(engine, editor, updateCanvasSizeAndResolution);
@@ -223,7 +228,7 @@ const main = async (engine) => {
         }
     };
 
-    const handleShaderSelection = (newIndex) => {
+    const handleShaderSelection = async (newIndex) => {
         // [STATE_DEBUG] This block can be removed after testing.
         console.log(`[STATE_DEBUG] handleShaderSelection called for index: ${newIndex}. Proceeding to load.`);
         // The dirty check is now handled *before* the asset manager is opened.
@@ -232,7 +237,7 @@ const main = async (engine) => {
         const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
         document.title = `PixelQL - ${shader.name} (${engineName})`;
         dom.shaderSelectButton.textContent = shader.name; // Update button text
-        shaderManager.loadShader(newIndex, RESOLUTIONS, ZOOM_LEVELS);
+        await shaderManager.loadShader(newIndex, RESOLUTIONS, ZOOM_LEVELS);
     };
 
     updateUICallbacks({ // This updates the callbacks for the already-set-up UI
@@ -257,7 +262,7 @@ const main = async (engine) => {
 
                 // Open the manager and wait for a selection
                 const selectedIndex = await assetManager.open(shaderInfos);
-                handleShaderSelection(selectedIndex);
+                await handleShaderSelection(selectedIndex);
             } catch (error) {
                 // This catch block handles the user cancelling the modal.
                 console.log('[STATE_DEBUG] Asset selection cancelled.');
@@ -443,11 +448,11 @@ const main = async (engine) => {
             const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
             document.title = `PixelQL - ${shaderName} (${engineName})`;
             dom.shaderSelectButton.textContent = shaderName;
-            shaderManager.loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS);
+            await shaderManager.loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS);
         } else {
             console.warn(`Shared shader "${shaderName}" not found. Loading default.`);
             dom.shaderSelectButton.textContent = SHADERS[0].name;
-            shaderManager.loadShader(0, RESOLUTIONS, ZOOM_LEVELS);
+            await shaderManager.loadShader(0, RESOLUTIONS, ZOOM_LEVELS);
         }
     } else {
         // Default behavior: load from local storage
@@ -459,7 +464,7 @@ const main = async (engine) => {
 
         // Always load the shader from its source on startup to establish a clean pristine state.
         // Do not use the potentially stale 'savedSql' from localStorage.
-        shaderManager.loadShader(savedIndex, RESOLUTIONS, ZOOM_LEVELS);
+        await shaderManager.loadShader(savedIndex, RESOLUTIONS, ZOOM_LEVELS);
     }
 
     console.log('[Init] UI setup complete.');
@@ -508,6 +513,7 @@ const main = async (engine) => {
     let pauseStartTime = null; // When the current pause started
     let lastGoodResult = null;
     let lastR, lastG, lastB; // Store the last rendered color data
+    let isFrameProcessing = false; // Prevent concurrent frame processing
 
     dom.canvas.addEventListener('mousemove', (event) => {
       const rect = dom.canvas.getBoundingClientRect();
@@ -580,10 +586,30 @@ const main = async (engine) => {
     };
 
     const renderFrame = async (t) => {
-      const iTime = (performance.now() - startTime - pausedTime) / 1000.0;
-      
-      // Update audio analysis
-      const audioParams = audioManager.update();
+      // Prevent concurrent frame processing
+      if (isFrameProcessing) {
+        if (shaderManager.isPlaying) {
+          requestAnimationFrame(renderFrame);
+        }
+        return;
+      }
+      isFrameProcessing = true;
+
+      try {
+        // --- FPS Calculation (moved to beginning to count all frame attempts) ---
+        frameCount++;
+        const now = performance.now();
+        // Calculate FPS, but only update the stats object once per second
+        if (now - lastStatsUpdate > 1000) {
+          stats.fps = frameCount / ((now - lastStatsUpdate) / 1000);
+          lastStatsUpdate = now;
+          frameCount = 0;
+        }
+
+        const iTime = (performance.now() - startTime - pausedTime) / 1000.0;
+        
+        // Update audio analysis
+        const audioParams = audioManager.update();
 
       // If there is no valid prepared statement (e.g., due to a compilation error),
       // skip rendering but keep the animation loop alive.
@@ -598,12 +624,29 @@ const main = async (engine) => {
       stats.elapsedTime = iTime;
 
       try {
+        // Safety check: ensure canvas and context are valid
+        if (!ctx || dom.canvas.width !== resolution.width || dom.canvas.height !== resolution.height) {
+          console.warn('[Render] Canvas size mismatch detected, skipping frame');
+          if (shaderManager.isPlaying) requestAnimationFrame(renderFrame);
+          return;
+        }
+
         // Capture the resolution at the start of the frame to prevent race conditions.
         const frameWidth = resolution.width;
         const frameHeight = resolution.height;
 
         // Create a fresh ImageData buffer that is local to this frame.
-        const localImageData = ctx.createImageData(frameWidth, frameHeight);
+        let localImageData;
+        try {
+          localImageData = ctx.createImageData(frameWidth, frameHeight);
+        } catch (e) {
+          console.error('CanvasRenderingContext2D.createImageData error:', e.message);
+          console.error('Attempted width:', frameWidth, 'height:', frameHeight);
+          console.error('Canvas width:', dom.canvas.width, 'height:', dom.canvas.height);
+          console.error('Resolution object:', resolution);
+          if (shaderManager.isPlaying) requestAnimationFrame(renderFrame);
+          return;
+        }
 
         const t0 = performance.now();
         
@@ -641,20 +684,15 @@ const main = async (engine) => {
         dom.playToggleButton.innerHTML = '▶ Play';
       }
 
-      // --- FPS Calculation ---
-      frameCount++;
-      const now = performance.now();
-      // Calculate FPS, but only update the stats object once per second
-      if (now - lastStatsUpdate > 1000) {
-        stats.fps = frameCount / ((now - lastStatsUpdate) / 1000);
-        lastStatsUpdate = now;
-        frameCount = 0;
-      }
       // Update the stats panel on every frame for real-time feedback
       updateStatsPanel(stats, resolution, audioManager ? audioManager.getLastAudioParams() : null); // Use imported function
 
+      // Only request the next frame after this one is completely done
       if (shaderManager.isPlaying) {
         requestAnimationFrame(renderFrame); // Continue the loop only if playing
+      }
+      } finally {
+        isFrameProcessing = false; // Always reset the flag
       }
     };
 
@@ -675,7 +713,14 @@ const main = async (engine) => {
         if (isAutocompileOn) {
             const generalSettings = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}general-settings`)) || {};
             const autocompileDelay = parseInt(generalSettings.autocompileDelay, 10) || 300;
-            shaderManager.debounceTimer = setTimeout(() => shaderManager.updateShader(false, stats), autocompileDelay);
+            shaderManager.debounceTimer = setTimeout(() => {
+                // Check for @run: hints in the current editor content and apply them before compiling
+                const currentSQL = editor.getValue();
+                shaderManager.applyPerformanceHints(currentSQL, RESOLUTIONS, ZOOM_LEVELS);
+                
+                // Then compile the shader
+                shaderManager.updateShader(false, stats);
+            }, autocompileDelay);
         }
     });
   } catch (e) {
