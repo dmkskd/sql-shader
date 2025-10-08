@@ -269,15 +269,24 @@ const main = async (engine) => {
         onPlayToggle: () => {
             shaderManager.isPlaying = !shaderManager.isPlaying;
             if (shaderManager.isPlaying) {
+                // Resuming: adjust startTime to account for pause duration
+                if (pauseStartTime !== null) {
+                    pausedTime += (performance.now() - pauseStartTime);
+                    pauseStartTime = null;
+                }
                 dom.playToggleButton.innerHTML = '❚❚ Stop';
                 lastStatsUpdate = performance.now();
                 requestAnimationFrame(renderFrame);
             } else {
+                // Pausing: record when pause started
+                pauseStartTime = performance.now();
                 dom.playToggleButton.innerHTML = '▶ Play';
             }
         },
         onRestart: () => {
             startTime = performance.now();
+            pausedTime = 0; // Reset pause tracking
+            pauseStartTime = null;
             if (!shaderManager.isPlaying) {
                 (async () => {
                     try { await renderFrame(); } catch (e) { console.error('Error on restart:', e); }
@@ -495,6 +504,8 @@ const main = async (engine) => {
     // --- Animation & Rendering Loop ---
     let imageData = ctx.createImageData(resolution.width, resolution.height); // ctx is from canvas
     let startTime = performance.now();
+    let pausedTime = 0; // Track total time spent paused
+    let pauseStartTime = null; // When the current pause started
     let lastGoodResult = null;
     let lastR, lastG, lastB; // Store the last rendered color data
 
@@ -569,7 +580,7 @@ const main = async (engine) => {
     };
 
     const renderFrame = async (t) => {
-      const iTime = (performance.now() - startTime) / 1000.0;
+      const iTime = (performance.now() - startTime - pausedTime) / 1000.0;
       
       // Update audio analysis
       const audioParams = audioManager.update();
