@@ -104,60 +104,111 @@ export class AssetManager {
 
     _processQueue() {
         this.isProcessing = true;
-        requestIdleCallback(async (deadline) => {
-            while (deadline.timeRemaining() > 0 && this.queue.length > 0) {
-                const { shaderInfo, thumbnailElement } = this.queue.shift();
-                try {
-                    const imageDataUrl = await this._generateThumbnail(shaderInfo.sql);
-                    thumbnailElement.style.backgroundImage = `url(${imageDataUrl})`;
-                    thumbnailElement.textContent = '';
-                } catch (e) {
-                    console.error(`Failed to generate thumbnail for ${shaderInfo.name}:`, e);
-                    thumbnailElement.textContent = 'Render Failed';
-                }
+        
+        const processNextThumbnail = async () => {
+            if (this.queue.length === 0) {
+                this.isProcessing = false;
+                return;
             }
-            if (this.queue.length > 0) this._processQueue();
-            else this.isProcessing = false;
-        });
+            
+            const { shaderInfo, thumbnailElement } = this.queue.shift();
+            try {
+                console.log(`Generating thumbnail for ${shaderInfo.name}...`);
+                const imageDataUrl = await this._generateThumbnail(shaderInfo.sql);
+                console.log(`Thumbnail generated successfully for ${shaderInfo.name}`);
+                thumbnailElement.style.backgroundImage = `url(${imageDataUrl})`;
+                thumbnailElement.style.backgroundSize = 'cover';
+                thumbnailElement.style.backgroundPosition = 'center';
+                thumbnailElement.textContent = '';
+            } catch (e) {
+                console.error(`Failed to generate thumbnail for ${shaderInfo.name}:`, e);
+                thumbnailElement.textContent = 'Render Failed';
+                thumbnailElement.style.backgroundColor = '#3a3a3a';
+            }
+            
+            // Process next thumbnail
+            if (this.queue.length > 0) {
+                // Use setTimeout for Safari compatibility instead of requestIdleCallback
+                setTimeout(processNextThumbnail, 50);
+            } else {
+                this.isProcessing = false;
+            }
+        };
+        
+        // Safari fallback: use setTimeout instead of requestIdleCallback
+        if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(processNextThumbnail);
+        } else {
+            setTimeout(processNextThumbnail, 0);
+        }
     }
 
     async _generateThumbnail(sql) {
-        const prepared = await this.engine.prepare(sql);
-        
-        const uniformBuilder = new UniformBuilder();
-        
-        const thumbnailParams = {
-            width: this.thumbnailResolution.width,
-            height: this.thumbnailResolution.height,
-            iTime: 5, // Fixed time for consistent thumbnails
-            mouseX: this.thumbnailResolution.width / 2,
-            mouseY: this.thumbnailResolution.height / 2,
-            audio: { isActive: false } // No audio for thumbnails
-        };
-        
-        // Build pure JS uniforms - engine handles its own translation
-        const uniforms = uniformBuilder.build(thumbnailParams);
-        
-        // Pass to engine - engine handles translation internally
-        const queryResult = await prepared.query(uniforms);
-        const { table } = queryResult;
+        try {
+            console.log('Starting thumbnail generation - preparing SQL...');
+            const prepared = await this.engine.prepare(sql);
+            
+            console.log('SQL prepared, building uniforms...');
+            const uniformBuilder = new UniformBuilder();
+            
+            const thumbnailParams = {
+                width: this.thumbnailResolution.width,
+                height: this.thumbnailResolution.height,
+                iTime: 5, // Fixed time for consistent thumbnails
+                mouseX: this.thumbnailResolution.width / 2,
+                mouseY: this.thumbnailResolution.height / 2,
+                audio: { isActive: false } // No audio for thumbnails
+            };
+            
+            // Build pure JS uniforms - engine handles its own translation
+            const uniforms = uniformBuilder.build(thumbnailParams);
+            
+            console.log('Executing query...');
+            // Pass to engine - engine handles translation internally
+            const queryResult = await prepared.query(uniforms);
+            const { table } = queryResult;
 
-        const imageData = new ImageData(this.thumbnailResolution.width, this.thumbnailResolution.height);
-        const r = table.getChild('r').toArray();
-        const g = table.getChild('g').toArray();
-        const b = table.getChild('b').toArray();
+            console.log('Creating image data...');
+            const imageData = new ImageData(this.thumbnailResolution.width, this.thumbnailResolution.height);
+            const r = table.getChild('r').toArray();
+            const g = table.getChild('g').toArray();
+            const b = table.getChild('b').toArray();
 
-        for (let i = 0; i < r.length; i++) {
-            const pixelIndex = i * 4;
-            imageData.data[pixelIndex] = r[i] * 255;
-            imageData.data[pixelIndex + 1] = g[i] * 255;
-            imageData.data[pixelIndex + 2] = b[i] * 255;
-            imageData.data[pixelIndex + 3] = 255;
+            console.log(`Processing ${r.length} pixels...`);
+            for (let i = 0; i < r.length; i++) {
+                const pixelIndex = i * 4;
+                imageData.data[pixelIndex] = r[i] * 255;
+                imageData.data[pixelIndex + 1] = g[i] * 255;
+                imageData.data[pixelIndex + 2] = b[i] * 255;
+                imageData.data[pixelIndex + 3] = 255;
+            }
+
+            console.log('Converting to image URL...');
+            // Safari fallback: Use regular Canvas instead of OffscreenCanvas
+            // Safari doesn't support OffscreenCanvas.convertToBlob() in main thread
+            let canvas, ctx;
+            if (typeof OffscreenCanvas !== 'undefined' && OffscreenCanvas.prototype.convertToBlob) {
+                console.log('Using OffscreenCanvas (modern browsers)');
+                // Modern browsers with full OffscreenCanvas support
+                canvas = new OffscreenCanvas(this.thumbnailResolution.width, this.thumbnailResolution.height);
+                ctx = canvas.getContext('2d');
+                ctx.putImageData(imageData, 0, 0);
+                const blob = await canvas.convertToBlob();
+                return URL.createObjectURL(blob);
+            } else {
+                console.log('Using regular Canvas (Safari fallback)');
+                // Safari fallback: Use regular canvas and toDataURL
+                canvas = document.createElement('canvas');
+                canvas.width = this.thumbnailResolution.width;
+                canvas.height = this.thumbnailResolution.height;
+                ctx = canvas.getContext('2d');
+                ctx.putImageData(imageData, 0, 0);
+                return canvas.toDataURL('image/png');
+            }
+        } catch (error) {
+            console.error('Detailed thumbnail generation error:', error);
+            console.error('Error stack:', error.stack);
+            throw error;
         }
-
-        const canvas = new OffscreenCanvas(this.thumbnailResolution.width, this.thumbnailResolution.height);
-        canvas.getContext('2d').putImageData(imageData, 0, 0);
-        const blob = await canvas.convertToBlob();
-        return URL.createObjectURL(blob);
     }
 }
