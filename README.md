@@ -1,8 +1,6 @@
-# PixelQL
+# SQL Shader
 
 **[Try the Live Demo Here](https://dmkskd.github.io/sql-shader/)**.
-
-# SQL Shader
 
 A browser-based SQL shader editor that uses database engines as pixel shaders.
 
