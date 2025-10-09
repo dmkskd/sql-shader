@@ -1,0 +1,40 @@
+[
+  {
+    "trace": [
+      "DB::InterpreterSelectQuery::execute()",
+      "DB::QueryAnalyzer::resolveFunction(std::shared_ptr<...>&, DB::Context&)",
+      "DB::QueryAnalyzer::resolveExpressionNode(std::shared_ptr<...>&, DB::Context&)",
+      "DB::QueryAnalyzer::resolveExpressionNodeList(std::shared_ptr<...>&, DB::Context&)"
+    ],
+    "value": 10
+  },
+  {
+    "trace": [
+      "DB::InterpreterSelectQuery::execute()",
+      "DB::QueryAnalyzer::tryResolveIdentifier(DB::IdentifierLookup const&, ...)",
+      "DB::QueryAnalyzer::tryResolveIdentifierFromAliases(DB::IdentifierLookup const&, ...)"
+    ],
+    "value": 5
+  },
+  {
+    "trace": [
+      "DB::InterpreterSelectQuery::execute()",
+      "DB::QueryAnalyzer::resolveFunction(std::shared_ptr<...>&, DB::Context&)"
+    ],
+    "value": 8
+  },
+  {
+    "trace": [
+      "DB::SomeOtherClass::doWork()",
+      "DB::QueryAnalyzer::resolveExpressionNode(std::shared_ptr<...>&, DB::Context&)"
+    ],
+    "value": 12
+  },
+  {
+    "trace": [
+      "DB::ReadBufferFromFile::nextImpl()",
+      "DB::MergeTreeReader::readData()"
+    ],
+    "value": 20
+  }
+]

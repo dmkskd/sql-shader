@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DuckDB Real Shader Tests</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #0066cc;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #0052a3; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        .results {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .log-entry {
+            font-family: 'Monaco', 'Menlo', monospace;
+            padding: 2px 0;
+            font-size: 12px;
+        }
+        .log-info { color: #87ceeb; }
+        .log-test { color: #ffd700; }
+        .log-success { color: #90ee90; }
+        .log-error { color: #ff6b6b; }
+        .log-summary { color: #dda0dd; font-weight: bold; }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-pass { background: #4CAF50; color: white; }
+        .status-fail { background: #F44336; color: white; }
+        .test-summary {
+            background: #333;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .test-detail {
+            margin: 10px 0;
+            padding: 10px;
+            background: #404040;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧪 DuckDB Real Shader Tests</h1>
+        <p>Testing actual shader execution with DuckDB-WASM</p>
+    </div>
+
+    <div class="test-controls">
+        <button id="runTests">🚀 Run All Tests</button>
+        <button id="runSimpleTest">🔍 Simple JSON Test</button>
+        <button id="runLegacyTest">⚙️ Legacy Test</button>
+        <button id="runJsonTest">📄 JSON Test</button>
+        <button id="clearResults">🧹 Clear Results</button>
+    </div>
+
+    <div class="results">
+        <h3>Test Results</h3>
+        <div id="testOutput">
+            <p>Click "Run All Tests" to start testing actual DuckDB shader execution...</p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { DuckDBShaderTestSuite } from './test_sql_execution.js';
+
+        const outputEl = document.getElementById('testOutput');
+        const buttons = {
+            runTests: document.getElementById('runTests'),
+            runSimpleTest: document.getElementById('runSimpleTest'),
+            runLegacyTest: document.getElementById('runLegacyTest'),
+            runJsonTest: document.getElementById('runJsonTest'),
+            clearResults: document.getElementById('clearResults')
+        };
+
+        function logToUI(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = message;
+            outputEl.appendChild(entry);
+            outputEl.scrollTop = outputEl.scrollHeight;
+        }
+
+        function clearOutput() {
+            outputEl.innerHTML = '<p>Ready to run tests...</p>';
+        }
+
+        function showTestSummary(results) {
+            const summary = document.createElement('div');
+            summary.className = 'test-summary';
+            
+            const total = results.total || 0;
+            const passed = results.passed || 0;
+            const failed = results.failed || 0;
+            const successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+            
+            summary.innerHTML = `
+                <h4>📊 Test Summary</h4>
+                <p><strong>Total Tests:</strong> ${total}</p>
+                <p><strong>Passed:</strong> <span class="status status-pass">${passed}</span></p>
+                <p><strong>Failed:</strong> <span class="status status-fail">${failed}</span></p>
+                <p><strong>Success Rate:</strong> ${successRate}%</p>
+                
+                <h5>📋 Detailed Results:</h5>
+            `;
+            
+            if (results.results) {
+                for (const [testName, result] of Object.entries(results.results)) {
+                    const detail = document.createElement('div');
+                    detail.className = 'test-detail';
+                    
+                    const statusClass = result.status === 'PASS' ? 'status-pass' : 'status-fail';
+                    let content = `
+                        <strong>${testName}:</strong> 
+                        <span class="status ${statusClass}">${result.status}</span>
+                    `;
+                    
+                    if (result.status === 'PASS') {
+                        if (result.pixels) content += ` (${result.pixels} pixels)`;
+                        if (result.width) content += ` (${result.width}x${result.timeVal})`;
+                    } else if (result.error) {
+                        content += `<br><small>Error: ${result.error}</small>`;
+                    }
+                    
+                    detail.innerHTML = content;
+                    summary.appendChild(detail);
+                }
+            }
+            
+            outputEl.appendChild(summary);
+        }
+
+        async function runAllTests() {
+            clearOutput();
+            logToUI('🚀 Starting DuckDB Real Shader Test Suite...', 'info');
+            
+            const testSuite = new DuckDBShaderTestSuite();
+            
+            // Override log method to also log to UI
+            const originalLog = testSuite.log.bind(testSuite);
+            testSuite.log = (message, type) => {
+                originalLog(message, type);
+                logToUI(message, type);
+            };
+            
+            try {
+                buttons.runTests.disabled = true;
+                buttons.runTests.textContent = '⏳ Running Tests...';
+                
+                const results = await testSuite.runAllTests();
+                
+                logToUI('✅ Test suite completed!', 'summary');
+                showTestSummary(results);
+                
+            } catch (error) {
+                logToUI(`❌ Test suite error: ${error.message}`, 'error');
+                console.error('Test suite error:', error);
+            } finally {
+                buttons.runTests.disabled = false;
+                buttons.runTests.textContent = '🚀 Run All Tests';
+            }
+        }
+
+        async function runSingleTest(testName, testFn) {
+            clearOutput();
+            logToUI(`🔍 Running single test: ${testName}`, 'info');
+            
+            const testSuite = new DuckDBShaderTestSuite();
+            
+            // Override log method
+            const originalLog = testSuite.log.bind(testSuite);
+            testSuite.log = (message, type) => {
+                originalLog(message, type);
+                logToUI(message, type);
+            };
+            
+            try {
+                if (!(await testSuite.initializeDuckDB())) {
+                    logToUI('❌ Failed to initialize DuckDB', 'error');
+                    return;
+                }
+                
+                const result = await testFn.call(testSuite);
+                
+                const statusText = result.status === 'PASS' ? '✅ PASSED' : '❌ FAILED';
+                logToUI(`${testName}: ${statusText}`, result.status === 'PASS' ? 'success' : 'error');
+                
+                if (result.error) {
+                    logToUI(`Error: ${result.error}`, 'error');
+                }
+                
+                if (testSuite.connection) {
+                    await testSuite.connection.close();
+                }
+                
+            } catch (error) {
+                logToUI(`❌ Test error: ${error.message}`, 'error');
+                console.error('Test error:', error);
+            }
+        }
+
+        // Event listeners
+        buttons.runTests.addEventListener('click', runAllTests);
+        buttons.clearResults.addEventListener('click', clearOutput);
+        
+        buttons.runSimpleTest.addEventListener('click', () => 
+            runSingleTest('Simple JSON Access', DuckDBShaderTestSuite.prototype.testSimpleJSONAccess)
+        );
+        
+        buttons.runLegacyTest.addEventListener('click', () => 
+            runSingleTest('Legacy Parameter Shader', DuckDBShaderTestSuite.prototype.testLegacyParameterShader)
+        );
+        
+        buttons.runJsonTest.addEventListener('click', () => 
+            runSingleTest('JSON Parameter Shader', DuckDBShaderTestSuite.prototype.testJSONParameterShader)
+        );
+
+        // Auto-run simple test on page load to verify setup
+        logToUI('🔧 Page loaded. Ready to test real DuckDB shader execution.', 'info');
+        logToUI('💡 Tip: Start with "Simple JSON Test" to verify DuckDB-WASM is working.', 'info');
+    </script>
+</body>
+</html>

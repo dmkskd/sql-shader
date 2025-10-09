@@ -69,6 +69,7 @@ stop-caddy:
 	@echo "Stopping any container using port {{caddy_port}}..."
 	@docker ps -q --filter "publish={{caddy_port}}" | xargs -r docker stop > /dev/null 2>&1 || true
 
-# Run all tests
-test:
-	@node test/run_tests.js
+# Run all automated tests, or filter by folder/category (e.g., `just test example` or `just test duckdb`)
+test filter="":
+	@echo "Running automated test suite..."
+	@node test/run-tests.js {{filter}}

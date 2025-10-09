@@ -1,0 +1,422 @@
+/* SQL Shader Test Suite - Shared Styles */
+/* Based on Style 1: Modern Dark with Cyan Accents */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 40px 20px;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Header */
+.header {
+    margin-bottom: 48px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 32px;
+}
+
+.header h1 {
+    color: #00d9ff;
+    font-size: 1.75em;
+    font-weight: 500;
+    margin-bottom: 8px;
+    letter-spacing: -0.02em;
+}
+
+.header p {
+    color: #888;
+    font-size: 0.95em;
+    font-weight: 400;
+    margin-top: 0;
+}
+
+/* Settings Panel */
+.settings {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.settings h3 {
+    color: #00d9ff;
+    margin-bottom: 20px;
+    font-size: 0.95em;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.settings label {
+    display: block;
+    color: #aaa;
+    margin: 16px 0 6px 0;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.settings input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 8px 12px;
+    color: #e0e0e0;
+    font-size: 0.9em;
+    transition: border-color 0.2s ease;
+}
+
+.settings input:focus {
+    outline: none;
+    border-color: #00d9ff;
+}
+
+/* Controls */
+.test-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+button {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #e0e0e0;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.3px;
+    transition: all 0.15s ease;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+button:hover {
+    background: rgba(0, 217, 255, 0.08);
+    border-color: rgba(0, 217, 255, 0.5);
+}
+
+button:active {
+    background: rgba(0, 217, 255, 0.15);
+}
+
+button:disabled {
+    background: transparent;
+    color: #555;
+    border-color: rgba(255, 255, 255, 0.1);
+    cursor: not-allowed;
+}
+
+button.primary {
+    background: #00d9ff;
+    color: #0a0a0a;
+    border: 1px solid #00d9ff;
+}
+
+button.primary:hover {
+    background: #00eaff;
+    border-color: #00eaff;
+}
+
+button.primary:active {
+    background: #00c8e8;
+}
+
+button.primary:disabled {
+    background: #333;
+    color: #555;
+    border-color: #333;
+}
+
+button.danger {
+    background: transparent;
+    color: #ff6b6b;
+    border-color: rgba(255, 107, 107, 0.4);
+}
+
+button.danger:hover {
+    background: rgba(255, 107, 107, 0.1);
+    border-color: #ff6b6b;
+}
+
+/* Results Container */
+.results {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 24px;
+}
+
+.results h3 {
+    color: #00d9ff;
+    margin-bottom: 20px;
+    font-size: 0.8em;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+#testOutput {
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    /* No max-height or overflow - let it grow naturally */
+}
+
+/* Log Entries */
+.log-entry {
+    padding: 6px 0;
+    margin: 2px 0;
+    border-radius: 0;
+    border-left: none;
+    background: transparent;
+}
+
+.log-info {
+    color: #888;
+}
+
+.log-test {
+    color: #e0e0e0;
+}
+
+.log-success {
+    color: #4caf50;
+}
+
+.log-error {
+    color: #ff6b6b;
+}
+
+.log-warning {
+    color: #ffb74d;
+}
+
+.log-summary {
+    color: #00d9ff;
+    font-weight: 500;
+    background: transparent;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Test Summary */
+.test-summary {
+    margin-top: 24px;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    border: 1px solid rgba(0, 217, 255, 0.3);
+}
+
+.test-summary h4 {
+    color: #00d9ff;
+    margin-bottom: 20px;
+    font-size: 0.85em;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.test-summary p {
+    margin: 10px 0;
+    color: #e0e0e0;
+    font-size: 0.9em;
+}
+
+.test-summary strong {
+    color: #00d9ff;
+    font-weight: 500;
+}
+
+/* Status Badges */
+.status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.status-pass {
+    background: rgba(76, 175, 80, 0.15);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.status-fail {
+    background: rgba(255, 107, 107, 0.15);
+    color: #ff6b6b;
+    border: 1px solid rgba(255, 107, 107, 0.4);
+}
+
+.status-running {
+    background: rgba(255, 183, 77, 0.15);
+    color: #ffb74d;
+    border: 1px solid rgba(255, 183, 77, 0.4);
+}
+
+.status-pending {
+    background: rgba(136, 136, 136, 0.15);
+    color: #888;
+    border: 1px solid rgba(136, 136, 136, 0.4);
+}
+
+/* Test Details */
+.test-detail {
+    margin: 8px 0;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 4px;
+    border-left: 2px solid rgba(0, 217, 255, 0.5);
+    font-size: 0.9em;
+}
+
+.test-detail strong {
+    color: #00d9ff;
+    font-weight: 500;
+}
+
+.test-detail small {
+    color: #888;
+    display: block;
+    margin-top: 6px;
+    font-size: 0.95em;
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.stat-card {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 16px;
+    border-radius: 4px;
+    text-align: left;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stat-card .label {
+    color: #888;
+    font-size: 0.75em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+.stat-card .value {
+    color: #00d9ff;
+    font-size: 1.75em;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+}
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+}
+
+th, td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+th {
+    color: #00d9ff;
+    font-weight: 500;
+    background: transparent;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    color: #e0e0e0;
+    font-size: 0.9em;
+}
+
+/* Color coding for status cells in tables */
+td.pass {
+    color: #4ade80;
+    font-weight: 500;
+}
+
+td.fail {
+    color: #f87171;
+    font-weight: 500;
+}
+
+tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Scrollbar Styling - Minimal and clean */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 217, 255, 0.2);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 217, 255, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+    
+    .header h1 {
+        font-size: 1.5em;
+    }
+    
+    .test-controls {
+        flex-direction: column;
+    }
+    
+    button {
+        width: 100%;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}

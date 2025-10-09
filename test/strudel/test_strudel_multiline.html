@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Strudel Multi-line Pattern Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    pre {
+      background: #252526;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 10px;
+      background: #2d2d30;
+      border-left: 3px solid #007acc;
+    }
+  </style>
+</head>
+<body>
+  <h1>Strudel Multi-line Pattern Test</h1>
+  
+  <h2>Original Pattern (with $:)</h2>
+  <pre id="original-pattern"></pre>
+  <button onclick="testOriginal()">Test Original (with $:)</button>
+  
+  <h2>Test 1: Simple stack()</h2>
+  <pre id="test1-pattern"></pre>
+  <button onclick="test1()">Test stack()</button>
+  
+  <h2>Test 2: With .layer()</h2>
+  <pre id="test2-pattern"></pre>
+  <button onclick="test2()">Test .layer()</button>
+  
+  <h2>Test 3: Just first part</h2>
+  <pre id="test3-pattern"></pre>
+  <button onclick="test3()">Test Single Pattern</button>
+  
+  <button onclick="stopAll()" style="background: #c00; color: white;">STOP ALL</button>
+  
+  <h2>Custom Pattern Test</h2>
+  <textarea id="custom-pattern-input" rows="10" style="width: 100%; font-family: monospace; background: #252526; color: #d4d4d4; border: 1px solid #555; padding: 10px;" placeholder="Paste your Strudel pattern here..."></textarea>
+  <button onclick="testCustom()" style="background: #007acc; color: white; font-weight: bold;">▶️ Test Custom Pattern</button>
+  
+  <div class="result" id="result"></div>
+
+  <!-- Load Strudel the same way as main app -->
+  <script src="https://unpkg.com/@strudel/web@1.0.3"></script>
+  <script>
+    async function init() {
+      console.log('Initializing Strudel...');
+      await window.initStrudel({
+        prebake: () => window.samples('github:tidalcycles/dirt-samples'),
+      });
+      console.log('Strudel initialized');
+      console.log('window.evaluate:', typeof window.evaluate);
+      console.log('window.strudel:', window.strudel);
+      
+      // Store evaluate and hush functions
+      window.strudelEvaluate = window.evaluate || (window.strudel && window.strudel.evaluate);
+      window.strudelHush = window.hush || (window.strudel && window.strudel.hush);
+      
+      console.log('Stored strudelEvaluate:', typeof window.strudelEvaluate);
+      console.log('Stored strudelHush:', typeof window.strudelHush);
+      
+      document.getElementById('result').innerHTML = '✅ Strudel ready! Click buttons to test patterns.';
+    }
+    
+    init();
+    
+    // Original pattern with $:
+    const originalPattern = `let s = 'C:minor'
+
+$: stack(
+    n("<0 2 4>*4")
+  .add(0)
+  .off(3/8, add("<4 2 3 1 5 2 3 1>/2"))
+  .scale(s).sound("supersaw").detune(0.1).room(1).rfade(4).lpf(cosine.slow(16).range(600,1200)).clip(0.6).lpq(12)
+)
+
+$: stack(
+    n("<0 2 4 0 2 4 0 2 4 0>*4")
+  .add(14)
+  .off(3/8, add("<1 3 2 4 4 5 3 2>/2")).distort("2.2:.3")
+  .scale(s).sound("sawtooth").detune(1.1).room(1).rfade(4).clip(0.1).lpf(cosine.slow(16).range(600,1200))
+)
+
+$: stack(
+  n("<1 0 1 0 1 0 <1 ~> <0 ~>>*4 ").sound("bd").clip(0.4).room(0.2),
+  n("1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~").sound("hh"),
+  n("~ 10 ~ <10 ~>").sound("oh").clip(0.2).rfade(32).room(0.7)
+)`;
+
+    // Test 1: nested stack
+    const test1Pattern = `stack(
+  stack(
+    n("<0 2 4>*4")
+      .add(0)
+      .off(3/8, add("<4 2 3 1 5 2 3 1>/2"))
+      .scale('C:minor').sound("supersaw").detune(0.1).room(1).rfade(4).lpf(cosine.slow(16).range(600,1200)).clip(0.6).lpq(12)
+  ),
+  stack(
+    n("<0 2 4 0 2 4 0 2 4 0>*4")
+      .add(14)
+      .off(3/8, add("<1 3 2 4 4 5 3 2>/2")).distort("2.2:.3")
+      .scale('C:minor').sound("sawtooth").detune(1.1).room(1).rfade(4).clip(0.1).lpf(cosine.slow(16).range(600,1200))
+  ),
+  stack(
+    n("<1 0 1 0 1 0 <1 ~> <0 ~>>*4 ").sound("bd").clip(0.4).room(0.2),
+    n("1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~").sound("hh"),
+    n("~ 10 ~ <10 ~>").sound("oh").clip(0.2).rfade(32).room(0.7)
+  )
+)`;
+
+    // Test 2: with .layer()
+    const test2Pattern = `n("<0 2 4>*4").add(0).off(3/8, add("<4 2 3 1 5 2 3 1>/2")).scale('C:minor').sound("supersaw").detune(0.1).room(1).rfade(4).lpf(cosine.slow(16).range(600,1200)).clip(0.6).lpq(12).layer(n("<0 2 4 0 2 4 0 2 4 0>*4").add(14).off(3/8, add("<1 3 2 4 4 5 3 2>/2")).distort("2.2:.3").scale('C:minor').sound("sawtooth").detune(1.1).room(1).rfade(4).clip(0.1).lpf(cosine.slow(16).range(600,1200))).layer(stack(n("<1 0 1 0 1 0 <1 ~> <0 ~>>*4 ").sound("bd").clip(0.4).room(0.2), n("1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~").sound("hh"), n("~ 10 ~ <10 ~>").sound("oh").clip(0.2).rfade(32).room(0.7)))`;
+
+    // Test 3: just first part
+    const test3Pattern = `n("<0 2 4>*4").add(0).off(3/8, add("<4 2 3 1 5 2 3 1>/2")).scale('C:minor').sound("supersaw").detune(0.1).room(1).rfade(4).lpf(cosine.slow(16).range(600,1200)).clip(0.6).lpq(12)`;
+
+    document.getElementById('original-pattern').textContent = originalPattern;
+    document.getElementById('test1-pattern').textContent = test1Pattern;
+    document.getElementById('test2-pattern').textContent = test2Pattern;
+    document.getElementById('test3-pattern').textContent = test3Pattern;
+    
+    async function testPattern(pattern, name) {
+      try {
+        document.getElementById('result').innerHTML = `⏳ Testing ${name}...`;
+        console.log(`Testing ${name}:`, pattern);
+        
+        if (window.strudelHush) {
+          window.strudelHush();
+        }
+        
+        const result = await window.strudelEvaluate(pattern);
+        console.log('Result:', result);
+        document.getElementById('result').innerHTML = `✅ ${name} evaluated successfully!`;
+      } catch (error) {
+        console.error(`Error in ${name}:`, error);
+        document.getElementById('result').innerHTML = `❌ ${name} failed: ${error.message}`;
+      }
+    }
+    
+    window.testOriginal = () => testPattern(originalPattern, 'Original (with $:)');
+    window.test1 = () => testPattern(test1Pattern, 'Test 1 (nested stack)');
+    window.test2 = () => testPattern(test2Pattern, 'Test 2 (.layer())');
+    window.test3 = () => testPattern(test3Pattern, 'Test 3 (single pattern)');
+    
+    window.testCustom = () => {
+      const customPattern = document.getElementById('custom-pattern-input').value;
+      if (!customPattern.trim()) {
+        document.getElementById('result').innerHTML = '⚠️ Please enter a pattern first';
+        return;
+      }
+      testPattern(customPattern, 'Custom Pattern');
+    };
+    
+    window.stopAll = () => {
+      if (window.strudelHush) {
+        window.strudelHush();
+        document.getElementById('result').innerHTML = '⏸️ All patterns stopped';
+      }
+    };
+    
+    init();
+  </script>
+</body>
+</html>

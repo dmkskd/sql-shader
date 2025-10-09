@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flamegraph Grouping Tests - SQL Shader</title>
+    <link rel="stylesheet" href="../assets/test-styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Flamegraph Grouping Tests</h1>
+            <p>Tests for ClickHouse profiler flamegraph grouping logic</p>
+        </div>
+
+        <div class="test-controls">
+            <button id="runTests" class="primary">RUN TESTS</button>
+            <button id="clearResults">CLEAR RESULTS</button>
+        </div>
+
+        <div class="results">
+            <h3>Test Results</h3>
+            <div id="testOutput"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { TestLogger } from '../assets/test-logger.js';
+        import { ButtonManager } from '../assets/test-utils.js';
+        import { FlamegraphGroupingTestSuite } from './test_flamegraph_grouping.js';
+
+        const logger = new TestLogger('testOutput');
+        const suite = new FlamegraphGroupingTestSuite();
+        suite.setLogger(logger);
+
+        const buttonMgr = new ButtonManager(['runTests', 'clearResults']);
+        
+        buttonMgr.get('runTests').addEventListener('click', async () => {
+            buttonMgr.disable();
+            logger.clear();
+            await suite.execute();
+            buttonMgr.enable();
+        });
+
+        buttonMgr.get('clearResults').addEventListener('click', () => {
+            logger.clear();
+        });
+    </script>
+</body>
+</html>

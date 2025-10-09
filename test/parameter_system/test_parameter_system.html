@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parameter System Test Suite</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        
+        h1, h2, h3 {
+            color: #4CAF50;
+        }
+        
+        .test-container {
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .test-log {
+            padding: 5px 10px;
+            margin: 2px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        
+        .test-info { background: #1976D2; color: white; }
+        .test-test { background: #FF9800; color: white; }
+        .test-success { background: #4CAF50; color: white; }
+        .test-error { background: #F44336; color: white; }
+        .test-warning { background: #FF5722; color: white; }
+        .test-summary { background: #9C27B0; color: white; font-weight: bold; }
+        
+        .timestamp {
+            opacity: 0.7;
+            margin-right: 10px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        .status-pass { color: #4CAF50; }
+        .status-fail { color: #F44336; }
+        
+        #test-results {
+            max-height: 600px;
+            overflow-y: auto;
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #444;
+        }
+        
+        .test-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .test-summary-table th,
+        .test-summary-table td {
+            border: 1px solid #444;
+            padding: 10px;
+            text-align: left;
+        }
+        
+        .test-summary-table th {
+            background: #333;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Parameter System Test Suite</h1>
+    
+    <div class="test-container">
+        <h2>Purpose</h2>
+        <p>This test suite validates JSON parameter handling across DuckDB and ClickHouse engines, ensuring our migration from legacy parameter styles works correctly.</p>
+        
+        <h3>Tests Included:</h3>
+        <ul>
+            <li><strong>DuckDB JSON Support</strong> - Tests <code>?::JSON</code> with <code>json_extract()</code></li>
+            <li><strong>ClickHouse JSON Support</strong> - Tests both <code>?::String + parseJSON()</code> and <code>?::JSON</code></li>
+            <li><strong>Legacy Support</strong> - Tests <code>?::BIGINT AS width</code> style (deprecated)</li>
+            <li><strong>ClickHouse Legacy</strong> - Tests <code>{parameter:Type}</code> style (deprecated)</li>
+        </ul>
+    </div>
+
+    <div class="test-container">
+        <h2>Test Controls</h2>
+        <button onclick="runTests()">🚀 Run All Tests</button>
+        <button onclick="runDetectionTests()">🔍 Test Detection Only</button>
+        <button onclick="runParameterBuildingTests()">🔧 Test Parameter Building</button>
+        <button onclick="clearResults()">🧹 Clear Results</button>
+    </div>
+
+    <div class="test-container">
+        <h2>Test Results</h2>
+        <div id="test-results">
+            <p>Click "Run All Tests" to start testing...</p>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>Test Summary</h2>
+        <table class="test-summary-table" id="summary-table">
+            <thead>
+                <tr>
+                    <th>Test Name</th>
+                    <th>Engine</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="summary-body">
+                <tr><td colspan="4">No tests run yet</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script type="module">
+        import { ParameterTestSuite } from './test_parameter_system.js';
+        
+        // Global test suite instance
+        window.testSuite = new ParameterTestSuite();
+        
+        // Test runner functions
+        window.runTests = async function() {
+            const resultsDiv = document.getElementById('test-results');
+            const summaryBody = document.getElementById('summary-body');
+            
+            resultsDiv.innerHTML = '<p>🔄 Running tests...</p>';
+            summaryBody.innerHTML = '<tr><td colspan="4">Running tests...</td></tr>';
+            
+            try {
+                const results = await window.testSuite.runAllTests();
+                
+                // Display logs
+                resultsDiv.innerHTML = '<h3>Test Execution Log</h3>';
+                results.logs.forEach(({ timestamp, type, message }) => {
+                    const div = document.createElement('div');
+                    div.className = `test-log test-${type}`;
+                    div.innerHTML = `<span class="timestamp">${timestamp}</span> ${message}`;
+                    resultsDiv.appendChild(div);
+                });
+                
+                // Update summary table
+                summaryBody.innerHTML = '';
+                results.results.forEach(result => {
+                    const row = summaryBody.insertRow();
+                    const statusClass = result.status === 'PASS' ? 'status-pass' : 'status-fail';
+                    const details = result.error || 'Success';
+                    
+                    row.innerHTML = `
+                        <td>${result.type || result.engine}</td>
+                        <td>${result.engine || 'Various'}</td>
+                        <td class="${statusClass}">${result.status}</td>
+                        <td>${details}</td>
+                    `;
+                });
+                
+                // Add overall summary
+                const summaryDiv = document.createElement('div');
+                summaryDiv.className = 'test-log test-summary';
+                summaryDiv.innerHTML = `
+                    📊 Overall: ${results.summary.passed}/${results.summary.total} tests passed
+                    ${results.summary.failed > 0 ? '⚠️' : '✅'}
+                `;
+                resultsDiv.appendChild(summaryDiv);
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="test-log test-error">❌ Test suite error: ${error.message}</div>`;
+            }
+        };
+        
+        window.runDetectionTests = async function() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = '<p>🔍 Testing detection only...</p>';
+            
+            // Test various SQL patterns
+            const testPatterns = [
+                { name: 'DuckDB JSON', sql: 'SELECT ?::JSON AS iUniforms' },
+                { name: 'DuckDB Legacy', sql: 'SELECT ?::BIGINT AS width, ?::DOUBLE AS iTime' },
+                { name: 'ClickHouse Legacy', sql: 'WITH {width:UInt32} AS width SELECT width' },
+                { name: 'ClickHouse String JSON', sql: 'SELECT ?::String AS iUniforms_json' },
+                { name: 'Shadertoy Style', sql: 'SELECT iResolution_x, fragCoord' }
+            ];
+            
+            resultsDiv.innerHTML = '<h3>Detection Test Results</h3>';
+            
+            testPatterns.forEach(({ name, sql }) => {
+                const detected = window.testSuite.uniformBuilder.detectShaderStyle(sql);
+                const div = document.createElement('div');
+                div.className = 'test-log test-info';
+                div.innerHTML = `${name}: <strong>${detected}</strong>`;
+                resultsDiv.appendChild(div);
+            });
+        };
+        
+        window.runParameterBuildingTests = async function() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = '<h3>Parameter Building Test Results</h3>';
+            
+            const testData = window.testSuite.testData;
+            
+            // Test different parameter builders
+            try {
+                const legacy = window.testSuite.uniformBuilder.buildLegacyParams(testData);
+                const json = window.testSuite.uniformBuilder.buildUniformsJSON(testData);
+                const map = window.testSuite.uniformBuilder.buildUniformsMap(testData);
+                
+                const results = [
+                    { name: 'Legacy (5 params)', params: legacy },
+                    { name: 'JSON (1 param)', params: json },
+                    { name: 'MAP (1 param)', params: map }
+                ];
+                
+                results.forEach(({ name, params }) => {
+                    const div = document.createElement('div');
+                    div.className = 'test-log test-success';
+                    div.innerHTML = `${name}: ${params.length} parameter(s) - ${JSON.stringify(params).substring(0, 100)}...`;
+                    resultsDiv.appendChild(div);
+                });
+                
+            } catch (error) {
+                const div = document.createElement('div');
+                div.className = 'test-log test-error';
+                div.innerHTML = `Parameter building error: ${error.message}`;
+                resultsDiv.appendChild(div);
+            }
+        };
+        
+        window.clearResults = function() {
+            document.getElementById('test-results').innerHTML = '<p>Results cleared. Click "Run All Tests" to start testing...</p>';
+            document.getElementById('summary-body').innerHTML = '<tr><td colspan="4">No tests run yet</td></tr>';
+        };
+        
+        // Auto-run tests on page load
+        // window.addEventListener('load', runTests);
+    </script>
+</body>
+</html>
