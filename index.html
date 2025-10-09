@@ -429,6 +429,7 @@
       }
       .inner-tab-content { display: none; }
       .inner-tab-content.active { display: block; }
+      
       #profile-container pre {
       /* --- Export Button Styles --- */
       .export-buttons {
@@ -922,10 +923,14 @@
         securityLevel: 'loose',
         theme: 'dark',
         startOnLoad: false,
-        secure: ['maxTextSize', 'maxEdges'],
-        maxTextSize: 3000000,  // Increased limit for large graph definitions
-        maxEdges: 20000,       // Increased limit for the number of edges in a graph
+        maxTextSize: 3000000,  // Increased limit for large graph definitions (secure config)
+        maxEdges: 20000,       // Increased limit for the number of edges in a graph (secure config)
+        flowchart: {
+          htmlLabels: true,
+          curve: 'basis'
+        }
       });
+      console.log('[Mermaid] Initialized with maxEdges:', 20000, 'maxTextSize:', 3000000);
     </script>
     <!-- Load the main application logic from an external file -->
     <script type="module" src="src/main.js"></script>

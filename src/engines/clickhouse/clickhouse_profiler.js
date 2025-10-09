@@ -41,15 +41,27 @@ export class ClickHouseProfiler {
     const queryId = `${crypto.randomUUID()}`;
     let profileData = {};
 
-    // 1. Get EXPLAIN PIPELINE graph
-    statusCallback('Profiling: Pipeline...');
+    // 1. Get EXPLAIN PIPELINE graph (DOT format with detailed processor info)
+    statusCallback('Profiling: Pipeline Graph...');
     try {
-      const graphSql = `EXPLAIN PIPELINE graph = 1 ${cleanedSql}`;
+      const graphSql = `EXPLAIN PIPELINE graph = 1, compact = 0 ${cleanedSql}`;
       const graphResultSet = await this.client.query({ query: graphSql, format: 'JSONEachRow' });
       const graphRows = await graphResultSet.json();
       profileData.pipelineGraph = graphRows.map(row => row.explain).join('\n');
     } catch (e) {
+      console.error('[Pipeline] Error fetching graph:', e.message);
       profileData.pipelineGraph = `Error: ${e.message}`;
+    }
+
+    // 2. Get EXPLAIN PIPELINE raw text (without graph format)
+    statusCallback('Profiling: Pipeline Raw...');
+    try {
+      const rawSql = `EXPLAIN PIPELINE ${cleanedSql}`;
+      const rawResultSet = await this.client.query({ query: rawSql, format: 'JSONEachRow' });
+      const rawRows = await rawResultSet.json();
+      profileData.pipelineRaw = rawRows.map(row => row.explain).join('\n');
+    } catch (e) {
+      profileData.pipelineRaw = `Error: ${e.message}`;
     }
 
     // 2. Get EXPLAIN actions, indexes
@@ -210,8 +222,7 @@ export class ClickHouseProfiler {
     // --- Tab 4: Pipeline Plan (from EXPLAIN PIPELINE) ---
     let pipelinePlanContent;
     if (profileData.pipelineGraph && profileData.pipelineGraph.trim().startsWith('digraph')) {
-      // Use the new pipeline interface
-      pipelinePlanContent = this.pipeline.render(profileData.pipelineGraph);
+      pipelinePlanContent = this.pipeline.render(profileData.pipelineGraph, profileData.pipelineRaw);
     } else {
       pipelinePlanContent = `<p>Could not generate graph.</p><pre>${profileData.pipelineGraph || 'No data.'}</pre>`;
     }
@@ -233,7 +244,7 @@ export class ClickHouseProfiler {
       { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>`, module: this.tracelogs, moduleData: profileData.serverTextLog },
       { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>', module: this.events, moduleData: profileData.queryLog },
       { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>', module: this.explainplan, moduleData: profileData.actionsPlan },
-      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1</code>', module: this.pipeline, moduleData: profileData.pipelineGraph },
+      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1, compact = 0</code>', module: this.pipeline, moduleData: profileData.pipelineGraph },
       { id: 'flamegraph', title: 'FlameGraph', content: flamegraphContent, header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>', module: this.flamegraph, moduleData: profileData.traceLog },
       { id: 'call-graph', title: 'Call Graph', content: callGraphContent, header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.', module: this.callgraph, moduleData: profileData.traceLog },
       { id: 'opentelemetry', title: 'OpenTelemetry', content: this.opentelemetry.render(profileData.openTelemetry || {}), header: 'Distributed tracing spans from system.opentelemetry_span_log', module: this.opentelemetry, moduleData: profileData.openTelemetry || {} },
