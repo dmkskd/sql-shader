@@ -287,6 +287,32 @@ export class StrudelInput {
         pattern: 'note("c3 e3 g3 c4").sound("sawtooth").lpf(800)'
       },
       {
+        name: 'Multiline',
+        pattern: `
+          let s = 'C:minor'
+
+          $: stack(
+              n("<0 2 4>*4")
+            .add(0)
+            .off(3/8, add("<4 2 3 1 5 2 3 1>/2"))
+            .scale(s).sound("supersaw").detune(0.1).room(1).rfade(4).lpf(cosine.slow(16).range(600,1200)).clip(0.6).lpq(12)
+          )
+
+          $: stack(
+              n("<0 2 4 0 2 4 0 2 4 0>*4")
+            .add(14)
+            .off(3/8, add("<1 3 2 4 4 5 3 2>/2")).distort("2.2:.3")
+            .scale(s).sound("sawtooth").detune(1.1).room(1).rfade(4).clip(0.1).lpf(cosine.slow(16).range(600,1200))
+          )
+
+          $: stack(
+            n("<1 0 1 0 1 0 <1 ~> <0 ~>>*4 ").sound("bd").clip(0.4).room(0.2),
+            n("1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~ 1 ~").sound("hh"),
+            n("~ 10 ~ <10 ~>").sound("oh").clip(0.2).rfade(32).room(0.7)
+          )
+        `
+      },
+      {
         name: 'Complex Pattern',
         pattern: 'stack(s("bd sd"), note("c2 g2").sound("sawtooth").lpf(400))'
       }

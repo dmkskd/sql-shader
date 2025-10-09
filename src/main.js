@@ -15,7 +15,7 @@ import { PerformanceMonitor } from './performance_monitor.js';
 let activeEngine = null;
 
 const APP_VERSION = '1.1.0';
-const STORAGE_PREFIX = 'pixelql.';
+const STORAGE_PREFIX = 'sqlshader.';
 
 const main = async (engine) => {
   activeEngine = engine; // Store the reference to the initialized engine.
@@ -42,57 +42,27 @@ const main = async (engine) => {
     onOpenSettings: () => {
         openSettingsModal(activeEngine);
     },
-    onStrudelPatternToggle: async () => {
-        const strudelButton = document.getElementById('strudel-pattern-button');
-        const strudelStatus = strudelButton.querySelector('.perf-status');
+    onAudioPatternToggle: async () => {
+        const audioButton = document.getElementById('audio-pattern-button');
+        const audioStatus = audioButton.querySelector('.perf-status');
         
         try {
-            const strudelInput = audioManager.inputSources.get('strudel');
+            // Use AudioManager's generic toggle method
+            const isPlaying = await audioManager.toggleAudio('strudel', 1);
             
-            // CRITICAL: Initialize Strudel FIRST to get its audio context
-            if (strudelInput && !strudelInput.isReady()) {
-                await strudelInput.initialize(() => {});
-            }
-            
-            // Initialize audio with Strudel's context if needed
-            if (!audioManager.isInitialized) {
-                // Get Strudel's audio context
-                const strudelContext = (typeof window.strudel?.getAudioContext === 'function') 
-                    ? window.strudel.getAudioContext() 
-                    : null;
-                
-                if (strudelContext) {
-                    await audioManager.initialize(strudelContext);
-                } else {
-                    await audioManager.initialize();
-                }
-            }
-            
-            const currentInput = audioManager.getCurrentInputSource() || strudelInput;
-            
-            if (currentInput && currentInput.isPlaying) {
-                // Stop current pattern
-                strudelInput.stop();
-                audioManager.isPlaying = false;
-                strudelStatus.textContent = 'OFF';
-                strudelStatus.className = 'perf-status perf-status-off';
+            // Update UI based on result
+            if (isPlaying) {
+                audioStatus.textContent = 'ON';
+                audioStatus.className = 'perf-status perf-status-on';
             } else {
-                // Set Strudel as active input source
-                await audioManager.setInputSource('strudel');
-                
-                // Get a test pattern and play it
-                const patterns = strudelInput.getTestPatterns();
-                const simplePattern = patterns[1].pattern; // Index: 0=Simple, 1=Full Kit, 2=House, 3=Melody, 4=Complex
-                await strudelInput.playPattern(simplePattern);
-                
-                strudelStatus.textContent = 'ON';
-                strudelStatus.className = 'perf-status perf-status-on';
+                audioStatus.textContent = 'OFF';
+                audioStatus.className = 'perf-status perf-status-off';
             }
         } catch (error) {
-            console.error('Failed to toggle Strudel pattern:', error);
-            strudelStatus.textContent = 'ERROR';
-            strudelStatus.className = 'perf-status perf-status-off';
-            alert('Failed to start Strudel pattern: ' + error.message);
+            console.error('Failed to toggle audio pattern:', error);
+            audioStatus.textContent = 'ERROR';
+            audioStatus.className = 'perf-status perf-status-off';
+            alert('Failed to start audio pattern: ' + error.message);
         }
     },
   });
@@ -251,7 +221,7 @@ const main = async (engine) => {
         // We can just proceed to load the new shader.
         const shader = shaderManager.getShaders()[newIndex];
         const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
-        document.title = `PixelQL - ${shader.name} (${engineName})`;
+        document.title = `SQL Shader - ${shader.name} (${engineName})`;
         dom.shaderSelectButton.textContent = shader.name; // Update button text
         await shaderManager.loadShader(newIndex, RESOLUTIONS, ZOOM_LEVELS);
     };
@@ -424,7 +394,7 @@ const main = async (engine) => {
                 pollInterval: document.getElementById('stats-poll-interval').value,
                 autocompileDelay: document.getElementById('autocompile-delay').value,
             };
-            localStorage.setItem('pixelql.general-settings', JSON.stringify(generalSettings));
+            localStorage.setItem('sqlshader.general-settings', JSON.stringify(generalSettings));
 
             if (activeEngine && typeof activeEngine.saveSettings === 'function') {
                 activeEngine.saveSettings();
@@ -465,7 +435,7 @@ const main = async (engine) => {
 
         if (shaderIndex !== -1) {
             const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
-            document.title = `PixelQL - ${shaderName} (${engineName})`;
+            document.title = `SQL Shader - ${shaderName} (${engineName})`;
             dom.shaderSelectButton.textContent = shaderName;
             await shaderManager.loadShader(shaderIndex, RESOLUTIONS, ZOOM_LEVELS);
         } else {
@@ -479,7 +449,7 @@ const main = async (engine) => {
         dom.shaderSelectButton.textContent = initialShader.name;
         // Set title on initial load
         const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
-        document.title = `PixelQL - ${initialShader.name} (${engineName})`;
+        document.title = `SQL Shader - ${initialShader.name} (${engineName})`;
 
         // Always load the shader from its source on startup to establish a clean pristine state.
         // Do not use the potentially stale 'savedSql' from localStorage.

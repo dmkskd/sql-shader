@@ -29,7 +29,7 @@ class ClickHouseEngine {
 
     // Default connection details. These can be overridden by URL parameters
     // e.g., http://localhost:8000/?ch_host=...&ch_port=...
-    const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
+    const storedSettings = JSON.parse(localStorage.getItem('sqlshader.clickhouse-settings')) || {};
     const urlParams = new URLSearchParams(window.location.search);
 
     // Priority: 1. Stored Settings, 2. URL Params, 3. Defaults
@@ -185,7 +185,7 @@ class ClickHouseEngine {
     let t0 = performance.now();
 
     // Retrieve connection settings directly from localStorage, just like in initialize().
-    const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
+    const storedSettings = JSON.parse(localStorage.getItem('sqlshader.clickhouse-settings')) || {};
     const url = storedSettings.url || 'http://localhost:8123';
     const username = storedSettings.username || 'default';
     const password = storedSettings.password || '';
@@ -480,7 +480,7 @@ ClickHouseEngine.prototype.saveSettings = function() {
       dataFormat: document.getElementById('ch-data-format').value,
       logFlushWait: document.getElementById('ch-log-flush-wait').value,
   };
-  localStorage.setItem('pixelql.clickhouse-settings', JSON.stringify(chSettings));
+  localStorage.setItem('sqlshader.clickhouse-settings', JSON.stringify(chSettings));
   console.log('[ClickHouse Engine] Settings saved.');
 };
 

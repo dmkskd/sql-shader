@@ -52,8 +52,8 @@ export const dom = {
     unsavedChangesModal: document.getElementById('unsaved-changes-modal'),
     unsavedChangesDiscardButton: document.getElementById('unsaved-changes-discard-button'),
     unsavedChangesCancelButton: document.getElementById('unsaved-changes-cancel-button'),
-    // Strudel audio control
-    strudelPatternButton: document.getElementById('strudel-pattern-button'),
+    // Audio control
+    audioPatternButton: document.getElementById('audio-pattern-button'),
 };
 
 export const updateInitStatus = (message) => {
@@ -260,8 +260,8 @@ export const setupUI = (initialCallbacks) => {
     // The compile button is now in the editor status bar, but the listener is still attached here.
     document.getElementById('compile-button').addEventListener('click', () => uiCallbacks.onCompile && uiCallbacks.onCompile());
     
-    // --- Strudel Audio Pattern Control ---
-    dom.strudelPatternButton.addEventListener('click', () => uiCallbacks.onStrudelPatternToggle && uiCallbacks.onStrudelPatternToggle());
+    // --- Audio Pattern Control ---
+    dom.audioPatternButton.addEventListener('click', () => uiCallbacks.onAudioPatternToggle && uiCallbacks.onAudioPatternToggle());
     
     // --- Visual Effect Selector ---
     dom.effectSelect.addEventListener('change', (e) => {
@@ -300,7 +300,7 @@ export const setupUI = (initialCallbacks) => {
 // Exported function to handle opening the settings modal
 export const openSettingsModal = (engine) => {
     // Populate general settings
-    const storedGeneralSettings = JSON.parse(localStorage.getItem('pixelql.general-settings')) || {};
+    const storedGeneralSettings = JSON.parse(localStorage.getItem('sqlshader.general-settings')) || {};
     document.getElementById('stats-poll-interval').value = storedGeneralSettings.pollInterval || 250;
     document.getElementById('autocompile-delay').value = storedGeneralSettings.autocompileDelay || 300;
 
@@ -314,7 +314,7 @@ export const openSettingsModal = (engine) => {
 
         // Now populate the newly created fields
         const defaults = (typeof engine.getSettingsDefaults === 'function') ? engine.getSettingsDefaults() : {};
-        const storedSettings = JSON.parse(localStorage.getItem(`pixelql.${dom.engineSelect.value}-settings`)) || {};
+        const storedSettings = JSON.parse(localStorage.getItem(`sqlshader.${dom.engineSelect.value}-settings`)) || {};
 
         // Delegate population to the engine itself.
         if (typeof engine.populateSettings === 'function') {

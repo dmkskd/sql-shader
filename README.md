@@ -2,7 +2,9 @@
 
 **[Try the Live Demo Here](https://dmkskd.github.io/sql-shader/)**.
 
-A browser-based, live shader editor that uses **SQL** as a shading language inspired by [Shadertoy](https://www.shadertoy.com/)
+# SQL Shader
+
+A browser-based SQL shader editor that uses database engines as pixel shaders.
 
 
 Write SQL queries that run on every frame to generate real-time, procedural graphics. The application is designed to be a creative coding tool for exploring the performance and capabilities of different database engines on cpu-bound queries.

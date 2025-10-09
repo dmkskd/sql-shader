@@ -1,6 +1,8 @@
 # How to Add a New Engine to PixelQL
 
-This document outlines the process for integrating a new database engine into the application. The architecture is designed to be modular, allowing for different SQL-based backends to be used as rendering engines.
+# How to Add a New Engine to SQL Shader
+
+This guide explains how to integrate a new database engine into SQL Shader. The architecture is designed to be modular, allowing for different SQL-based backends to be used as rendering engines.
 
 ## Core Concept: The Engine Interface
 

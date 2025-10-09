@@ -97,7 +97,7 @@ export class ClickHouseProfiler {
 
     // Force ClickHouse to flush its log buffers to the system tables.
     // This is more reliable than waiting with a timeout and ensures the logs are available.
-    const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
+    const storedSettings = JSON.parse(localStorage.getItem('sqlshader.clickhouse-settings')) || {};
     const waitDuration = parseInt(storedSettings.logFlushWait || '1500', 10);
     statusCallback(`Profiling: Flushing logs (waiting ${waitDuration}ms)...`);
     try {

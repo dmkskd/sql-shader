@@ -166,6 +166,74 @@ export class AudioManager {
   }
 
   /**
+   * Toggle audio playback for a specific input source
+   * @param {string} inputName - Name of the input source to toggle
+   * @param {number} patternIndex - Optional pattern index for inputs that support multiple patterns
+   * @returns {Promise<boolean>} True if audio is now playing, false if stopped
+   */
+  async toggleAudio(inputName = 'strudel', patternIndex = 1) {
+    if (!this.inputSources.has(inputName)) {
+      throw new Error(`Input source '${inputName}' not found`);
+    }
+
+    const inputSource = this.inputSources.get(inputName);
+    
+    // Initialize the input source if needed
+    if (inputSource && !inputSource.isReady()) {
+      await inputSource.initialize(() => {});
+    }
+    
+    // Get audio context from the input if available
+    const inputContext = (typeof window.strudel?.getAudioContext === 'function') 
+      ? window.strudel.getAudioContext() 
+      : null;
+    
+    // Initialize audio manager if needed
+    if (!this.isInitialized) {
+      if (inputContext) {
+        await this.initialize(inputContext);
+      } else {
+        await this.initialize();
+      }
+    }
+    
+    const currentInput = this.getCurrentInputSource() || inputSource;
+    
+    // Toggle playback
+    if (currentInput && currentInput.isPlaying) {
+      // Stop current pattern
+      if (typeof inputSource.stop === 'function') {
+        inputSource.stop();
+      }
+      this.isPlaying = false;
+      return false;
+    } else {
+      // Start playing
+      await this.setInputSource(inputName);
+      
+      // Get and play a pattern if the input supports patterns
+      if (typeof inputSource.getTestPatterns === 'function' && typeof inputSource.playPattern === 'function') {
+        const patterns = inputSource.getTestPatterns();
+        const pattern = patterns[patternIndex]?.pattern || patterns[5]?.pattern;
+        if (pattern) {
+          await inputSource.playPattern(pattern);
+        }
+      }
+      
+      return true;
+    }
+  }
+
+  /**
+   * Check if audio is currently playing
+   * @returns {boolean}
+   */
+  isAudioPlaying() {
+    const currentInput = this.getCurrentInputSource();
+    return !!(currentInput && currentInput.isPlaying);
+  }
+
+  /**
    * Connect to microphone input
    */
   async connectMicrophone() {

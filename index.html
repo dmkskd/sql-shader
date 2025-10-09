@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>PixelQL</title>
+    <title>SQL Shader</title>
     <!-- CodeMirror for syntax highlighting (from CDN) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
@@ -616,7 +616,7 @@
   <body>
     <div class="main-container">
       <header>
-        <span>PixelQL <span id="version-span"></span></span>
+        <span>SQL Shader <span id="version-span"></span></span>
         <div class="engine-selector">
           <label for="engine-select">Engine:</label>
           <select id="engine-select">
@@ -654,7 +654,7 @@
           <button id="autocompile-toggle-button" title="Toggle autocompilation on editor change">Autocompile: <span class="perf-status perf-status-on">ON</span></button>
         </div>
         <div class="control-group">
-          <button id="strudel-pattern-button" title="Toggle Strudel Audio Pattern">🎵 Strudel: <span class="perf-status perf-status-off">OFF</span></button>
+          <button id="audio-pattern-button" title="Toggle Audio Pattern">Audio: <span class="perf-status perf-status-off">OFF</span></button>
           <select id="effect-select" title="Select an editor effect">
             <option value="none">Effect: None</option>
             <option value="crt-effect">CRT</option>
@@ -875,7 +875,21 @@
     </div>
 
     <!-- Strudel Web Library for live coding -->
-    <script src="https://unpkg.com/@strudel/web@1.0.3"></script>
+    <script src="https://unpkg.com/@strudel/web@1.0.3" 
+            onload="console.log('✅ Strudel script loaded successfully')"
+            onerror="console.error('❌ Failed to load Strudel script')"></script>
+    
+    <!-- Debug Strudel after load -->
+    <script>
+      setTimeout(() => {
+        console.log('🔍 Strudel debug after load:');
+        console.log('window.initStrudel:', typeof window.initStrudel);
+        console.log('window.strudel:', window.strudel);
+        if (window.strudel) {
+          console.log('Strudel properties:', Object.keys(window.strudel));
+        }
+      }, 1000);
+    </script>
     
     <!-- 
       An import map allows us to use "bare" module specifiers like in Node.js.
