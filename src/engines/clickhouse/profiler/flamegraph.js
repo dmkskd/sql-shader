@@ -102,7 +102,18 @@ export class ClickHouseProfilerFlamegraph {
       return;
     }
 
+    // Properly clean up any existing flamegraph to prevent memory leaks
+    if (container._flamegraphChart) {
+      try {
+        container._flamegraphChart.destroy();
+      } catch (e) {
+        console.warn('[Flamegraph] Could not destroy chart:', e);
+      }
+      container._flamegraphChart = null;
+    }
+    d3.select(container).selectAll('*').remove();
     container.innerHTML = '';
+    container.style.paddingTop = ''; // Reset padding
 
     // --- Step 1: Build the full, ungrouped flame graph data structure ---
     const root = { name: "root", value: 0, children: [], original: { fullName: "root" } };
@@ -179,10 +190,6 @@ export class ClickHouseProfilerFlamegraph {
 
     console.log(`[Debug] Rendering flamegraph with grouping: ${groupBy}.`);
 
-    // Create a color scale from "cold" (green) to "hot" (red) based on sample count.
-    // We use a sqrt scale to better differentiate the smaller values.
-    const colorScale = d3.scaleSequential(d3.interpolateRgb("hsl(120, 50%, 35%)", "hsl(0, 80%, 45%)")).domain([0, Math.sqrt(root.value)]);
-
     // Define a function to create rich HTML tooltips
     const labelHandler = (d) => {
       const percent = totalValue > 0 ? ((d.data.value / totalValue) * 100).toFixed(2) : 0;
@@ -198,13 +205,81 @@ export class ClickHouseProfilerFlamegraph {
       return `${nameForTooltip}<br>Time (est.): ${estimatedMs.toLocaleString()} ms (${percent}%)<br>Samples: ${d.data.value.toLocaleString()}`;
     };
 
+    // Get inverted preference from localStorage (default: true)
+    const storageKey = 'flamegraph-inverted';
+    let isInverted = localStorage.getItem(storageKey) !== 'false'; // Default to true
+
+    // Add top padding to container
+    container.style.paddingTop = '15px';
+
     const flamegraphChart = d3_flame_graph.flamegraph()
       .width(container.clientWidth)
       .cellHeight(18)
-      .setColorMapper(d => colorScale(Math.sqrt(d.data.value))) // Color by sample count
-      .label(labelHandler); // Use our custom tooltip function
+      .inverted(isInverted)
+      .transitionDuration(750)
+      .transitionEase(d3.easeCubic)
+      .label(labelHandler);
 
     d3.select(container).datum(root).call(flamegraphChart);
+    
+    // Store reference to chart for cleanup
+    container._flamegraphChart = flamegraphChart;
+    
+    // Override text styles after rendering to make text more readable
+    setTimeout(() => {
+      container.querySelectorAll('text').forEach(text => {
+        text.setAttribute('fill', '#fff');
+        text.setAttribute('font-weight', '600');
+        text.setAttribute('stroke', '#000');
+        text.setAttribute('stroke-width', '3');
+        text.setAttribute('stroke-linejoin', 'round');
+        text.setAttribute('paint-order', 'stroke fill');
+      });
+    }, 100);
+    
+    // Add controls container
+    const controlsDiv = document.createElement('div');
+    controlsDiv.style.cssText = 'position: absolute; top: 10px; right: 10px; z-index: 10; display: flex; gap: 10px;';
+    
+    // Add invert toggle button
+    const invertButton = document.createElement('button');
+    invertButton.textContent = isInverted ? '⇅ Normal' : '⇅ Inverted';
+    invertButton.style.cssText = 'padding: 8px 16px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: all 0.2s ease;';
+    invertButton.onmouseover = () => { 
+      invertButton.style.transform = 'translateY(-2px)'; 
+      invertButton.style.boxShadow = '0 6px 12px rgba(0,0,0,0.4)';
+    };
+    invertButton.onmouseout = () => { 
+      invertButton.style.transform = 'translateY(0)'; 
+      invertButton.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+    };
+    invertButton.onclick = () => {
+      isInverted = !isInverted;
+      localStorage.setItem(storageKey, isInverted);
+      // Re-render the flamegraph with new orientation
+      this.renderFlamegraph(traceLog, container, groupBy);
+    };
+    
+    // Add reset zoom button
+    const resetButton = document.createElement('button');
+    resetButton.textContent = '↻ Reset';
+    resetButton.style.cssText = 'padding: 8px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: all 0.2s ease;';
+    resetButton.onmouseover = () => { 
+      resetButton.style.transform = 'translateY(-2px)'; 
+      resetButton.style.boxShadow = '0 6px 12px rgba(0,0,0,0.4)';
+    };
+    resetButton.onmouseout = () => { 
+      resetButton.style.transform = 'translateY(0)'; 
+      resetButton.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+    };
+    resetButton.onclick = () => {
+      flamegraphChart.resetZoom();
+    };
+    
+    controlsDiv.appendChild(invertButton);
+    controlsDiv.appendChild(resetButton);
+    container.style.position = 'relative';
+    container.appendChild(controlsDiv);
 
     return root; // Return the root for testing purposes
   }

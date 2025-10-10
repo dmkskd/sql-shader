@@ -9,12 +9,27 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
     <!-- FlameGraph CSS -->
-    <link rel="stylesheet" type="text/css" href="assets/css/d3-flame-graph.css">
+    <!-- Use CDN CSS for d3-flame-graph instead of local modified version -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.css">
     <link
       href="https://unpkg.com/bootstrap@5.3.2/dist/css/bootstrap.min.css"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="assets/vendor/style.css" />
+
+    <style>
+      /* Make flamegraph text more readable with white text and dark outline */
+      svg.d3-flame-graph text,
+      .d3-flame-graph text,
+      #profile-content-flamegraph text {
+        fill: #fff !important;
+        font-weight: 600 !important;
+        paint-order: stroke fill !important;
+        stroke: #000 !important;
+        stroke-width: 3px !important;
+        stroke-linejoin: round !important;
+      }
+    </style>
 
     <style>
       /* --- Visual Effect Styles --- */
@@ -465,8 +480,9 @@
        * Forcefully style the text inside Mermaid nodes. The 'dark' theme creates
        * light-colored nodes, but our global body color can make the text invisible.
        * We target the native SVG <text> element which uses `fill` for color.
+       * Only apply to Mermaid graphs, not flamegraphs.
        */
-      #profile-container svg text {
+      #profile-container svg:not(.d3-flame-graph) text {
         fill: #000 !important;
       }
       /* Color coding for profiler timings */
@@ -904,7 +920,7 @@
           "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm",
           "mermaid": "https://esm.sh/mermaid@10",
           "d3": "https://esm.sh/d3@7",
-          "d3-flame-graph": "https://esm.sh/d3-flame-graph@4",
+          "d3-flame-graph": "https://esm.sh/d3-flame-graph@4.1.3",
           "duckdb-explain-visualizer": "./assets/vendor/duckdb-explain-visualizer.es.mjs",
           "vue": "./assets/vendor/vue.esm-browser.prod-3.2.45.mjs"
         }
