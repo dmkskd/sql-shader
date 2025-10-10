@@ -29,18 +29,10 @@ export class ShaderManager {
      * @returns {boolean} True if the editor is "dirty".
      */
     isDirty() {
-        // [STATE_DEBUG] This block can be removed after testing.
-        const currentSql = this.editor.getValue();
-        const isDirty = currentSql !== this.pristineSql;
-        console.log(`[STATE_DEBUG] isDirty() check. Result: ${isDirty}`);
-        if (isDirty) {
-            console.log('[STATE_DEBUG] Pristine SQL:\n', this.pristineSql);
-            console.log('[STATE_DEBUG] Current SQL:\n', currentSql);
-        }
         // Not dirty if nothing has been loaded yet.
         if (this.pristineSql === '') return false;
         // Compare the current editor value with the stored pristine version.
-        return isDirty;
+        return this.editor.getValue() !== this.pristineSql;
     }
 
     /** @returns {number} The index of the currently loaded shader. */

@@ -215,10 +215,6 @@ const main = async (engine) => {
     };
 
     const handleShaderSelection = async (newIndex) => {
-        // [STATE_DEBUG] This block can be removed after testing.
-        console.log(`[STATE_DEBUG] handleShaderSelection called for index: ${newIndex}. Proceeding to load.`);
-        // The dirty check is now handled *before* the asset manager is opened.
-        // We can just proceed to load the new shader.
         const shader = shaderManager.getShaders()[newIndex];
         const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
         document.title = `SQL Shader - ${shader.name} (${engineName})`;
@@ -247,11 +243,11 @@ const main = async (engine) => {
                 }));
 
                 // Open the manager and wait for a selection
-                const selectedIndex = await assetManager.open(shaderInfos);
+                const currentIndex = shaderManager.getCurrentShaderIndex();
+                const selectedIndex = await assetManager.open(shaderInfos, currentIndex);
                 await handleShaderSelection(selectedIndex);
             } catch (error) {
-                // This catch block handles the user cancelling the modal.
-                console.log('[STATE_DEBUG] Asset selection cancelled.');
+                // User cancelled the modal
             }
         },
         onResolutionChange: updateCanvasSizeAndResolution,
