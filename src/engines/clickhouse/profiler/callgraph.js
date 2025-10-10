@@ -21,7 +21,7 @@ export class ClickHouseProfilerCallGraph {
   render(traceLog) {
     return `
       <div class="tab-inner-content">
-        <div id="call-graph-container" style="min-height: 400px;">
+        <div id="call-graph-container" style="min-height: 800px; height: 800px;">
           <!-- Call graph will be rendered here via renderCallGraph() -->
         </div>
       </div>
@@ -77,11 +77,11 @@ export class ClickHouseProfilerCallGraph {
         updateGraphZoom();
       });
       
-      // Add mouse wheel zoom
+      // Add mouse wheel zoom (increased max zoom to 10x)
       graphContainer.addEventListener('wheel', (e) => {
         e.preventDefault();
         const delta = -Math.sign(e.deltaY) * 0.1;
-        currentGraphZoom = Math.max(0.1, Math.min(5, currentGraphZoom + delta));
+        currentGraphZoom = Math.max(0.1, Math.min(10, currentGraphZoom + delta));
         updateGraphZoom();
       });
       
@@ -114,6 +114,8 @@ export class ClickHouseProfilerCallGraph {
       });
       
       graphContainer.style.cursor = 'grab';
+      graphContainer.style.overflow = 'hidden'; // Prevent graph from overlapping buttons above
+      graphContainer.style.position = 'relative'; // Establish positioning context
     }
 
     // Set up direction switching
