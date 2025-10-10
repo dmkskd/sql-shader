@@ -54,15 +54,18 @@ export class ClickHouseProfilerPipelineGraph {
   }
 
   /**
-   * Simple interface: returns HTML for pipeline graph container and controls.
-   * Note: Pipeline graph requires async DOM manipulation, so this returns a placeholder.
-   * Use renderPipelineGraph() for actual rendering.
-   * Module uses its internal data from fetchData().
+   * Renders HTML for pipeline graph container with validation.
+   * If the pipeline graph is not a valid DOT graph, shows an error message.
    * @returns {string} HTML container for pipeline graph with two tabs.
    */
   render() {
     const dotString = this.data?.pipelineGraph || '';
     const rawText = this.data?.pipelineRaw || 'No data.';
+    
+    // Validate that we have a proper DOT graph
+    if (!dotString || !dotString.trim().startsWith('digraph')) {
+      return `<p>Could not generate graph.</p><pre>${dotString || 'No data.'}</pre>`;
+    }
     
     return `
       <div class="inner-tabs">

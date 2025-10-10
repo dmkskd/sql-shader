@@ -132,8 +132,16 @@ export class ClickHouseProfilerOpenTelemetry {
    * @returns {string} HTML representation of OpenTelemetry traces.
    */
   renderOpenTelemetry(data) {
+    // Known issue warning
+    const warningBanner = `
+      <div style="background: #3d2a00; border: 2px solid #ff9800; border-radius: 4px; padding: 12px; margin-bottom: 16px; color: #ffb74d;">
+        <strong>⚠️ Known Issue:</strong> OpenTelemetry tracing may not be working properly due to HTTP client invocation.
+        The HTTP interface might not properly propagate trace context to query execution.
+      </div>
+    `;
+
     if (data.error) {
-      return `
+      return warningBanner + `
         <div class="error-container">
           <h3>OpenTelemetry Traces Not Found</h3>
           <p><strong>Error:</strong> ${data.error}</p>
@@ -151,7 +159,7 @@ export class ClickHouseProfilerOpenTelemetry {
     }
 
     if (!data.overview || data.overview.length === 0) {
-      return `
+      return warningBanner + `
         <div class="no-data">
           <h3>No OpenTelemetry Spans Found</h3>
           <p>No recent tracing spans found in system.opentelemetry_span_log</p>
@@ -170,6 +178,10 @@ export class ClickHouseProfilerOpenTelemetry {
     });
 
     let html = `
+      <div style="background: #3d2a00; border: 2px solid #ff9800; border-radius: 4px; padding: 12px; margin-bottom: 16px; color: #ffb74d;">
+        <strong>⚠️ Known Issue:</strong> OpenTelemetry tracing may not be working properly due to HTTP client invocation.
+        The HTTP interface might not properly propagate trace context to query execution.
+      </div>
       <div class="opentelemetry-container">
         <h3>OpenTelemetry Traces for Query: ${data.queryId}</h3>
         <div class="query-summary">

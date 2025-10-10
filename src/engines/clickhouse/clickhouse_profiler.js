@@ -12,18 +12,46 @@ import { ClickHouseProfilerEvents } from './profiler/events.js';
 import { ClickHouseProfilerTraceLogs } from './profiler/tracelogs.js';
 import { ClickHouseProfilerExplainPlan } from './profiler/explainplan.js';
 
+/**
+ * ClickHouse Profiler - orchestrates profiling modules for query analysis.
+ * 
+ * Architecture: Each module is autonomous and follows a standard interface:
+ *   - fetchData(client, queryId, cleanedSql, statusCallback) - fetch and store data internally
+ *   - render() - return HTML string for the module's tab content
+ *   - setupEventHandlers(containerId) - attach event listeners after render
+ * 
+ * To add a new module:
+ *   1. Create a class in ./profiler/ following the interface above
+ *   2. Import and instantiate it in constructor
+ *   3. Add to this.dataModules array (if it fetches data after query execution)
+ *   4. Add a tab entry in renderProfile()'s tabsConfig array
+ * 
+ * The profiler doesn't know about module internals - modules own their data lifecycle.
+ */
 export class ClickHouseProfiler {
   constructor(engine) {
     this.engine = engine;
-    this.client = engine.client; // Keep a direct reference to the client for commands
-    this.flamegraph = new ClickHouseProfilerFlamegraph();
-    this.callgraph = new ClickHouseProfilerCallGraph(this.flamegraph);
+    this.client = engine.client;
+    
+    // Initialize all profiler modules
     this.pipeline = new ClickHouseProfilerPipelineGraph();
-    this.opentelemetry = new ClickHouseProfilerOpenTelemetry();
+    this.explainplan = new ClickHouseProfilerExplainPlan();
+    this.flamegraph = new ClickHouseProfilerFlamegraph();
+    this.callgraph = new ClickHouseProfilerCallGraph();
     this.querysummary = new ClickHouseProfilerQuerySummary();
     this.events = new ClickHouseProfilerEvents();
     this.tracelogs = new ClickHouseProfilerTraceLogs();
-    this.explainplan = new ClickHouseProfilerExplainPlan();
+    this.opentelemetry = new ClickHouseProfilerOpenTelemetry();
+    
+    // Array of modules that fetch data after query execution
+    this.dataModules = [
+      this.flamegraph,
+      this.callgraph,
+      this.querysummary,
+      this.events,
+      this.tracelogs,
+      this.opentelemetry,
+    ];
   }
 
   /**
@@ -34,20 +62,16 @@ export class ClickHouseProfiler {
    * @returns {Promise<object>} A data object containing plans, logs, and traces.
    */
   async profile(sql, params, statusCallback = () => {}) {
-    // Use the provided status callback, or a no-op function if none is given.
-    statusCallback('Profiling...'); // Initial message
+    statusCallback('Profiling...');
     const cleanedSql = sql.replace(/{[^}]+}/g, '1');
-    // Try using a standard UUID format instead of custom query_id
     const queryId = `${crypto.randomUUID()}`;
     let profileData = {};
 
-    // 1. Let modules fetch their EXPLAIN data using the new pull model
+    // Fetch EXPLAIN data before query execution
     await this.pipeline.fetchData(this.client, queryId, cleanedSql, statusCallback);
     await this.explainplan.fetchData(this.client, queryId, cleanedSql, statusCallback);
 
-    // 3. OpenTelemetry data will be collected after query execution
-
-    // 4. Execute the actual query and fetch logs
+    // Execute the actual query with profiling enabled
     let finalSql = sql
       .replace('{width:UInt32}', params[0])
       .replace('{height:UInt32}', params[1])
@@ -55,30 +79,24 @@ export class ClickHouseProfiler {
       .replace('{mx:Float64}', params[3])
       .replace('{my:Float64}', params[4]);
 
-    // No need to append SETTINGS - OpenTelemetry is configured at client level
-
     statusCallback('Profiling: Executing...');
 
     try {
-      // Execute the shader query - OpenTelemetry is configured at client level
       await this.client.exec({
         query: finalSql,
         query_id: queryId,
         clickhouse_settings: {
-          // This setting must be a string "1.0" to be correctly interpreted by the server via HTTP.
           opentelemetry_start_trace_probability: '1.0',
           log_queries: 1,
         }
       });
     } catch (e) {
-      // If the query fails, we might still have received logs before the error.
       if (e.response && e.response.logs) {
         profileData.serverTextLog = e.response.logs;
       }
     }
 
-    // Force ClickHouse to flush its log buffers to the system tables.
-    // This is more reliable than waiting with a timeout and ensures the logs are available.
+    // Flush ClickHouse log buffers to system tables
     const storedSettings = JSON.parse(localStorage.getItem('sqlshader.clickhouse-settings')) || {};
     const waitDuration = parseInt(storedSettings.logFlushWait || '1500', 10);
     statusCallback(`Profiling: Flushing logs (waiting ${waitDuration}ms)...`);
@@ -86,21 +104,15 @@ export class ClickHouseProfiler {
       await this.client.command({ query: 'SYSTEM FLUSH LOGS' });
       await new Promise(resolve => setTimeout(resolve, waitDuration));
     } catch (e) {
-      await new Promise(resolve => setTimeout(resolve, 500)); // Use a slightly longer fallback timeout
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    // 4. All profiling data is now fetched by individual modules via pull model
-    // No centralized polling loop needed!
-
-    // 5. Let all modules fetch their data independently using the pull model
-    await Promise.all([
-      this.flamegraph.fetchData(this.client, queryId, cleanedSql, statusCallback),
-      this.callgraph.fetchData(this.client, queryId, cleanedSql, statusCallback),
-      this.querysummary.fetchData(this.client, queryId, cleanedSql, statusCallback),
-      this.events.fetchData(this.client, queryId, cleanedSql, statusCallback),
-      this.tracelogs.fetchData(this.client, queryId, cleanedSql, statusCallback),
-      this.opentelemetry.fetchData(this.client, queryId, cleanedSql, statusCallback),
-    ]);
+    // Fetch profiling data from all modules in parallel
+    await Promise.all(
+      this.dataModules.map(module => 
+        module.fetchData(this.client, queryId, cleanedSql, statusCallback)
+      )
+    );
 
     return profileData;
   }
@@ -113,110 +125,62 @@ export class ClickHouseProfiler {
   }
 
   /**
-   * Renders the multi-faceted profile data into the modal using modular architecture.
-   * Each module provides render(data) for HTML content and setupEventHandlers(containerId, data) for interactions.
+   * Renders the profiler UI with all module tabs.
+   * Each module provides render() and setupEventHandlers() methods.
    * 
-   * @param {object} profileData The data object from the profile() method.
-   * @param {HTMLElement} mainContainer The single container element for the profiler UI.
+   * @param {object} profileData Unused - kept for API compatibility.
+   * @param {HTMLElement} mainContainer The container element for the profiler UI.
    * @returns {Promise<void>}
    */
   async renderProfile(profileData, mainContainer) {
-    // PHASE 1: CONTENT GENERATION - Each module's render() method converts raw data into HTML.
-    
-    // --- Tab 2: Structured Plan ---
-    // Now using the new pull model where explainplan owns its data
-    const explainPlanContent = this.explainplan.render();
-
-    // --- Tab 3: Query Summary (from system.query_log) ---
-    // Now using the new pull model where querysummary owns its data
-    const querySummaryContent = this.querysummary.render();
-
-    // --- Tab 5: Profile Events (from system.query_log) ---
-    // Now using the new pull model where events owns its data
-    const eventsContent = this.events.render();
-
-    // --- Tab 4: Pipeline Plan (from EXPLAIN PIPELINE) ---
-    // Now using the new pull model where pipeline owns its data
-    let pipelinePlanContent;
-    if (this.pipeline.data?.pipelineGraph && this.pipeline.data.pipelineGraph.trim().startsWith('digraph')) {
-      pipelinePlanContent = this.pipeline.render();
-    } else {
-      pipelinePlanContent = `<p>Could not generate graph.</p><pre>${this.pipeline.data?.pipelineGraph || 'No data.'}</pre>`;
-    }
-
-    // --- Tab 6: Server Trace Log (from send_logs_level='trace') ---
-    // Now using the new pull model where tracelogs owns its data
-    const serverTextLogContent = this.tracelogs.render();
-
-    // --- Tab 7: Call Graph ---
-    // Call graph shares trace data from flamegraph module
-    const callGraphContent = this.callgraph.render();
-
-    // --- Tab 8: Flamegraph ---
-    // Now using the new pull model where flamegraph owns its data
-    const flamegraphContent = this.flamegraph.render();
-
-    // PHASE 2: TAB CONFIGURATION - Build tabsConfig array with each tab's properties including module references.
-    
-    // --- Dynamically build the HTML for the profiler ---
+    // Configure all profiler tabs
     const tabsConfig = [
-      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>`, module: this.querysummary },
-      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>`, module: this.tracelogs },
-      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>', module: this.events },
-      { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>', module: this.explainplan },
-      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1, compact = 0</code>', module: this.pipeline },
-      { id: 'flamegraph', title: 'FlameGraph', content: flamegraphContent, header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>', module: this.flamegraph },
-      { id: 'call-graph', title: 'Call Graph', content: callGraphContent, header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.', module: this.callgraph },
-      { id: 'opentelemetry', title: 'OpenTelemetry', content: this.opentelemetry.render(), header: 'Distributed tracing spans from system.opentelemetry_span_log', module: this.opentelemetry },
+      { id: 'query-summary', title: 'Query Summary', module: this.querysummary, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>` },
+      { id: 'trace-log', title: 'Trace Log', module: this.tracelogs, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>` },
+      { id: 'events', title: 'Events', module: this.events, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>' },
+      { id: 'explain-plan', title: 'Explain Plan', module: this.explainplan, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>' },
+      { id: 'pipeline-plan', title: 'Explain Pipeline', module: this.pipeline, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1, compact = 0</code>' },
+      { id: 'flamegraph', title: 'FlameGraph', module: this.flamegraph, header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>' },
+      { id: 'call-graph', title: 'Call Graph', module: this.callgraph, header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.' },
+      { id: 'opentelemetry', title: 'OpenTelemetry', module: this.opentelemetry, header: 'Distributed tracing spans from system.opentelemetry_span_log' },
     ];
 
-    // PHASE 3: HTML GENERATION - Generate tab buttons and content containers from the configuration.
-    
+    // Generate tab buttons and content containers
     let tabsHtml = '<div class="profiler-tabs">';
     let contentHtml = '';
 
     tabsConfig.forEach((tab, index) => {
       const activeClass = index === 0 ? 'active' : '';
       tabsHtml += `<button class="profiler-tab ${activeClass}" data-tab="${tab.id}">${tab.title}</button>`;
+      
+      // Use provided content or call module's render method
+      const tabContent = tab.content || (tab.module ? tab.module.render() : '');
+      
       contentHtml += `<div id="profile-content-${tab.id}" class="profiler-tab-content ${activeClass}">
                         <h3>${tab.title}</h3>
                         <p>${tab.header}</p>`;
       
-      // Add module-specific controls if the module provides them
+      // Add module-specific controls if available
       if (tab.module && typeof tab.module.getControlsHtml === 'function') {
         contentHtml += tab.module.getControlsHtml();
-      } else if (tab.controls) {
-        contentHtml += tab.controls;
       }
       
-      contentHtml += `  <div class="tab-inner-content">${tab.content || ''}</div>
+      contentHtml += `  <div class="tab-inner-content">${tabContent}</div>
                       </div>`;
     });
     tabsHtml += '</div>';
 
-    // PHASE 4: DOM INJECTION - Replace container HTML with generated tabs and content.
+    // Inject HTML into container
     mainContainer.innerHTML = tabsHtml + contentHtml;
 
-    // PHASE 5: EVENT HANDLER SETUP - Delegate to each module's setupEventHandlers() method.
-    
-    // Set up event handlers for modules using the new interface
+    // Setup event handlers for all modules
     tabsConfig.forEach(tab => {
       if (tab.module && typeof tab.module.setupEventHandlers === 'function') {
-        // New pull model: modules with internal data don't need it passed
-        // Old push model: modules without internal data still receive moduleData
-        if (tab.moduleData !== undefined) {
-          tab.module.setupEventHandlers(`profile-content-${tab.id}`, tab.moduleData);
-        } else {
-          tab.module.setupEventHandlers(`profile-content-${tab.id}`);
-        }
+        tab.module.setupEventHandlers(`profile-content-${tab.id}`);
       }
     });
 
-    // PHASE 6: CORE UI EVENT HANDLERS - Handle basic tab switching functionality.
-    
-    // --- Post-render logic for dynamic content ---
-
-    // Re-attach tab switching logic
+    // Setup tab switching functionality
     const profilerTabs = mainContainer.querySelectorAll('.profiler-tab');
     const profilerTabContents = mainContainer.querySelectorAll('.profiler-tab-content');
     profilerTabs.forEach(tab => {
@@ -228,12 +192,11 @@ export class ClickHouseProfiler {
         const activeContent = mainContainer.querySelector(contentId);
         activeContent.classList.add('active');
 
-        // Show/hide the graph controls based on the active tab
+        // Show/hide graph controls based on active tab
         mainContainer.querySelectorAll('.graph-controls').forEach(controls => {
-            const isForActiveTab = controls.dataset.forTab === tab.dataset.tab;
-            controls.style.display = isForActiveTab ? 'flex' : 'none';
+          const isForActiveTab = controls.dataset.forTab === tab.dataset.tab;
+          controls.style.display = isForActiveTab ? 'flex' : 'none';
         });
-
       });
     });
   }

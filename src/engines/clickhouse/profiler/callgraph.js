@@ -7,14 +7,36 @@ import mermaid from 'mermaid';
  * Provides interactive zoom, direction switching, and tooltip functionality.
  */
 export class ClickHouseProfilerCallGraph {
-  constructor(flamegraph) {
-    this.flamegraph = flamegraph; // Reference to flamegraph module for function name simplification utility
-    this.data = null; // Module owns its data - profiler doesn't need to know about it
+  constructor() {
+    this.data = null;
+  }
+
+  /**
+   * Simplifies C++ function names by removing template arguments and truncating.
+   * @param {string} name The full function name.
+   * @returns {string} The simplified function name.
+   */
+  simplifyFunctionName(name) {
+    if (!name) return 'unknown';
+    let simplified = name;
+
+    // 1. Remove all template arguments <...>
+    simplified = simplified.replace(/<[^<>]*>/g, '()');
+
+    // 2. Remove lambda definitions and operator() calls
+    simplified = simplified.replace(/::'lambda'.*/, '');
+    simplified = simplified.replace(/::operator\(\).*/, '');
+
+    // 3. Truncate if still too long
+    if (simplified.length > 60) {
+        simplified = simplified.substring(0, 57) + '...';
+    }
+
+    return simplified.replace(/std::__1::/g, 'std::');
   }
 
   /**
    * Fetches trace log data from ClickHouse and stores it internally.
-   * This is the new pull-based interface where the module owns its data fetching logic.
    * 
    * @param {ClickHouseClient} client - The ClickHouse client instance
    * @param {string} queryId - The unique query ID for filtering trace_log
@@ -218,7 +240,7 @@ export class ClickHouseProfilerCallGraph {
       let currentNode = root;
       const stack = row.trace.reverse();
       stack.forEach(fullName => {
-        const functionName = this.flamegraph.simplifyFunctionName(fullName);
+        const functionName = this.simplifyFunctionName(fullName);
         let childNode = currentNode.children.find(c => c.name === functionName);
         if (!childNode) {
           childNode = { name: functionName, value: 0, children: [], fullName: fullName };
