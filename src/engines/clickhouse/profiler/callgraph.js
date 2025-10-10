@@ -49,10 +49,13 @@ export class ClickHouseProfilerCallGraph {
       let currentGraphZoom = 1.0;
       const zoomStep = 0.4;
       
+      let panX = 0;
+      let panY = 0;
+      
       const updateGraphZoom = () => {
         const svg = graphContainer?.querySelector('svg');
         if (svg) {
-          svg.style.transform = `scale(${currentGraphZoom})`;
+          svg.style.transform = `translate(${panX}px, ${panY}px) scale(${currentGraphZoom})`;
           svg.style.transformOrigin = 'top left';
         }
       };
@@ -69,8 +72,48 @@ export class ClickHouseProfilerCallGraph {
 
       zoomResetBtn.addEventListener('click', () => {
         currentGraphZoom = 1.0;
+        panX = 0;
+        panY = 0;
         updateGraphZoom();
       });
+      
+      // Add mouse wheel zoom
+      graphContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = -Math.sign(e.deltaY) * 0.1;
+        currentGraphZoom = Math.max(0.1, Math.min(5, currentGraphZoom + delta));
+        updateGraphZoom();
+      });
+      
+      // Add click-drag panning
+      let isDragging = false;
+      let startX, startY;
+      
+      graphContainer.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        graphContainer.style.cursor = 'grabbing';
+      });
+      
+      graphContainer.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        updateGraphZoom();
+      });
+      
+      graphContainer.addEventListener('mouseup', () => {
+        isDragging = false;
+        graphContainer.style.cursor = 'grab';
+      });
+      
+      graphContainer.addEventListener('mouseleave', () => {
+        isDragging = false;
+        graphContainer.style.cursor = 'grab';
+      });
+      
+      graphContainer.style.cursor = 'grab';
     }
 
     // Set up direction switching
