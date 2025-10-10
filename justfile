@@ -25,6 +25,9 @@ vendor:
 
 # Starts all required services for development (ClickHouse and Caddy).
 run: start-clickhouse start-caddy
+	@echo ""
+	@echo "SQL Shader avaiable at http://localhost:{{caddy_port}}"
+	@echo ""
 
 # Starts the ClickHouse server in a Docker container.
 start-clickhouse:
