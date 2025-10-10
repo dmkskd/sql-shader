@@ -4,7 +4,23 @@
  */
 export class ClickHouseProfilerOpenTelemetry {
   constructor() {
-    // No dependencies needed for this module
+    // Module owns its data - profiler doesn't need to know about it
+    this.data = null;
+  }
+
+  /**
+   * Fetches OpenTelemetry tracing data from ClickHouse and stores it internally.
+   * This is the new pull-based interface where the module owns its data fetching logic.
+   * 
+   * @param {ClickHouseClient} client - The ClickHouse client instance
+   * @param {string} queryId - The unique query ID for filtering OpenTelemetry spans
+   * @param {string} cleanedSql - The SQL query (unused)
+   * @param {function} statusCallback - Progress callback function
+   * @returns {Promise<void>}
+   */
+  async fetchData(client, queryId, cleanedSql, statusCallback = () => {}) {
+    statusCallback('Fetching OpenTelemetry traces...');
+    this.data = await this.collectOpenTelemetryTracing(client, queryId);
   }
 
   /**
@@ -92,19 +108,19 @@ export class ClickHouseProfilerOpenTelemetry {
 
   /**
    * Simple interface: renders OpenTelemetry tracing data.
-   * @param {object} data OpenTelemetry trace data.
+   * Module uses its internal data from fetchData().
    * @returns {string} HTML representation of OpenTelemetry traces.
    */
-  render(data) {
-    return this.renderOpenTelemetry(data);
+  render() {
+    return this.renderOpenTelemetry(this.data || {});
   }
 
   /**
    * Simple interface: sets up event handlers for OpenTelemetry panel.
+   * Module uses its internal data from fetchData().
    * @param {string} containerId The ID of the container element.
-   * @param {object} data OpenTelemetry trace data (contains embedded JavaScript).
    */
-  setupEventHandlers(containerId, data) {
+  setupEventHandlers(containerId) {
     // OpenTelemetry panel embeds JavaScript in template literals for export functions
     // The event handlers are part of the rendered HTML and auto-initialize
     // No additional setup needed as exportToSpeedscope() and exportToJSON() are inline

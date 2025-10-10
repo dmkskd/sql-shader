@@ -41,39 +41,9 @@ export class ClickHouseProfiler {
     const queryId = `${crypto.randomUUID()}`;
     let profileData = {};
 
-    // 1. Get EXPLAIN PIPELINE graph (DOT format with detailed processor info)
-    statusCallback('Profiling: Pipeline Graph...');
-    try {
-      const graphSql = `EXPLAIN PIPELINE graph = 1, compact = 0 ${cleanedSql}`;
-      const graphResultSet = await this.client.query({ query: graphSql, format: 'JSONEachRow' });
-      const graphRows = await graphResultSet.json();
-      profileData.pipelineGraph = graphRows.map(row => row.explain).join('\n');
-    } catch (e) {
-      console.error('[Pipeline] Error fetching graph:', e.message);
-      profileData.pipelineGraph = `Error: ${e.message}`;
-    }
-
-    // 2. Get EXPLAIN PIPELINE raw text (without graph format)
-    statusCallback('Profiling: Pipeline Raw...');
-    try {
-      const rawSql = `EXPLAIN PIPELINE ${cleanedSql}`;
-      const rawResultSet = await this.client.query({ query: rawSql, format: 'JSONEachRow' });
-      const rawRows = await rawResultSet.json();
-      profileData.pipelineRaw = rawRows.map(row => row.explain).join('\n');
-    } catch (e) {
-      profileData.pipelineRaw = `Error: ${e.message}`;
-    }
-
-    // 2. Get EXPLAIN actions, indexes
-    statusCallback('Profiling: Actions...');
-    try {
-      const actionsSql = `EXPLAIN actions = 1, indexes = 1 ${cleanedSql}`;
-      const actionsResultSet = await this.client.query({ query: actionsSql, format: 'JSONEachRow' });
-      const actionsRows = await actionsResultSet.json();
-      profileData.actionsPlan = actionsRows.map(row => row.explain).join('\n');
-    } catch (e) {
-      profileData.actionsPlan = `Error: ${e.message}`;
-    }
+    // 1. Let modules fetch their EXPLAIN data using the new pull model
+    await this.pipeline.fetchData(this.client, queryId, cleanedSql, statusCallback);
+    await this.explainplan.fetchData(this.client, queryId, cleanedSql, statusCallback);
 
     // 3. OpenTelemetry data will be collected after query execution
 
@@ -119,75 +89,19 @@ export class ClickHouseProfiler {
       await new Promise(resolve => setTimeout(resolve, 500)); // Use a slightly longer fallback timeout
     }
 
-    // 4. Poll for both query_log and trace_log entries in a single loop.
-    // This is more robust against race conditions where one log flushes before the other.
-    statusCallback('Profiling: Polling...');
-    const maxRetries = 8;
-    const retryDelay = 250; // ms
+    // 4. All profiling data is now fetched by individual modules via pull model
+    // No centralized polling loop needed!
 
-    try {
-      for (let i = 0; i < maxRetries; i++) {
-        // Attempt to fetch query_log if we don't have it yet
-        if (!profileData.queryLog) {
-          const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
-          const queryLogResultSet = await this.client.query({ query: queryLogQuery, format: 'JSONEachRow' });
-          const queryLogData = await queryLogResultSet.json();
-          if (queryLogData.length > 0) {
-            profileData.queryLog = queryLogData[0];
-          }
-        }
+    // 5. Let all modules fetch their data independently using the pull model
+    await Promise.all([
+      this.flamegraph.fetchData(this.client, queryId, cleanedSql, statusCallback),
+      this.callgraph.fetchData(this.client, queryId, cleanedSql, statusCallback),
+      this.querysummary.fetchData(this.client, queryId, cleanedSql, statusCallback),
+      this.events.fetchData(this.client, queryId, cleanedSql, statusCallback),
+      this.tracelogs.fetchData(this.client, queryId, cleanedSql, statusCallback),
+      this.opentelemetry.fetchData(this.client, queryId, cleanedSql, statusCallback),
+    ]);
 
-        // Attempt to fetch trace_log if we don't have it yet
-        if (!profileData.traceLog || profileData.traceLog.length === 0) {
-          const traceQuery = `
-            SELECT arrayStringConcat(arrayMap(x -> demangle(addressToSymbol(x)), trace), ';') AS stack, count() AS value
-            FROM system.trace_log
-            WHERE query_id = '${queryId}' AND trace_type = 'CPU'
-            GROUP BY trace
-          `;
-          const traceResultSet = await this.client.query({
-            query: traceQuery, format: 'JSONEachRow', clickhouse_settings: { allow_introspection_functions: 1 }
-          });
-          const resolvedTraces = await traceResultSet.json();
-          if (resolvedTraces.length > 0) {
-            profileData.traceLog = resolvedTraces.map(row => ({ trace: row.stack.split(';'), value: row.value }));
-          }
-        }
-
-        // Attempt to fetch server logs from system.text_log if we don't have them yet
-        if (!profileData.serverTextLog || profileData.serverTextLog.length === 0) {
-          const serverLogQuery = `SELECT event_time_microseconds, logger_name as source, thread_name, thread_id, level, message FROM system.text_log WHERE query_id = '${queryId}' ORDER BY event_time_microseconds`;
-          const serverLogResultSet = await this.client.query({ query: serverLogQuery, format: 'JSONEachRow' });
-          const serverLogData = await serverLogResultSet.json();
-          if (serverLogData.length > 0) {
-            profileData.serverTextLog = serverLogData;
-          }
-        }
-
-        // If we have all the data we need, we can stop waiting
-        // We no longer poll for query_thread_log.
-        const hasQueryLog = !!profileData.queryLog;
-        const hasTraceLog = profileData.traceLog && profileData.traceLog.length > 0;
-        if (hasQueryLog && hasTraceLog) {
-          break;
-        }
-
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-      }
-    } catch (e) {
-      // Errors during polling are not fatal, as some logs might be missing.
-    }
-
-    // 5. Collect OpenTelemetry tracing data AFTER query execution
-    statusCallback('Profiling: OpenTelemetry...');
-    try {
-      profileData.openTelemetry = await this.opentelemetry.collectOpenTelemetryTracing(this.client, queryId);
-    } catch (e) {
-      profileData.openTelemetry = { 
-        error: `OpenTelemetry collection failed: ${e.message}`,
-        note: "OpenTelemetry tracing may not be enabled in ClickHouse configuration"
-      };
-    }
     return profileData;
   }
 
@@ -210,44 +124,50 @@ export class ClickHouseProfiler {
     // PHASE 1: CONTENT GENERATION - Each module's render() method converts raw data into HTML.
     
     // --- Tab 2: Structured Plan ---
-    // Use the explain plan module for this content
-    const explainPlanContent = this.explainplan.render(profileData.actionsPlan);
+    // Now using the new pull model where explainplan owns its data
+    const explainPlanContent = this.explainplan.render();
 
     // --- Tab 3: Query Summary (from system.query_log) ---
-    const querySummaryContent = this.querysummary.render(profileData.queryLog);
+    // Now using the new pull model where querysummary owns its data
+    const querySummaryContent = this.querysummary.render();
 
     // --- Tab 5: Profile Events (from system.query_log) ---
-    const eventsContent = this.events.render(profileData.queryLog);
+    // Now using the new pull model where events owns its data
+    const eventsContent = this.events.render();
 
     // --- Tab 4: Pipeline Plan (from EXPLAIN PIPELINE) ---
+    // Now using the new pull model where pipeline owns its data
     let pipelinePlanContent;
-    if (profileData.pipelineGraph && profileData.pipelineGraph.trim().startsWith('digraph')) {
-      pipelinePlanContent = this.pipeline.render(profileData.pipelineGraph, profileData.pipelineRaw);
+    if (this.pipeline.data?.pipelineGraph && this.pipeline.data.pipelineGraph.trim().startsWith('digraph')) {
+      pipelinePlanContent = this.pipeline.render();
     } else {
-      pipelinePlanContent = `<p>Could not generate graph.</p><pre>${profileData.pipelineGraph || 'No data.'}</pre>`;
+      pipelinePlanContent = `<p>Could not generate graph.</p><pre>${this.pipeline.data?.pipelineGraph || 'No data.'}</pre>`;
     }
 
     // --- Tab 6: Server Trace Log (from send_logs_level='trace') ---
-    const serverTextLogContent = this.tracelogs.render(profileData.serverTextLog);
+    // Now using the new pull model where tracelogs owns its data
+    const serverTextLogContent = this.tracelogs.render();
 
     // --- Tab 7: Call Graph ---
-    const callGraphContent = this.callgraph.render(profileData.traceLog);
+    // Call graph shares trace data from flamegraph module
+    const callGraphContent = this.callgraph.render();
 
     // --- Tab 8: Flamegraph ---
-    const flamegraphContent = this.flamegraph.render(profileData.traceLog);
+    // Now using the new pull model where flamegraph owns its data
+    const flamegraphContent = this.flamegraph.render();
 
     // PHASE 2: TAB CONFIGURATION - Build tabsConfig array with each tab's properties including module references.
     
     // --- Dynamically build the HTML for the profiler ---
     const tabsConfig = [
-      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>`, module: this.querysummary, moduleData: profileData.queryLog },
-      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>`, module: this.tracelogs, moduleData: profileData.serverTextLog },
-      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>', module: this.events, moduleData: profileData.queryLog },
-      { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>', module: this.explainplan, moduleData: profileData.actionsPlan },
-      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1, compact = 0</code>', module: this.pipeline, moduleData: profileData.pipelineGraph },
-      { id: 'flamegraph', title: 'FlameGraph', content: flamegraphContent, header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>', module: this.flamegraph, moduleData: profileData.traceLog },
-      { id: 'call-graph', title: 'Call Graph', content: callGraphContent, header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.', module: this.callgraph, moduleData: profileData.traceLog },
-      { id: 'opentelemetry', title: 'OpenTelemetry', content: this.opentelemetry.render(profileData.openTelemetry || {}), header: 'Distributed tracing spans from system.opentelemetry_span_log', module: this.opentelemetry, moduleData: profileData.openTelemetry || {} },
+      { id: 'query-summary', title: 'Query Summary', content: querySummaryContent, header: `Generated via: <code>SELECT * FROM system.query_log WHERE query_id = '...'</code>`, module: this.querysummary },
+      { id: 'trace-log', title: 'Trace Log', content: serverTextLogContent, header: `Generated via: <code>SELECT ... FROM system.text_log WHERE query_id = '...'</code>`, module: this.tracelogs },
+      { id: 'events', title: 'Events', content: eventsContent, header: 'Performance counters from <code>system.query_log.ProfileEvents</code>', module: this.events },
+      { id: 'explain-plan', title: 'Explain Plan', content: explainPlanContent, header: 'Generated via: <code>EXPLAIN actions = 1, indexes = 1</code>', module: this.explainplan },
+      { id: 'pipeline-plan', title: 'Explain Pipeline', content: pipelinePlanContent, header: 'Generated via: <code>EXPLAIN PIPELINE graph = 1, compact = 0</code>', module: this.pipeline },
+      { id: 'flamegraph', title: 'FlameGraph', content: flamegraphContent, header: 'Generated via: <code>SELECT ... FROM system.trace_log</code>', module: this.flamegraph },
+      { id: 'call-graph', title: 'Call Graph', content: callGraphContent, header: 'Aggregated view of all function calls. Each function appears once, with its value representing total time spent.', module: this.callgraph },
+      { id: 'opentelemetry', title: 'OpenTelemetry', content: this.opentelemetry.render(), header: 'Distributed tracing spans from system.opentelemetry_span_log', module: this.opentelemetry },
     ];
 
     // PHASE 3: HTML GENERATION - Generate tab buttons and content containers from the configuration.
@@ -282,8 +202,13 @@ export class ClickHouseProfiler {
     // Set up event handlers for modules using the new interface
     tabsConfig.forEach(tab => {
       if (tab.module && typeof tab.module.setupEventHandlers === 'function') {
-        // Call each module's setupEventHandlers with containerId and moduleData
-        tab.module.setupEventHandlers(`profile-content-${tab.id}`, tab.moduleData);
+        // New pull model: modules with internal data don't need it passed
+        // Old push model: modules without internal data still receive moduleData
+        if (tab.moduleData !== undefined) {
+          tab.module.setupEventHandlers(`profile-content-${tab.id}`, tab.moduleData);
+        } else {
+          tab.module.setupEventHandlers(`profile-content-${tab.id}`);
+        }
       }
     });
 

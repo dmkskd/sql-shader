@@ -4,7 +4,32 @@
  */
 export class ClickHouseProfilerExplainPlan {
   constructor() {
-    // No dependencies needed for this module
+    // Module owns its data - profiler doesn't need to know about it
+    this.data = null;
+  }
+
+  /**
+   * Fetches EXPLAIN plan data from ClickHouse and stores it internally.
+   * This is the new pull-based interface where the module owns its data fetching logic.
+   * 
+   * @param {ClickHouseClient} client - The ClickHouse client instance
+   * @param {string} queryId - The unique query ID (unused for EXPLAIN queries)
+   * @param {string} cleanedSql - The SQL query with placeholders replaced
+   * @param {function} statusCallback - Progress callback function
+   * @returns {Promise<void>}
+   */
+  async fetchData(client, queryId, cleanedSql, statusCallback = () => {}) {
+    statusCallback('Fetching explain plan...');
+    
+    try {
+      const actionsSql = `EXPLAIN actions = 1, indexes = 1 ${cleanedSql}`;
+      const actionsResultSet = await client.query({ query: actionsSql, format: 'JSONEachRow' });
+      const actionsRows = await actionsResultSet.json();
+      this.data = actionsRows.map(row => row.explain).join('\n');
+    } catch (e) {
+      console.error('[ExplainPlan] Error fetching explain plan:', e.message);
+      this.data = `Error: ${e.message}`;
+    }
   }
 
   /**
@@ -51,11 +76,12 @@ export class ClickHouseProfilerExplainPlan {
    */
   /**
    * Simple interface: renders explain plan with raw and structured views.
-   * @param {string} planText Raw explain plan text.
+   * Module uses its internal data from fetchData().
    * @returns {string} HTML representation of explain plan with tabs.
    */
-  render(planText) {
-    const formattedHtml = this.formatStructuredPlan(planText || 'No data.');
+  render() {
+    const planText = this.data || 'No data.';
+    const formattedHtml = this.formatStructuredPlan(planText);
     
     return `
       <div class="inner-tabs">
@@ -63,7 +89,7 @@ export class ClickHouseProfilerExplainPlan {
         <button class="inner-tab" data-inner-tab="structured-explain">Structured</button>
       </div>
       <div id="inner-content-raw-explain" class="inner-tab-content active">
-        <pre>${planText || 'No data.'}</pre>
+        <pre>${planText}</pre>
       </div>
       <div id="inner-content-structured-explain" class="inner-tab-content">
         ${this.getControlsHtml()}
@@ -76,10 +102,10 @@ export class ClickHouseProfilerExplainPlan {
 
   /**
    * Simple interface: sets up event handlers for explain plan panel.
+   * Module uses its internal data from fetchData().
    * @param {string} containerId The ID of the container element.
-   * @param {string} planText Plan text data (not used for static display).
    */
-  setupEventHandlers(containerId, planText) {
+  setupEventHandlers(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
 

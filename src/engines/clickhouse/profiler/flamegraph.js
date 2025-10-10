@@ -7,17 +7,62 @@ import * as d3_flame_graph from 'd3-flame-graph';
  */
 export class ClickHouseProfilerFlamegraph {
   constructor() {
-    // No dependencies needed
+    // Module owns its data - profiler doesn't need to know about it
+    this.data = null;
+  }
+
+  /**
+   * Fetches trace log data from ClickHouse and stores it internally.
+   * This is the new pull-based interface where the module owns its data fetching logic.
+   * 
+   * @param {ClickHouseClient} client - The ClickHouse client instance
+   * @param {string} queryId - The unique query ID for filtering trace_log
+   * @param {string} cleanedSql - The SQL query (unused for trace_log)
+   * @param {function} statusCallback - Progress callback function
+   * @returns {Promise<void>}
+   */
+  async fetchData(client, queryId, cleanedSql, statusCallback = () => {}) {
+    statusCallback('Fetching trace log...');
+    
+    this.data = [];
+    
+    try {
+      const traceQuery = `
+        SELECT arrayStringConcat(arrayMap(x -> demangle(addressToSymbol(x)), trace), ';') AS stack, 
+               count() AS value
+        FROM system.trace_log
+        WHERE query_id = '${queryId}' AND trace_type = 'CPU'
+        GROUP BY trace
+      `;
+      
+      const traceResultSet = await client.query({
+        query: traceQuery,
+        format: 'JSONEachRow',
+        clickhouse_settings: { allow_introspection_functions: 1 }
+      });
+      
+      const resolvedTraces = await traceResultSet.json();
+      
+      if (resolvedTraces.length > 0) {
+        this.data = resolvedTraces.map(row => ({ 
+          trace: row.stack.split(';'), 
+          value: row.value 
+        }));
+      }
+    } catch (e) {
+      console.error('[Flamegraph] Error fetching trace log:', e.message);
+      this.data = [];
+    }
   }
 
   /**
    * Simple interface: returns HTML for flamegraph container and controls.
    * Note: Flamegraph requires complex D3.js DOM manipulation, so this returns a placeholder.
    * Use renderFlamegraph() for actual rendering.
-   * @param {Array<object>} traceLog The trace log data.
+   * Module uses its internal data from fetchData().
    * @returns {string} HTML container for flamegraph.
    */
-  render(traceLog) {
+  render() {
     return `
       <div class="tab-inner-content">
         <div id="flamegraph-container" style="min-height: 400px;">
@@ -29,10 +74,10 @@ export class ClickHouseProfilerFlamegraph {
 
   /**
    * Simple interface: sets up event handlers for flamegraph panel.
+   * Module uses its internal data from fetchData().
    * @param {string} containerId The ID of the container element.
-   * @param {Array<object>} traceLog The trace log data.
    */
-  setupEventHandlers(containerId, traceLog) {
+  setupEventHandlers(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -44,14 +89,14 @@ export class ClickHouseProfilerFlamegraph {
     // Set up grouping dropdown
     if (groupBySelect && graphContainer) {
       groupBySelect.addEventListener('change', () => {
-        this.renderFlamegraph(traceLog, graphContainer, groupBySelect.value);
+        this.renderFlamegraph(this.data, graphContainer, groupBySelect.value);
       });
     }
 
     // Set up export buttons
     if (speedscopeBtn) {
       speedscopeBtn.addEventListener('click', () => {
-        this.exportTraceToSpeedscope(traceLog, 'query-from-module');
+        this.exportTraceToSpeedscope(this.data, 'query-from-module');
       });
     }
 
@@ -60,7 +105,7 @@ export class ClickHouseProfilerFlamegraph {
     }
 
     // Render the actual flamegraph into the container
-    if (graphContainer && traceLog && traceLog.length > 0) {
+    if (graphContainer && this.data && this.data.length > 0) {
       // Check if the tab is currently active
       const tabContent = container.closest('.profiler-tab-content');
       const isTabActive = tabContent && tabContent.classList.contains('active');
@@ -69,7 +114,7 @@ export class ClickHouseProfilerFlamegraph {
         // Use requestAnimationFrame for proper rendering
         requestAnimationFrame(() => {
           console.log(`[Debug] Rendering ClickHouse flame graph in container with width: ${graphContainer.clientWidth}px`);
-          this.renderFlamegraph(traceLog, graphContainer, 'none');
+          this.renderFlamegraph(this.data, graphContainer, 'none');
         });
       };
 

@@ -8,18 +8,62 @@ import mermaid from 'mermaid';
  */
 export class ClickHouseProfilerPipelineGraph {
   constructor() {
-    // No dependencies needed for pipeline graph
+    // Module owns its data - profiler doesn't need to know about it
+    this.data = null;
+  }
+
+  /**
+   * Fetches pipeline data from ClickHouse and stores it internally.
+   * This is the new pull-based interface where the module owns its data fetching logic.
+   * 
+   * @param {ClickHouseClient} client - The ClickHouse client instance
+   * @param {string} queryId - The unique query ID (unused for EXPLAIN queries)
+   * @param {string} cleanedSql - The SQL query with placeholders replaced
+   * @param {function} statusCallback - Progress callback function
+   * @returns {Promise<void>}
+   */
+  async fetchData(client, queryId, cleanedSql, statusCallback = () => {}) {
+    this.data = {
+      pipelineGraph: null,
+      pipelineRaw: null
+    };
+
+    // 1. Get EXPLAIN PIPELINE graph (DOT format with detailed processor info)
+    statusCallback('Fetching pipeline graph...');
+    try {
+      const graphSql = `EXPLAIN PIPELINE graph = 1, compact = 0 ${cleanedSql}`;
+      const graphResultSet = await client.query({ query: graphSql, format: 'JSONEachRow' });
+      const graphRows = await graphResultSet.json();
+      this.data.pipelineGraph = graphRows.map(row => row.explain).join('\n');
+    } catch (e) {
+      console.error('[Pipeline] Error fetching graph:', e.message);
+      this.data.pipelineGraph = `Error: ${e.message}`;
+    }
+
+    // 2. Get EXPLAIN PIPELINE raw text (without graph format)
+    statusCallback('Fetching pipeline raw text...');
+    try {
+      const rawSql = `EXPLAIN PIPELINE ${cleanedSql}`;
+      const rawResultSet = await client.query({ query: rawSql, format: 'JSONEachRow' });
+      const rawRows = await rawResultSet.json();
+      this.data.pipelineRaw = rawRows.map(row => row.explain).join('\n');
+    } catch (e) {
+      console.error('[Pipeline] Error fetching raw:', e.message);
+      this.data.pipelineRaw = `Error: ${e.message}`;
+    }
   }
 
   /**
    * Simple interface: returns HTML for pipeline graph container and controls.
    * Note: Pipeline graph requires async DOM manipulation, so this returns a placeholder.
    * Use renderPipelineGraph() for actual rendering.
-   * @param {string} dotString The detailed DOT graph string (compact=0).
-   * @param {string} rawText The raw text output from EXPLAIN PIPELINE.
+   * Module uses its internal data from fetchData().
    * @returns {string} HTML container for pipeline graph with two tabs.
    */
-  render(dotString, rawText = null) {
+  render() {
+    const dotString = this.data?.pipelineGraph || '';
+    const rawText = this.data?.pipelineRaw || 'No data.';
+    
     return `
       <div class="inner-tabs">
         <button class="inner-tab active" data-inner-tab="raw-pipeline">Raw</button>
@@ -73,16 +117,16 @@ export class ClickHouseProfilerPipelineGraph {
 
   /**
    * Simple interface: sets up event handlers for pipeline graph panel.
+   * Module uses its internal data from fetchData().
    * @param {string} containerId The ID of the container element.
-   * @param {string} moduleData The DOT graph string (compact=0).
    */
-  setupEventHandlers(containerId, moduleData) {
+  setupEventHandlers(containerId) {
     const container = document.getElementById(containerId);
     if (!container) {
       return;
     }
     
-    const dotString = moduleData;
+    const dotString = this.data?.pipelineGraph || '';
 
     // Tab switching for Raw/Diagram views
     const innerTabs = container.querySelectorAll('.inner-tab');

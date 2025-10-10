@@ -4,7 +4,37 @@
  */
 export class ClickHouseProfilerEvents {
   constructor() {
-    // No dependencies needed for this module
+    // Module owns its data - profiler doesn't need to know about it
+    this.data = null;
+  }
+
+  /**
+   * Fetches query log data from ClickHouse and stores it internally.
+   * This is the new pull-based interface where the module owns its data fetching logic.
+   * 
+   * @param {ClickHouseClient} client - The ClickHouse client instance
+   * @param {string} queryId - The unique query ID for filtering query_log
+   * @param {string} cleanedSql - The SQL query (unused)
+   * @param {function} statusCallback - Progress callback function
+   * @returns {Promise<void>}
+   */
+  async fetchData(client, queryId, cleanedSql, statusCallback = () => {}) {
+    statusCallback('Fetching profile events...');
+    
+    try {
+      const queryLogQuery = `SELECT * FROM system.query_log WHERE query_id = '${queryId}' AND type = 'QueryFinish' LIMIT 1`;
+      const queryLogResultSet = await client.query({ query: queryLogQuery, format: 'JSONEachRow' });
+      const queryLogData = await queryLogResultSet.json();
+      
+      if (queryLogData.length > 0) {
+        this.data = queryLogData[0];
+      } else {
+        this.data = null;
+      }
+    } catch (e) {
+      console.error('[Events] Error fetching query log:', e.message);
+      this.data = { error: e.message };
+    }
   }
 
   /**
@@ -25,10 +55,11 @@ export class ClickHouseProfilerEvents {
 
   /**
    * Simple interface: renders ProfileEvents data as categorized, collapsible tables.
-   * @param {object} queryLog Query log data containing ProfileEvents.
+   * Module uses its internal data from fetchData().
    * @returns {string} HTML representation of categorized profile events.
    */
-  render(queryLog) {
+  render() {
+    const queryLog = this.data;
     if (!queryLog || !queryLog.ProfileEvents) {
       return '<p>No ProfileEvents data found in the query log.</p>';
     }

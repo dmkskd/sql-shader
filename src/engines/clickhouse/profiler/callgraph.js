@@ -8,17 +8,62 @@ import mermaid from 'mermaid';
  */
 export class ClickHouseProfilerCallGraph {
   constructor(flamegraph) {
-    this.flamegraph = flamegraph; // Reference to flamegraph module for function name simplification
+    this.flamegraph = flamegraph; // Reference to flamegraph module for function name simplification utility
+    this.data = null; // Module owns its data - profiler doesn't need to know about it
+  }
+
+  /**
+   * Fetches trace log data from ClickHouse and stores it internally.
+   * This is the new pull-based interface where the module owns its data fetching logic.
+   * 
+   * @param {ClickHouseClient} client - The ClickHouse client instance
+   * @param {string} queryId - The unique query ID for filtering trace_log
+   * @param {string} cleanedSql - The SQL query (unused for trace_log)
+   * @param {function} statusCallback - Progress callback function
+   * @returns {Promise<void>}
+   */
+  async fetchData(client, queryId, cleanedSql, statusCallback = () => {}) {
+    statusCallback('Fetching trace log for call graph...');
+    
+    this.data = [];
+    
+    try {
+      const traceQuery = `
+        SELECT arrayStringConcat(arrayMap(x -> demangle(addressToSymbol(x)), trace), ';') AS stack, 
+               count() AS value
+        FROM system.trace_log
+        WHERE query_id = '${queryId}' AND trace_type = 'CPU'
+        GROUP BY trace
+      `;
+      
+      const traceResultSet = await client.query({
+        query: traceQuery,
+        format: 'JSONEachRow',
+        clickhouse_settings: { allow_introspection_functions: 1 }
+      });
+      
+      const resolvedTraces = await traceResultSet.json();
+      
+      if (resolvedTraces.length > 0) {
+        this.data = resolvedTraces.map(row => ({ 
+          trace: row.stack.split(';'), 
+          value: row.value 
+        }));
+      }
+    } catch (e) {
+      console.error('[CallGraph] Error fetching trace log:', e.message);
+      this.data = [];
+    }
   }
 
   /**
    * Simple interface: returns HTML for call graph container and controls.
    * Note: Call graph requires async DOM manipulation, so this returns a placeholder.
    * Use renderCallGraph() for actual rendering.
-   * @param {Array<object>} traceLog The trace log data.
+   * Module uses its internal data from fetchData().
    * @returns {string} HTML container for call graph.
    */
-  render(traceLog) {
+  render() {
     return `
       <div class="tab-inner-content">
         <div id="call-graph-container" style="min-height: 800px; height: 800px;">
@@ -30,12 +75,15 @@ export class ClickHouseProfilerCallGraph {
 
   /**
    * Simple interface: sets up event handlers for call graph panel.
+   * Module uses its internal data from fetchData().
    * @param {string} containerId The ID of the container element.
-   * @param {Array<object>} traceLog The trace log data.
    */
-  setupEventHandlers(containerId, traceLog) {
+  setupEventHandlers(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    
+    // Use internal data
+    const traceLog = this.data || [];
 
     // Set up zoom controls
     const zoomInBtn = container.querySelector('#cg-zoom-in-button');

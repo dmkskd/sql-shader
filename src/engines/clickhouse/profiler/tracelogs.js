@@ -4,7 +4,37 @@
  */
 export class ClickHouseProfilerTraceLogs {
   constructor() {
-    // No dependencies needed for this module
+    // Module owns its data - profiler doesn't need to know about it
+    this.data = null;
+  }
+
+  /**
+   * Fetches server text log data from ClickHouse and stores it internally.
+   * This is the new pull-based interface where the module owns its data fetching logic.
+   * 
+   * @param {ClickHouseClient} client - The ClickHouse client instance
+   * @param {string} queryId - The unique query ID for filtering text_log
+   * @param {string} cleanedSql - The SQL query (unused)
+   * @param {function} statusCallback - Progress callback function
+   * @returns {Promise<void>}
+   */
+  async fetchData(client, queryId, cleanedSql, statusCallback = () => {}) {
+    statusCallback('Fetching server text logs...');
+    
+    try {
+      const serverLogQuery = `SELECT event_time_microseconds, logger_name as source, thread_name, thread_id, level, message FROM system.text_log WHERE query_id = '${queryId}' ORDER BY event_time_microseconds`;
+      const serverLogResultSet = await client.query({ query: serverLogQuery, format: 'JSONEachRow' });
+      const serverLogData = await serverLogResultSet.json();
+      
+      if (serverLogData.length > 0) {
+        this.data = serverLogData;
+      } else {
+        this.data = [];
+      }
+    } catch (e) {
+      console.error('[TraceLogs] Error fetching text log:', e.message);
+      this.data = [];
+    }
   }
 
   /**
@@ -70,10 +100,11 @@ export class ClickHouseProfilerTraceLogs {
 
   /**
    * Simple interface: renders server text logs as an interactive table with timing analysis.
-   * @param {Array} serverTextLog Array of log entries from system.text_log.
+   * Module uses its internal data from fetchData().
    * @returns {string} HTML representation of server trace logs.
    */
-  render(serverTextLog) {
+  render() {
+    const serverTextLog = this.data;
     if (!serverTextLog || serverTextLog.length === 0) {
       return '<p>No server text logs were found. This may be disabled by the server configuration.</p>';
     }
