@@ -17,6 +17,7 @@ class ClickHouseEngine {
 
     this.lastPollTime = Date.now();
     this.lastEventCounts = {};
+    this.serverVersion = null;
   }
 
   /**
@@ -74,6 +75,23 @@ class ClickHouseEngine {
         const typeInfo = errorType ? ` (${errorType})` : '';
         throw new Error(`Ping failed${typeInfo}`);
       }
+
+      // Get server version
+      try {
+        const versionResult = await this.client.query({
+          query: 'SELECT version() AS version',
+          format: 'JSONEachRow'
+        });
+        const versionData = await versionResult.json();
+        if (versionData && versionData.length > 0) {
+          this.serverVersion = versionData[0].version;
+          console.log('[ClickHouse] Server version:', this.serverVersion);
+        }
+      } catch (versionError) {
+        console.warn('[ClickHouse] Could not retrieve version:', versionError.message);
+        this.serverVersion = 'Unknown';
+      }
+
       statusCallback('ClickHouse engine ready.');
     } catch (e) {
       // Log the full error details to console for debugging
@@ -298,6 +316,8 @@ class ClickHouseEngine {
       };
 
       const finalStats = [
+        // Server version (first stat)
+        { label: 'Version', value: this.serverVersion || 'Unknown', rawValue: this.serverVersion, description: "ClickHouse server version." },
         // Core server metrics
         { label: 'Active Queries', value: (metricsMap['Query'] || 0).toLocaleString(), rawValue: metricsMap['Query'] || 0, description: "Number of concurrently executing queries. From system.metrics (metric: 'Query')." },
         { label: 'CPU Usage', value: `${cpuUsagePercent.toFixed(1)}%`, rawValue: cpuUsagePercent, description: "Total server CPU usage percentage, calculated from the change in OSCPUVirtualTimeMicroseconds. From system.events." },
