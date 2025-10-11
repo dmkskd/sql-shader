@@ -1,4 +1,4 @@
-import { dom, setupUI, updateUICallbacks, updateInitStatus, updateStatsPanel, updateErrorPanel, openSettingsModal, updateProfileButtonText, showUnsavedChangesModal } from './ui_manager.js';
+import { dom, setupUI, updateUICallbacks, updateInitStatus, updateStatsPanel, updateErrorPanel, setErrorPanelMessage, openSettingsModal, updateProfileButtonText, showUnsavedChangesModal } from './ui_manager.js';
 import mermaid from 'mermaid';
 import { ShaderManager } from './shader_manager.js';
 import { AssetManager } from './asset_manager.js';
@@ -45,11 +45,11 @@ const main = async (engine) => {
     onAudioPatternToggle: async () => {
         const audioButton = document.getElementById('audio-pattern-button');
         const audioStatus = audioButton.querySelector('.perf-status');
-        
+
         try {
             // Use AudioManager's generic toggle method
             const isPlaying = await audioManager.toggleAudio('strudel', 1);
-            
+
             // Update UI based on result
             if (isPlaying) {
                 audioStatus.textContent = 'ON';
@@ -77,14 +77,14 @@ const main = async (engine) => {
 
   // Initialize audio manager for music reactivity
   const audioManager = new AudioManager();
-  
+
   // Initialize and register input sources
   const strudelInput = new StrudelInput();
   audioManager.registerInputSource('strudel', strudelInput);
-  
+
   // Initialize uniform builder (pure JS uniforms, no engine logic)
   const uniformBuilder = new UniformBuilder();
-  
+
   let isPerfVisible = true;
   let statsPollIntervalId = null;
   let isAutocompileOn = true;
@@ -143,15 +143,19 @@ const main = async (engine) => {
       setTimeout(() => editor.refresh(), 50);
       iMouse.x = resolution.width / 2;
       iMouse.y = resolution.height / 2;
-      
+
       // Force a new frame render with the updated canvas size to prevent black screen
       if (shaderManager.prepared && !shaderManager.hasCompilationError) {
         requestAnimationFrame(renderFrame);
       }
     };
 
-    const shaderManager = new ShaderManager(engine, editor, updateCanvasSizeAndResolution);
-    const assetManager = new AssetManager(engine);
+    // Initialize ShaderStateManager for persisting user-created and modified shaders
+    const shaderStateManager = new ShaderStateManager(engineName);
+    console.log(`[Init] ShaderStateManager initialized for ${engineName} (max: ${shaderStateManager.maxShadersPerEngine} shaders)`);
+
+    const shaderManager = new ShaderManager(engine, editor, updateCanvasSizeAndResolution, shaderStateManager);
+    const assetManager = new AssetManager(engine, shaderStateManager);
 
     // --- Final Initialization Steps ---
     console.log('[Init] Setting up UI and event listeners...');
@@ -195,7 +199,7 @@ const main = async (engine) => {
             if (tooltipContainer) {
                 tooltipContainer.innerHTML = '';
             }
-            
+
             // Delegate the entire rendering process to the engine.
             // The engine now has full control over how to display its profile data.
             await engine.renderProfile(profileData, profilerContentContainer);
@@ -217,9 +221,70 @@ const main = async (engine) => {
     const handleShaderSelection = async (newIndex) => {
         const shader = shaderManager.getShaders()[newIndex];
         const engineName = dom.engineSelect.options[dom.engineSelect.selectedIndex].textContent;
+
+        // Check if this shader has a saved version and determine the display name
+        const savedShader = shaderStateManager.getShaderByName(shader.name);
+        let displayName = shader.name;
+
+        // Set or clear currentUserShaderName based on shader type
+        if (savedShader && savedShader.type === 'user-created') {
+            currentUserShaderName = shader.name;
+            displayName = `� ${shader.name}`;
+        } else {
+            currentUserShaderName = null;
+            if (savedShader && savedShader.type === 'built-in-modified') {
+                displayName = `� ${shader.name}`;
+            }
+        }
+
         document.title = `SQL Shader - ${shader.name} (${engineName})`;
-        dom.shaderSelectButton.textContent = shader.name; // Update button text
+        dom.shaderSelectButton.textContent = displayName; // Update button text with indicator
+
         await shaderManager.loadShader(newIndex, RESOLUTIONS, ZOOM_LEVELS);
+    };
+
+    // Setup callbacks for AssetManager to notify main.js of state changes
+    assetManager.onShaderDeleted = (shaderName) => {
+        setErrorPanelMessage(`✓ Deleted shader "${shaderName}"`, false);
+        assetManager._close();
+
+        // If the deleted shader was currently loaded, switch to first non-template shader
+        if (dom.shaderSelectButton.textContent.includes(shaderName)) {
+            const firstShaderIndex = SHADERS.findIndex(s => !s.isTemplate);
+            if (firstShaderIndex >= 0) {
+                handleShaderSelection(firstShaderIndex);
+            }
+        }
+    };
+
+    assetManager.onShaderRestored = async (shaderName) => {
+        setErrorPanelMessage(`✓ Restored "${shaderName}" to original`, false);
+        assetManager._close();
+
+        // If the restored shader was currently loaded, reload it
+        if (dom.shaderSelectButton.textContent.includes(shaderName)) {
+            const shaderDefs = shaderManager.getShaders();
+            await handleShaderSelection(shaderDefs.findIndex(s => s.name === shaderName));
+        }
+    };
+
+    assetManager.onShaderDuplicated = (shaderName, sql) => {
+        setErrorPanelMessage(`✓ Created duplicate "${shaderName}"`, false);
+        assetManager._close();
+
+        // Load the duplicated shader into the editor
+        editor.setValue(sql);
+        shaderManager.pristineSql = sql;
+        currentUserShaderName = shaderName;
+
+        // Update shader button to show the new shader name with user-created icon
+        dom.shaderSelectButton.textContent = `📝 ${shaderName}`;
+
+        // Disable save button (just saved)
+        dom.saveShaderButton.disabled = true;
+
+        // Compile the shader
+        shaderManager.updateShader(false, stats);
     };
 
     updateUICallbacks({ // This updates the callbacks for the already-set-up UI
@@ -231,21 +296,47 @@ const main = async (engine) => {
                 }
             }
             try {
-                // Prepare shader info for the asset manager
+                // Use AssetManager to build shader infos (consolidates filtering, metadata, callbacks)
                 const shaderDefs = shaderManager.getShaders();
-                const shaderInfos = await Promise.all(shaderDefs.map(async (shader) => {
-                    const sql = await shaderManager.engine.loadShaderContent(shader);
-                    return {
-                        name: shader.name,
-                        sql: sql,
-                        description: shaderManager.extractDescription(sql),
-                    };
-                }));
+                const { shaderInfos, indexMapping } = await assetManager.buildShaderInfos(
+                    shaderDefs,
+                    (shader) => shaderManager.engine.loadShaderContent(shader),
+                    (sql) => shaderManager.extractDescription(sql)
+                );
+
+                // Determine which shader is currently loaded to highlight it in the asset manager
+                // We need to find it in our display list (indexMapping)
+                const currentShaderIndex = shaderManager.getCurrentShaderIndex();
+                const currentShaderName = shaderManager.getShaders()[currentShaderIndex]?.name;
+                let currentDisplayIndex = -1;
+
+                // Try to find the current shader in the display list
+                for (let i = 0; i < shaderInfos.length; i++) {
+                    if (shaderInfos[i].shaderName === currentShaderName) {
+                        currentDisplayIndex = i;
+                        break;
+                    }
+                }
 
                 // Open the manager and wait for a selection
-                const currentIndex = shaderManager.getCurrentShaderIndex();
-                const selectedIndex = await assetManager.open(shaderInfos, currentIndex);
-                await handleShaderSelection(selectedIndex);
+                const selectedDisplayIndex = await assetManager.open(shaderInfos, currentDisplayIndex);
+
+                // Map the selected display index back to the original shader index or handle user shader
+                const originalIndex = indexMapping[selectedDisplayIndex];
+                if (originalIndex === -1) {
+                    // This is a user-created shader - load it directly
+                    const selectedShaderName = shaderInfos[selectedDisplayIndex].shaderName;
+                    const userShader = shaderStateManager.getShaderByName(selectedShaderName);
+                    if (userShader) {
+                        editor.setValue(userShader.sql);
+                        shaderManager.pristineSql = userShader.sql;
+                        dom.shaderSelectButton.textContent = `📝 ${userShader.name}`;
+                        await shaderManager.updateShader(false, stats);
+                    }
+                } else {
+                    // This is a built-in shader (possibly modified)
+                    await handleShaderSelection(originalIndex);
+                }
             } catch (error) {
                 // User cancelled the modal
             }
@@ -460,8 +551,25 @@ const main = async (engine) => {
     // We need to determine the correct index to load, respecting URL params over localStorage.
     const urlParamsForInitialLoad = new URLSearchParams(window.location.search);
     const initialShaderName = urlParamsForInitialLoad.get('shader');
-    const initialIndex = initialShaderName ? SHADERS.findIndex(s => s.name === decodeURIComponent(initialShaderName)) : savedIndex;
-    await shaderManager.loadShader(initialIndex > -1 ? initialIndex : 0, RESOLUTIONS, ZOOM_LEVELS);
+    let initialIndex = initialShaderName ? SHADERS.findIndex(s => s.name === decodeURIComponent(initialShaderName)) : savedIndex;
+
+    // If no valid index, find the first non-template shader (templates should never be loaded as initial shader)
+    if (initialIndex < 0 || (SHADERS[initialIndex] && SHADERS[initialIndex].isTemplate)) {
+      initialIndex = SHADERS.findIndex(s => !s.isTemplate);
+      if (initialIndex < 0) {
+        initialIndex = 0; // Fallback to first shader if somehow all are templates
+      }
+    }
+
+    await shaderManager.loadShader(initialIndex, RESOLUTIONS, ZOOM_LEVELS);
+
+    // Update shader selector button with the loaded shader name
+    const loadedShader = SHADERS[initialIndex];
+    if (loadedShader) {
+      const isModified = shaderStateManager.getShaderByName(loadedShader.name) !== null;
+      const displayName = isModified ? `🔧 ${loadedShader.name}` : loadedShader.name;
+      dom.shaderSelectButton.textContent = displayName;
+    }
 
     console.log('[Init] Initializing database engine connection...');
     updateInitStatus('Compiling initial shader...'); // Pass true for the initial compile
@@ -530,6 +638,96 @@ const main = async (engine) => {
       }
       // Directly update the UI on mouse move for real-time feedback
       updateStatsPanel(stats, resolution, audioManager ? audioManager.getLastAudioParams() : null);
+    });
+
+    // Track current user shader name (for duplicated/new shaders)
+    let currentUserShaderName = null;
+
+    // Save button handler
+    dom.saveShaderButton.addEventListener('click', async () => {
+      const currentSQL = editor.getValue();
+
+      // If we're working on a user shader (duplicated or new), use that name
+      // Otherwise, use the current built-in shader name
+      let shaderName, isBuiltIn;
+      if (currentUserShaderName) {
+        shaderName = currentUserShaderName;
+        isBuiltIn = false;
+      } else {
+        const currentShader = shaderManager.getShaders()[shaderManager.getCurrentShaderIndex()];
+        shaderName = currentShader.name;
+        isBuiltIn = !currentShader.isUserCreated;
+      }
+
+      // Check if this shader already exists in localStorage (to update it)
+      const existingSaved = shaderStateManager.getShaderByName(shaderName);
+
+      // For now, simple save - later we'll add a dialog
+      const saveData = {
+        name: shaderName,
+        sql: currentSQL,
+        type: isBuiltIn ? 'built-in-modified' : 'user-created',
+        originalName: isBuiltIn ? shaderName : null
+      };
+
+      // If it exists, include the ID to update it
+      if (existingSaved) {
+        saveData.id = existingSaved.id;
+        saveData.createdAt = existingSaved.createdAt; // Preserve creation time
+      }
+
+      const result = shaderStateManager.saveShader(saveData);
+
+      if (result.success) {
+        console.log('[Save] Shader saved:', result.shader);
+        // Show success message (blocks error panel updates for 3 seconds)
+        const action = existingSaved ? 'Updated' : 'Saved';
+        setErrorPanelMessage(`✓ ${action} "${shaderName}" to browser storage`, false);
+        // Mark as no longer dirty
+        shaderManager.pristineSql = currentSQL;
+        // Disable save button
+        dom.saveShaderButton.disabled = true;
+        // Update shader button to show modified indicator
+        dom.shaderSelectButton.textContent = `🔧 ${shaderName}`;
+      } else {
+        console.error('[Save] Failed to save shader:', result.error);
+        // Show error message (blocks error panel updates for 3 seconds)
+        setErrorPanelMessage(`✗ Failed to save: ${result.error}`, true);
+      }
+    });
+
+    // New shader button handler - create a new shader
+    dom.newShaderButton.addEventListener('click', async () => {
+      // Use AssetManager to handle all the creation logic
+      const result = await assetManager.createNewShader(
+        shaderManager.getShaders(),
+        (shader) => shaderManager.engine.loadShaderContent(shader)
+      );
+
+      if (result.success) {
+        setErrorPanelMessage(`✓ Created new shader "${result.shaderName}"`, false);
+
+        // Close asset manager if it's open
+        if (assetManager.dom.modal.style.display !== 'none') {
+          assetManager._close();
+        }
+
+        // Load the new shader into the editor
+        editor.setValue(result.sql);
+        shaderManager.pristineSql = result.sql;
+
+        // Update shader button to show the new shader name with user-created icon
+        dom.shaderSelectButton.textContent = `📝 ${result.shaderName}`;
+
+        // Disable save button (just saved)
+        dom.saveShaderButton.disabled = true;
+
+        // Compile the shader
+        await shaderManager.updateShader(false, stats);
+      } else {
+        console.error('[New Shader] Failed:', result.error);
+        setErrorPanelMessage(`✗ Failed to create shader: ${result.error}`, true);
+      }
     });
 
     /**
@@ -611,7 +809,7 @@ const main = async (engine) => {
         }
 
         const iTime = (performance.now() - startTime - pausedTime) / 1000.0;
-        
+
         // Update audio analysis
         const audioParams = audioManager.update();
 
@@ -621,7 +819,7 @@ const main = async (engine) => {
         // Still update stats so the UI doesn't get stuck on "Initializing..."
         updateStatsPanel(stats, resolution, audioParams); // Use imported function
         // Keep the animation loop going to allow for live editing.
-        if (shaderManager.isPlaying) requestAnimationFrame(renderFrame); 
+        if (shaderManager.isPlaying) requestAnimationFrame(renderFrame);
         isFrameProcessing = false; // Reset the flag before returning
         return;
       }
@@ -656,7 +854,7 @@ const main = async (engine) => {
         }
 
         const t0 = performance.now();
-        
+
         // === ENGINE-AGNOSTIC: Build pure JS uniforms ===
         const uniforms = uniformBuilder.build({
           width: frameWidth,
@@ -666,13 +864,13 @@ const main = async (engine) => {
           mouseY: iMouse.y,
           audio: audioParams
         });
-        
+
         // Pass pure JS uniforms to engine - engine handles its own translation
         const queryResult = await shaderManager.prepared.query(uniforms);
         const { table: result, timings } = queryResult;
         const t1 = performance.now();
         stats.queryTime = t1 - t0;
-        
+
         // Update the performance monitor with detailed timings
         if (isPerfVisible) {
             perfMonitor.update({
@@ -720,6 +918,9 @@ const main = async (engine) => {
         // as this was overwriting the pristine state and breaking the "dirty" check.
         localStorage.setItem(currentShaderSelectKey, shaderManager.getCurrentShaderIndex());
 
+        // Enable/disable save button based on dirty state
+        dom.saveShaderButton.disabled = !shaderManager.isDirty();
+
         clearTimeout(shaderManager.debounceTimer);
         if (isAutocompileOn) {
             const generalSettings = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}general-settings`)) || {};
@@ -728,7 +929,7 @@ const main = async (engine) => {
                 // Check for @run: hints in the current editor content and apply them before compiling
                 const currentSQL = editor.getValue();
                 shaderManager.applyPerformanceHints(currentSQL, RESOLUTIONS, ZOOM_LEVELS);
-                
+
                 // Then compile the shader
                 shaderManager.updateShader(false, stats);
             }, autocompileDelay);

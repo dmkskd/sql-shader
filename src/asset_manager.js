@@ -5,8 +5,9 @@
 import { UniformBuilder } from './uniform_builder.js';
 
 export class AssetManager {
-    constructor(engine) {
+    constructor(engine, shaderStateManager = null) {
         this.engine = engine;
+        this.shaderStateManager = shaderStateManager;
         this.dom = {
             modal: document.getElementById('asset-manager-modal'),
             closeButton: document.querySelector('#asset-manager-modal .modal-close-button'),
@@ -17,15 +18,200 @@ export class AssetManager {
         this.thumbnailResolution = { width: 160, height: 120 };
         this.queue = [];
         this.isProcessing = false;
-        
+
         // Uniform builder for preview rendering
         this.uniformBuilder = new UniformBuilder();
-        
+
         // Track all active preview animations for cleanup
         this.activePreviews = new Set();
 
         // To manage the ESC key listener
         this.boundHandleKeyDown = null;
+
+        // Callbacks for main.js to handle UI updates
+        this.onShaderDeleted = null;
+        this.onShaderRestored = null;
+        this.onShaderDuplicated = null;
+    }
+
+    /**
+     * Builds shader info list with metadata, filtering, and action callbacks.
+     * This consolidates logic previously scattered in main.js.
+     *
+     * @param {Array<object>} allShaderDefs - All shader definitions from the engine
+     * @param {Function} loadShaderContentFn - Function to load shader SQL: (shader) => Promise<string>
+     * @param {Function} extractDescriptionFn - Function to extract description: (sql) => string
+     * @returns {Promise<{shaderInfos: Array, indexMapping: Array}>} Shader infos and index mapping
+     */
+    async buildShaderInfos(allShaderDefs, loadShaderContentFn, extractDescriptionFn) {
+        // Filter out templates - they're not selectable shaders
+        const selectableShaders = allShaderDefs.filter(s => !s.isTemplate);
+
+        const shaderInfos = [];
+        const indexMapping = []; // Maps display index to original shader index
+
+        // First, add user-created shaders that aren't in the built-in list
+        if (this.shaderStateManager) {
+            const userShaders = this.shaderStateManager.getUserShaders().filter(s => s.type === 'user-created');
+
+            for (const userShader of userShaders) {
+                // Check if already in list (shouldn't be, but just in case)
+                const alreadyExists = allShaderDefs.some(s => s.name === userShader.name);
+                if (!alreadyExists) {
+                    const shaderInfo = {
+                        name: `📝 ${userShader.name}`,
+                        sql: userShader.sql,
+                        description: extractDescriptionFn(userShader.sql),
+                        isUserCreated: true,
+                        isModified: false,
+                        shaderName: userShader.name,
+                        onDuplicate: async (info) => {
+                            const newName = prompt(`Enter a name for the duplicate shader:`, `${userShader.name} (Copy)`);
+                            if (!newName || newName.trim() === '') return;
+
+                            const result = this.shaderStateManager.saveShader({
+                                name: newName.trim(),
+                                sql: userShader.sql,
+                                type: 'user-created',
+                                originalName: null
+                            });
+
+                            if (result.success) {
+                                console.log('[Duplicate] Created duplicate shader:', newName.trim());
+                                if (this.onShaderDuplicated) {
+                                    this.onShaderDuplicated(newName.trim(), userShader.sql);
+                                }
+                            } else {
+                                alert(`Failed to duplicate: ${result.error}`);
+                            }
+                        },
+                        onDelete: async (info) => {
+                            if (!confirm(`Delete shader "${userShader.name}"?\n\nThis cannot be undone.`)) {
+                                return;
+                            }
+
+                            const result = this.shaderStateManager.deleteShader(userShader.id);
+                            if (result.success) {
+                                console.log('[Delete] Deleted shader:', userShader.name);
+                                // Notify main.js via callback
+                                if (this.onShaderDeleted) {
+                                    this.onShaderDeleted(userShader.name);
+                                }
+                            } else {
+                                console.error('[Delete] Failed to delete:', result.error);
+                                alert(`Failed to delete: ${result.error}`);
+                            }
+                        }
+                    };
+
+                    shaderInfos.push(shaderInfo);
+                    indexMapping.push(-1); // -1 indicates this is a user-created shader not in built-in list
+                }
+            }
+        }
+
+        // Then add built-in shaders
+        for (let i = 0; i < selectableShaders.length; i++) {
+            const shader = selectableShaders[i];
+            const sql = await loadShaderContentFn(shader);
+
+            // Check if this shader has a saved version
+            const savedShader = this.shaderStateManager?.getShaderByName(shader.name);
+            let displayName = shader.name;
+            let isUserCreated = false;
+            let isModified = false;
+
+            if (savedShader) {
+                if (savedShader.type === 'built-in-modified') {
+                    displayName = `🔧 ${shader.name}`;
+                    isModified = true;
+                } else if (savedShader.type === 'user-created') {
+                    displayName = `📝 ${shader.name}`;
+                    isUserCreated = true;
+                }
+            }
+
+            const shaderInfo = {
+                name: displayName,
+                sql: sql,
+                description: extractDescriptionFn(sql),
+                isUserCreated: isUserCreated,
+                isModified: isModified,
+                shaderName: shader.name
+            };
+
+            // Add duplicate callback for all shaders
+            shaderInfo.onDuplicate = async (info) => {
+                const newName = prompt(`Enter a name for the duplicate shader:`, `${shader.name} (Copy)`);
+                if (!newName || newName.trim() === '') return;
+
+                const result = this.shaderStateManager.saveShader({
+                    name: newName.trim(),
+                    sql: sql,
+                    type: 'user-created',
+                    originalName: null
+                });
+
+                if (result.success) {
+                    console.log('[Duplicate] Created duplicate shader:', newName.trim());
+                    if (this.onShaderDuplicated) {
+                        this.onShaderDuplicated(newName.trim(), sql);
+                    }
+                } else {
+                    alert(`Failed to duplicate: ${result.error}`);
+                }
+            };
+
+            // Add delete callback for user-created shaders
+            if (isUserCreated) {
+                shaderInfo.onDelete = async (info) => {
+                    if (!confirm(`Delete shader "${shader.name}"?\n\nThis cannot be undone.`)) {
+                        return;
+                    }
+
+                    const result = this.shaderStateManager.deleteShader(savedShader.id);
+                    if (result.success) {
+                        console.log('[Delete] Deleted shader:', shader.name);
+                        // Notify main.js via callback
+                        if (this.onShaderDeleted) {
+                            this.onShaderDeleted(shader.name);
+                        }
+                    } else {
+                        console.error('[Delete] Failed to delete:', result.error);
+                        alert(`Failed to delete: ${result.error}`);
+                    }
+                };
+            }
+
+            // Add restore callback for modified built-in shaders
+            if (isModified) {
+                shaderInfo.onRestore = async (info) => {
+                    if (!confirm(`Restore "${shader.name}" to original version?\n\nThis will discard your saved changes.`)) {
+                        return;
+                    }
+
+                    const result = this.shaderStateManager.restoreBuiltIn(shader.name);
+                    if (result.success) {
+                        console.log('[Restore] Restored built-in shader:', shader.name);
+                        // Notify main.js via callback
+                        if (this.onShaderRestored) {
+                            this.onShaderRestored(shader.name);
+                        }
+                    } else {
+                        console.error('[Restore] Failed to restore:', result.error);
+                        alert(`Failed to restore: ${result.error}`);
+                    }
+                };
+            }
+
+            shaderInfos.push(shaderInfo);
+
+            // Store the original index (accounting for filtered templates)
+            const originalIndex = allShaderDefs.findIndex(s => s.name === shader.name);
+            indexMapping.push(originalIndex);
+        }
+
+        return { shaderInfos, indexMapping };
     }
 
     /**
@@ -70,11 +256,11 @@ export class AssetManager {
 
     _close() {
         this.dom.modal.style.display = 'none';
-        
+
         // Stop any ongoing thumbnail generation by clearing the queue
         this.queue = [];
         this.isProcessing = false;
-        
+
         // CRITICAL: Stop all active preview animations
         this._stopAllPreviews();
 
@@ -86,13 +272,88 @@ export class AssetManager {
         this.dom.closeButton = newCloseButton; // Update reference
         window.removeEventListener('keydown', this.boundHandleKeyDown);
     }
-    
+
     _stopAllPreviews() {
         // Stop all active preview render loops
         for (const previewControl of this.activePreviews) {
             previewControl.stop();
         }
         this.activePreviews.clear();
+    }
+
+    /**
+     * Creates a new shader from a template.
+     * Prompts user for template selection (if multiple) and shader name.
+     *
+     * @param {Array<object>} allShaderDefs - All shader definitions from the engine
+     * @param {Function} loadShaderContentFn - Function to load shader SQL: (shader) => Promise<string>
+     * @returns {Promise<{success: boolean, shaderName?: string, sql?: string, error?: string}>}
+     */
+    async createNewShader(allShaderDefs, loadShaderContentFn) {
+        // Get available templates
+        const templates = allShaderDefs.filter(s => s.isTemplate);
+
+        if (templates.length === 0) {
+            alert('No templates available for this engine.');
+            return { success: false, error: 'No templates available' };
+        }
+
+        // If multiple templates, let user choose; otherwise use the only one
+        let selectedTemplate = templates[0];
+        if (templates.length > 1) {
+            const templateNames = templates.map(t => t.name).join('\n');
+            const choice = prompt(`Choose a template:\n${templateNames}\n\nEnter template name:`);
+            if (!choice) {
+                return { success: false, error: 'User cancelled' };
+            }
+
+            selectedTemplate = templates.find(t => t.name.toLowerCase() === choice.trim().toLowerCase());
+            if (!selectedTemplate) {
+                alert('Invalid template name. Please try again.');
+                return { success: false, error: 'Invalid template name' };
+            }
+        }
+
+        // Load the template SQL
+        const templateSQL = await loadShaderContentFn(selectedTemplate);
+
+        // Prompt for shader name
+        const shaderName = prompt('Enter a name for your new shader:');
+
+        if (!shaderName || shaderName.trim() === '') {
+            return { success: false, error: 'User cancelled or empty name' };
+        }
+
+        // Check if name already exists
+        const existing = this.shaderStateManager?.getShaderByName(shaderName.trim());
+        if (existing) {
+            alert(`A shader named "${shaderName.trim()}" already exists. Please choose a different name.`);
+            return { success: false, error: 'Shader name already exists' };
+        }
+
+        // Replace the template comment with the new shader name
+        const customizedSQL = templateSQL.replace(/^-- .*Template/m, `-- ${shaderName}`);
+
+        // Save the new shader
+        const result = this.shaderStateManager?.saveShader({
+            name: shaderName.trim(),
+            sql: customizedSQL,
+            type: 'user-created',
+            originalName: null
+        });
+
+        if (result?.success) {
+            console.log('[New Shader] Created from template:', selectedTemplate.name);
+            return {
+                success: true,
+                shaderName: shaderName.trim(),
+                sql: customizedSQL
+            };
+        } else {
+            const error = result?.error || 'Unknown error';
+            alert(`Failed to create shader: ${error}`);
+            return { success: false, error };
+        }
     }
 
     _createAssetRow(shaderInfo, isCurrentlyRunning, onSelect) {
@@ -107,7 +368,7 @@ export class AssetManager {
         thumbnail.className = 'asset-thumbnail';
         thumbnail.style.position = 'relative';
         thumbnail.style.overflow = 'hidden';
-        
+
       // Static background (shows when not hovering or before shader loads)
       const staticBackground = document.createElement('div');
       staticBackground.className = 'asset-thumbnail-static';
@@ -117,11 +378,11 @@ export class AssetManager {
       const previewCanvas = document.createElement('canvas');
       previewCanvas.width = 160;
       previewCanvas.height = 120;
-      
+
       // Append children to thumbnail
       thumbnail.appendChild(staticBackground);
       thumbnail.appendChild(previewCanvas);
-      
+
       // Preview control object
         const previewControl = {
             isRunning: false,
@@ -135,18 +396,18 @@ export class AssetManager {
                 }
             }
         };
-        
+
         // Hover to start live preview
         row.addEventListener('mouseenter', async () => {
             if (previewControl.isRunning) return; // Already running
-            
+
             previewControl.isRunning = true;
             this.activePreviews.add(previewControl);
-            
+
             // Hide static background, show canvas
             staticBackground.style.display = 'none';
             previewCanvas.style.display = 'block';
-            
+
             try {
                 // Prepare shader if not already done
                 if (!previewControl.prepared) {
@@ -154,20 +415,20 @@ export class AssetManager {
                     previewControl.prepared = await this.engine.prepare(shaderInfo.sql);
                     console.log(`[Preview] Shader prepared: ${shaderInfo.name}`);
                 }
-                
+
                 const ctx = previewCanvas.getContext('2d');
                 const startTime = performance.now();
                 let frameCount = 0;
-                
+
                 const render = async () => {
                     // Check if we should still be running
                     if (!previewControl.isRunning) {
                         return;
                     }
-                    
+
                     try {
                         const elapsed = (performance.now() - startTime) / 1000;
-                        
+
                         // Build uniforms
                         const uniforms = this.uniformBuilder.build({
                             width: 160,
@@ -177,25 +438,25 @@ export class AssetManager {
                             mouseY: 0,
                             audio: { isActive: false }
                         });
-                        
+
                         const { table } = await previewControl.prepared.query(uniforms);
-                        
+
                         // Only render if still running (check again after async operation)
                         if (!previewControl.isRunning) {
                             return;
                         }
-                        
+
                         // Only log on first frame
                         if (frameCount === 0) {
                             console.log(`[Preview] ${shaderInfo.name}: ${table.numRows} rows, ${table.numCols} cols`);
                         }
-                        
+
                         // Render to canvas - use same method as static thumbnail generation
                         const imageData = ctx.createImageData(160, 120);
                         const r = table.getChild('r').toArray();
                         const g = table.getChild('g').toArray();
                         const b = table.getChild('b').toArray();
-                        
+
                         for (let i = 0; i < r.length; i++) {
                             const pixelIndex = i * 4;
                             imageData.data[pixelIndex] = r[i] * 255;
@@ -203,10 +464,10 @@ export class AssetManager {
                             imageData.data[pixelIndex + 2] = b[i] * 255;
                             imageData.data[pixelIndex + 3] = 255;
                         }
-                        
+
                         ctx.putImageData(imageData, 0, 0);
                         frameCount++;
-                        
+
                         // Continue loop only if still running
                         if (previewControl.isRunning) {
                             previewControl.animationId = requestAnimationFrame(render);
@@ -216,7 +477,7 @@ export class AssetManager {
                         previewControl.stop();
                     }
                 };
-                
+
                 render();
             } catch (err) {
                 console.error('Failed to start preview:', err);
@@ -225,7 +486,7 @@ export class AssetManager {
                 thumbnail.textContent = 'Preview Failed';
             }
         });
-        
+
         // Stop preview on mouseleave
         row.addEventListener('mouseleave', () => {
             previewControl.stop();
@@ -233,7 +494,7 @@ export class AssetManager {
             previewCanvas.style.display = 'none';
             staticBackground.style.display = 'flex';
         });
-        
+
         // Generate static thumbnail for initial display (render to staticBackground)
         this._enqueueThumbnail(shaderInfo, staticBackground);
 
@@ -244,6 +505,114 @@ export class AssetManager {
         const description = document.createElement('div');
         description.className = 'asset-description';
         description.textContent = shaderInfo.description;
+
+        // Make row position relative for button positioning
+        row.style.position = 'relative';
+
+        // Duplicate button - available for ALL shaders
+        if (shaderInfo.onDuplicate) {
+            const duplicateButton = document.createElement('button');
+            duplicateButton.className = 'asset-duplicate-button';
+            duplicateButton.textContent = 'Duplicate';
+            duplicateButton.style.cssText = 'position: absolute; top: 10px; right: 10px; padding: 5px 12px; background-color: #555; color: #eee; border: 1px solid #666; border-radius: 3px; cursor: pointer; z-index: 10; font-size: 0.9em; transition: transform 0.05s ease-in-out;';
+
+            duplicateButton.addEventListener('mousedown', () => {
+                duplicateButton.style.transform = 'translateY(1px)';
+                duplicateButton.style.backgroundColor = '#4a4a4a';
+            });
+
+            duplicateButton.addEventListener('mouseup', () => {
+                duplicateButton.style.transform = 'translateY(0)';
+                duplicateButton.style.backgroundColor = '#555';
+            });
+
+            duplicateButton.addEventListener('mouseleave', () => {
+                duplicateButton.style.transform = 'translateY(0)';
+                duplicateButton.style.backgroundColor = '#555';
+            });
+
+            duplicateButton.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent shader selection when clicking duplicate
+
+                // Call the onDuplicate callback if provided
+                if (shaderInfo.onDuplicate) {
+                    shaderInfo.onDuplicate(shaderInfo);
+                }
+            });
+
+            row.appendChild(duplicateButton);
+        }
+
+        // Add action buttons for user-created or modified shaders
+        if (shaderInfo.isUserCreated || shaderInfo.isModified) {
+            // Delete button for user-created shaders
+            if (shaderInfo.isUserCreated) {
+                const deleteButton = document.createElement('button');
+                deleteButton.className = 'asset-delete-button';
+                deleteButton.textContent = 'Delete';
+                deleteButton.style.cssText = 'position: absolute; top: 10px; right: 100px; padding: 5px 12px; background-color: #8B0000; color: #eee; border: 1px solid #A52A2A; border-radius: 3px; cursor: pointer; z-index: 10; font-size: 0.9em; transition: transform 0.05s ease-in-out;';
+
+                deleteButton.addEventListener('mousedown', () => {
+                    deleteButton.style.transform = 'translateY(1px)';
+                    deleteButton.style.backgroundColor = '#660000';
+                });
+
+                deleteButton.addEventListener('mouseup', () => {
+                    deleteButton.style.transform = 'translateY(0)';
+                    deleteButton.style.backgroundColor = '#8B0000';
+                });
+
+                deleteButton.addEventListener('mouseleave', () => {
+                    deleteButton.style.transform = 'translateY(0)';
+                    deleteButton.style.backgroundColor = '#8B0000';
+                });
+
+                deleteButton.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent shader selection when clicking delete
+
+                    // Call the onDelete callback if provided
+                    if (shaderInfo.onDelete) {
+                        shaderInfo.onDelete(shaderInfo);
+                    }
+                });
+
+                row.appendChild(deleteButton);
+            }
+
+            // Restore button for modified built-in shaders
+            if (shaderInfo.isModified) {
+                const restoreButton = document.createElement('button');
+                restoreButton.className = 'asset-restore-button';
+                restoreButton.textContent = 'Restore';
+                restoreButton.style.cssText = 'position: absolute; top: 10px; right: 100px; padding: 5px 12px; background-color: #CC8800; color: #eee; border: 1px solid #E6A617; border-radius: 3px; cursor: pointer; z-index: 10; font-size: 0.9em; transition: transform 0.05s ease-in-out;';
+
+                restoreButton.addEventListener('mousedown', () => {
+                    restoreButton.style.transform = 'translateY(1px)';
+                    restoreButton.style.backgroundColor = '#AA7700';
+                });
+
+                restoreButton.addEventListener('mouseup', () => {
+                    restoreButton.style.transform = 'translateY(0)';
+                    restoreButton.style.backgroundColor = '#CC8800';
+                });
+
+                restoreButton.addEventListener('mouseleave', () => {
+                    restoreButton.style.transform = 'translateY(0)';
+                    restoreButton.style.backgroundColor = '#CC8800';
+                });
+
+                restoreButton.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent shader selection when clicking restore
+
+                    // Call the onRestore callback if provided
+                    if (shaderInfo.onRestore) {
+                        shaderInfo.onRestore(shaderInfo);
+                    }
+                });
+
+                row.appendChild(restoreButton);
+            }
+        }
 
         row.append(thumbnail, name, description);
         return row;
@@ -258,13 +627,13 @@ export class AssetManager {
 
     _processQueue() {
         this.isProcessing = true;
-        
+
         const processNextThumbnail = async () => {
             if (this.queue.length === 0) {
                 this.isProcessing = false;
                 return;
             }
-            
+
             const { shaderInfo, thumbnailElement } = this.queue.shift();
             try {
                 console.log(`Generating thumbnail for ${shaderInfo.name}...`);
@@ -279,7 +648,7 @@ export class AssetManager {
                 thumbnailElement.textContent = 'Render Failed';
                 thumbnailElement.style.backgroundColor = '#3a3a3a';
             }
-            
+
             // Process next thumbnail
             if (this.queue.length > 0) {
                 // Use setTimeout for Safari compatibility instead of requestIdleCallback
@@ -288,7 +657,7 @@ export class AssetManager {
                 this.isProcessing = false;
             }
         };
-        
+
         // Safari fallback: use setTimeout instead of requestIdleCallback
         if (typeof requestIdleCallback !== 'undefined') {
             requestIdleCallback(processNextThumbnail);
@@ -301,10 +670,10 @@ export class AssetManager {
         try {
             console.log('Starting thumbnail generation - preparing SQL...');
             const prepared = await this.engine.prepare(sql);
-            
+
             console.log('SQL prepared, building uniforms...');
             const uniformBuilder = new UniformBuilder();
-            
+
             const thumbnailParams = {
                 width: this.thumbnailResolution.width,
                 height: this.thumbnailResolution.height,
@@ -313,10 +682,10 @@ export class AssetManager {
                 mouseY: this.thumbnailResolution.height / 2,
                 audio: { isActive: false } // No audio for thumbnails
             };
-            
+
             // Build pure JS uniforms - engine handles its own translation
             const uniforms = uniformBuilder.build(thumbnailParams);
-            
+
             console.log('Executing query...');
             // Pass to engine - engine handles translation internally
             const queryResult = await prepared.query(uniforms);

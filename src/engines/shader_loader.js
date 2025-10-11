@@ -5,15 +5,24 @@
  */
 export class ShaderLoader {
     /**
-     * @param {Array<string>} fileShaderPaths - An array of paths to .sql shader files.
+     * @param {Array<string|object>} fileShaderPaths - An array of paths to .sql shader files, or objects with {path, isTemplate, etc}.
      * @param {Array<object>} [inlineShaders=[]] - An optional array of inline shader objects.
      */
     constructor(fileShaderPaths, inlineShaders = []) {
-        const loadedShaders = fileShaderPaths.map(path => {
+        const loadedShaders = fileShaderPaths.map(item => {
+            // Support both string paths and objects with metadata
+            let path, isTemplate = false;
+            if (typeof item === 'string') {
+                path = item;
+            } else {
+                path = item.path;
+                isTemplate = item.isTemplate || false;
+            }
+            
             const name = path.split('/').pop().replace('.sql', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             // The SQL will be fetched later when the shader is selected.
             // We store the path so we know where to fetch it from.
-            return { name: `${name}`, path: path, sql: `-- Loading from ${path}...` };
+            return { name: `${name}`, path: path, sql: `-- Loading from ${path}...`, isTemplate: isTemplate };
         });
 
         // Combine the dynamically loaded shaders with any inline shaders.

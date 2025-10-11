@@ -1,4 +1,4 @@
--- "Cosmic Time" - A simple time-based pattern without mouse interaction.
+-- "Template basic" - A simple time-based pattern.
 
 WITH
 uniforms AS (

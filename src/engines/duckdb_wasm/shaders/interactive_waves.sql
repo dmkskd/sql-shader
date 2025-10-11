@@ -1,5 +1,5 @@
 -- "Interactive Waves" - A pattern that reacts to mouse movement and time.
--- MIGRATED: 2025-10-05 from legacy 5-parameter to JSON style
+-- @run: resolution=640x480, zoom=1
 
 WITH
 uniforms AS (

@@ -38,6 +38,8 @@ class ClickHouseEngine {
     const password = storedSettings.password || urlParams.get('ch_password') || '';
     this.dataFormat = storedSettings.dataFormat || 'Arrow';
 
+    console.log('[ClickHouse] Connecting to:', url, 'as user:', username);
+
     if (this.dataFormat === 'Arrow') {
       console.log(`[ClickHouse Engine] Initialized with data format: Arrow (Direct Fetch)`);
     } else {
@@ -62,13 +64,28 @@ class ClickHouseEngine {
     try {
       const response = await this.client.ping();
       if (!response.success) {
-        throw new Error('Ping failed.');
+        console.error('[ClickHouse] Ping failed. Full response:', response);
+        let errorType = '';
+        if (response.error) {
+          console.error('[ClickHouse] Error message:', response.error.message);
+          console.error('[ClickHouse] Error type:', response.error.type);
+          errorType = response.error.type || '';
+        }
+        const typeInfo = errorType ? ` (${errorType})` : '';
+        throw new Error(`Ping failed${typeInfo}`);
       }
       statusCallback('ClickHouse engine ready.');
     } catch (e) {
-      statusCallback(`ClickHouse connection failed: ${e.message}. Is it running at ${url}?`);
-      // Instead of throwing, we return a specific error to be handled by the caller.
-      throw new Error(`Could not connect to ClickHouse at ${url}. Please check the URL and ensure the server is running.`);
+      // Log the full error details to console for debugging
+      console.error('[ClickHouse] Connection error:', e.message);
+      if (e.stack) {
+        console.error('[ClickHouse] Error stack:', e.stack);
+      }
+      
+      // Show a clean message in the status bar with error type if available
+      const errorMsg = `Could not connect to ClickHouse at ${url}: ${e.message}. Check console for details.`;
+      statusCallback(errorMsg);
+      throw new Error(errorMsg);
     }
   }
 

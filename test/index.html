@@ -207,10 +207,6 @@
         // Convention: test folders contain test_*.html or *-test.html files
         
         const CATEGORY_INFO = {
-            'example': {
-                title: 'Example',
-                description: 'Reference examples'
-            },
             'duckdb_wasm': {
                 title: 'DuckDB-WASM',
                 description: 'Browser-only, zero setup'
@@ -219,29 +215,29 @@
                 title: 'ClickHouse',
                 description: 'Server backend (needs Docker)'
             },
-            'parameter_system': {
-                title: 'Parameters',
-                description: 'Shader uniforms (iTime, mouse, etc)'
+            'shader_state': {
+                title: 'Application',
+                description: 'State management and persistence'
             },
             'strudel': {
-                title: 'Strudel',
-                description: 'Audio live coding'
+                title: 'Audio',
+                description: 'Audio live coding with Strudel'
             }
         };
         
         // Automated tests (run with pass/fail)
         const AUTOMATED_TESTS = new Set([
-            'example/test_example.html',
             'duckdb_wasm/test_sql_execution.html',
             'duckdb_wasm/test_duckdb_stats.html',
             'clickhouse/test_sql_execution.html',
             'clickhouse/test_clickhouse_formats.html',
-            'clickhouse/test_flamegraph_grouping.html'
+            'clickhouse/test_flamegraph_grouping.html',
+            'shader_state/test_shader_state_manager.html'
         ]);
 
         function discoverTests() {
             const categories = {};
-            const testDirs = ['example', 'duckdb_wasm', 'clickhouse', 'parameter_system', 'strudel'];
+            const testDirs = ['duckdb_wasm', 'clickhouse', 'shader_state', 'strudel'];
             
             for (const dir of testDirs) {
                 const testFiles = findTestFiles(dir);
@@ -254,11 +250,8 @@
         }
 
         function findTestFiles(dir) {
-            // Hardcoded test list per category
+            // Map of directory to known test files
             const tests = {
-                'example': [
-                    { file: 'test_example.html', name: 'Example' }
-                ],
                 'duckdb_wasm': [
                     { file: 'test_sql_execution.html', name: 'SQL Execution' },
                     { file: 'test_duckdb_stats.html', name: 'DuckDB Stats' }
@@ -270,8 +263,9 @@
                     { file: 'test_opentelemetry.html', name: 'OpenTelemetry' },
                     { file: 'test_opentelemetry_min.html', name: 'OpenTelemetry Min' }
                 ],
-                'parameter_system': [
-                    { file: 'test_parameter_system.html', name: 'Parameter System' }
+                'shader_state': [
+                    { file: 'test_shader_state_manager.html', name: 'Shader State Manager' },
+                    { file: '../parameter_system/test_parameter_system.html', name: 'Parameter System' }
                 ],
                 'strudel': [
                     { file: 'strudel_test.html', name: 'Strudel Integration' },

@@ -1,7 +1,6 @@
 -- DuckDB Raymarching Sphere + Box with Metaball Blending
 -- Returns RGB color values for each pixel
 -- @run: resolution=80x60, zoom=4
--- MIGRATED: 2025-10-05 from legacy 5-parameter to JSON style
 
 WITH
 uniforms AS (

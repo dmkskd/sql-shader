@@ -1,6 +1,7 @@
 import { ShaderLoader } from '../shader_loader.js';
 
 const fileShaderPaths = [
+    { path: './src/engines/duckdb_wasm/shaders/template_basic.sql', isTemplate: true },
     './src/engines/duckdb_wasm/shaders/squircle_2.sql',
     './src/engines/duckdb_wasm/shaders/interactive_waves.sql',
     './src//engines/duckdb_wasm/shaders/cosmic_time.sql',

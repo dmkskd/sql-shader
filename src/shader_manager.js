@@ -7,10 +7,11 @@
 import { dom, updateErrorPanel, updateInitStatus } from './ui_manager.js';
 
 export class ShaderManager {
-    constructor(engine, editor, onHintChange) {
+    constructor(engine, editor, onHintChange, shaderStateManager = null) {
         this.engine = engine;
         this.editor = editor;
         this.onHintChange = onHintChange;
+        this.shaderStateManager = shaderStateManager;
 
         this.prepared = null;
         this.hasCompilationError = false;
@@ -87,9 +88,23 @@ export class ShaderManager {
 
         this.currentShaderIndex = shaderIndex;
 
-        // Asynchronously load the shader content if it's from a file.
-        // The engine is responsible for implementing this loader function.
-        const sql = (await this.engine.loadShaderContent(shader)).trim();
+        // First, try to load a saved version from localStorage
+        let sql = null;
+        let isSavedVersion = false;
+        
+        if (this.shaderStateManager) {
+            const savedShader = this.shaderStateManager.getShaderByName(shader.name);
+            if (savedShader) {
+                sql = savedShader.sql;
+                isSavedVersion = true;
+                console.log(`[ShaderManager] Loading saved version of "${shader.name}"`);
+            }
+        }
+        
+        // If no saved version, load the built-in version from file
+        if (!sql) {
+            sql = (await this.engine.loadShaderContent(shader)).trim();
+        }
 
         // Now that we have the actual SQL, set it in the editor.
         // This also becomes the new "pristine" version to check against for changes.

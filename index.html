@@ -41,6 +41,7 @@
               <button id="compile-button" style="display: none;">Compile</button>
               <button id="play-toggle-button">❚❚ Stop</button>
               <button id="restart-button">↺ Restart</button>
+              <button id="save-shader-button" title="Save current shader to browser storage" disabled>💾 Save</button>
             </div>
             <div id="error-panel"></div>
           </div>
@@ -187,6 +188,9 @@
           <button class="profiler-tab active">Shaders</button>
           <button class="profiler-tab" disabled title="Coming soon!">Inputs</button>
         </div>
+        <div style="padding: 10px 0;">
+          <button id="new-shader-button" title="Create a new shader from template" style="padding: 8px 16px; font-size: 14px;">+ New Shader</button>
+        </div>
         <div id="asset-list-container">
           <!-- Shader items will be dynamically injected here -->
         </div>
@@ -250,6 +254,8 @@
       });
       console.log('[Mermaid] Initialized with maxEdges:', 20000, 'maxTextSize:', 3000000);
     </script>
+    <!-- Load ShaderStateManager before main.js -->
+    <script src="src/shader_state_manager.js"></script>
     <!-- Load the main application logic from an external file -->
     <script type="module" src="src/main.js"></script>
   </body>

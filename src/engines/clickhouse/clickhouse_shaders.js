@@ -1,6 +1,7 @@
 import { ShaderLoader } from '../shader_loader.js';
 
 const fileShaderPaths = [
+    { path: './src/engines/clickhouse/shaders/template_basic.sql', isTemplate: true },
     './src/engines/clickhouse/shaders/squircle_2.sql',
     './src/engines/clickhouse/shaders/interactive_waves.sql',
     './src/engines/clickhouse/shaders/cosmic_time.sql',
