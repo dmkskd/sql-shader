@@ -15,6 +15,9 @@ export const dom = {
     restartButton: document.getElementById('restart-button'),
     playToggleButton: document.getElementById('play-toggle-button'),
     shaderSelectButton: document.getElementById('shader-select-button'),
+    newShaderButton: document.getElementById('new-shader-button'),
+    saveShaderButton: document.getElementById('save-shader-button'),
+    restoreShaderButton: document.getElementById('restore-shader-button'),
     resolutionSelect: document.getElementById('resolution-select'),
     zoomSelect: document.getElementById('zoom-select'),
     profileButton: document.getElementById('profile-button'),
@@ -87,7 +90,27 @@ export const updateStatsPanel = (stats, resolution, audioParams = null) => {
     updateErrorPanel(stats);
 };
 
+// Flag to temporarily block error panel updates (e.g., during save message display)
+let blockErrorPanelUpdates = false;
+let blockErrorPanelTimeout = null;
+
+export const setErrorPanelMessage = (message, isError = false) => {
+    const statusBar = document.getElementById('editor-status-bar');
+    dom.errorPanel.textContent = message;
+    statusBar.style.backgroundColor = isError ? '#5c2828' : '#2a4a3a';
+    
+    // Block updates for 3 seconds
+    blockErrorPanelUpdates = true;
+    if (blockErrorPanelTimeout) clearTimeout(blockErrorPanelTimeout);
+    blockErrorPanelTimeout = setTimeout(() => {
+        blockErrorPanelUpdates = false;
+    }, 3000);
+};
+
 export const updateErrorPanel = (stats) => {
+    // Skip update if blocked (e.g., showing save message)
+    if (blockErrorPanelUpdates) return;
+    
     const statusBar = document.getElementById('editor-status-bar');
     if (stats.errorMessage) {
         if (stats.errorMessage.startsWith('Runtime Error')) {

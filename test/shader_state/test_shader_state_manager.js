@@ -35,6 +35,8 @@ class ShaderStateManagerTests extends BaseTestRunner {
         await this.test13_EngineIsolation();
         await this.test14_ClearAll();
         await this.test15_Validation();
+        await this.test16_DuplicateShaderState();
+        await this.test17_BuiltInModificationTracking();
     }
 
     // Clean up before tests
@@ -465,6 +467,90 @@ class ShaderStateManagerTests extends BaseTestRunner {
         } catch (error) {
             this.addResult('Validate required fields', 'FAIL', null, error.message);
             this.log('✗ Test 15 failed: ' + error.message, 'error');
+        }
+    }
+
+    // Test 16: Duplicate shader and verify state
+    async test16_DuplicateShaderState() {
+        this.log('Test 16: Duplicate shader creates correct state', 'test');
+        try {
+            this.cleanupStorage();
+            const stateManager = new ShaderStateManager('duckdb_wasm');
+
+            // Save original shader
+            const original = stateManager.saveShader({
+                name: 'Original',
+                sql: 'SELECT 1;',
+                type: 'user-created'
+            });
+
+            // Duplicate should create new shader with same SQL
+            const duplicate = stateManager.saveShader({
+                name: 'Original (Copy)',
+                sql: 'SELECT 1;',
+                type: 'user-created'
+            });
+
+            if (!duplicate.success) throw new Error('Duplicate save should succeed');
+            if (duplicate.shader.id === original.shader.id) {
+                throw new Error('Duplicate should have different ID');
+            }
+            if (duplicate.shader.sql !== original.shader.sql) {
+                throw new Error('Duplicate should have same SQL');
+            }
+
+            const allShaders = stateManager.getUserShaders();
+            if (allShaders.length !== 2) {
+                throw new Error(`Expected 2 shaders, got ${allShaders.length}`);
+            }
+
+            this.addResult('Duplicate shader creates correct state', 'PASS');
+            this.log('✓ Duplicate state verified', 'success');
+        } catch (error) {
+            this.addResult('Duplicate shader creates correct state', 'FAIL', null, error.message);
+            this.log('✗ Test 16 failed: ' + error.message, 'error');
+        }
+    }
+
+    // Test 17: Built-in modification tracking
+    async test17_BuiltInModificationTracking() {
+        this.log('Test 17: Track built-in modifications correctly', 'test');
+        try {
+            this.cleanupStorage();
+            const stateManager = new ShaderStateManager('duckdb_wasm');
+
+            // Simulate modifying a built-in shader
+            const result = stateManager.saveShader({
+                name: 'Mandelbrot',
+                sql: 'SELECT modified;',
+                type: 'built-in-modified',
+                originalName: 'Mandelbrot'
+            });
+
+            if (!result.success) throw new Error('Save should succeed');
+
+            // Check if it's tracked as modified
+            const isModified = stateManager.isBuiltInModified('Mandelbrot');
+            if (!isModified) throw new Error('Shader should be marked as modified');
+
+            // Restore should remove the modification
+            const restored = stateManager.restoreBuiltIn('Mandelbrot');
+            if (!restored.success) throw new Error('Restore should succeed');
+
+            const isStillModified = stateManager.isBuiltInModified('Mandelbrot');
+            if (isStillModified) throw new Error('Shader should not be marked as modified after restore');
+
+            this.addResult('Track built-in modifications correctly', 'PASS');
+            this.log('✓ Built-in modification tracking works', 'success');
+        } catch (error) {
+            this.addResult('Track built-in modifications correctly', 'FAIL', null, error.message);
+            this.log('✗ Test 17 failed: ' + error.message, 'error');
+        }
+    }
+}
+
+// Initialize and run tests when page loads
+document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 }

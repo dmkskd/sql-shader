@@ -32,6 +32,52 @@ export class AssetManager {
         this.onShaderDeleted = null;
         this.onShaderRestored = null;
         this.onShaderDuplicated = null;
+
+        // Store parameters for refreshing the list
+        this._currentShaderInfos = null;
+        this._currentShaderIndex = -1;
+        this._currentResolve = null;
+        this._currentReject = null;
+        this._currentIndexMapping = null;
+        
+        // Store parameters needed to rebuild the shader list
+        this._allShaderDefs = null;
+        this._loadShaderContentFn = null;
+        this._extractDescriptionFn = null;
+    }
+
+    /**
+     * Creates a duplicate callback for a shader.
+     * Extracted to avoid code duplication.
+     *
+     * @param {string} shaderName - Original shader name
+     * @param {string} sql - Shader SQL to duplicate
+     * @returns {Function} Async callback function
+     */
+    _createDuplicateCallback(shaderName, sql) {
+        return async (info) => {
+            const newName = prompt(
+                `Enter a name for the duplicate shader:`,
+                `${shaderName} (Copy)`
+            );
+            if (!newName || newName.trim() === '') return;
+
+            const result = this.shaderStateManager.saveShader({
+                name: newName.trim(),
+                sql: sql,
+                type: 'user-created',
+                originalName: null
+            });
+
+            if (result.success) {
+                console.log('[Duplicate] Created duplicate shader:', newName.trim());
+                if (this.onShaderDuplicated) {
+                    this.onShaderDuplicated(newName.trim(), sql);
+                }
+            } else {
+                alert(`Failed to duplicate: ${result.error}`);
+            }
+        };
     }
 
     /**
@@ -44,6 +90,11 @@ export class AssetManager {
      * @returns {Promise<{shaderInfos: Array, indexMapping: Array}>} Shader infos and index mapping
      */
     async buildShaderInfos(allShaderDefs, loadShaderContentFn, extractDescriptionFn) {
+        // Store parameters for potential rebuild
+        this._allShaderDefs = allShaderDefs;
+        this._loadShaderContentFn = loadShaderContentFn;
+        this._extractDescriptionFn = extractDescriptionFn;
+
         // Filter out templates - they're not selectable shaders
         const selectableShaders = allShaderDefs.filter(s => !s.isTemplate);
 
@@ -65,26 +116,7 @@ export class AssetManager {
                         isUserCreated: true,
                         isModified: false,
                         shaderName: userShader.name,
-                        onDuplicate: async (info) => {
-                            const newName = prompt(`Enter a name for the duplicate shader:`, `${userShader.name} (Copy)`);
-                            if (!newName || newName.trim() === '') return;
-
-                            const result = this.shaderStateManager.saveShader({
-                                name: newName.trim(),
-                                sql: userShader.sql,
-                                type: 'user-created',
-                                originalName: null
-                            });
-
-                            if (result.success) {
-                                console.log('[Duplicate] Created duplicate shader:', newName.trim());
-                                if (this.onShaderDuplicated) {
-                                    this.onShaderDuplicated(newName.trim(), userShader.sql);
-                                }
-                            } else {
-                                alert(`Failed to duplicate: ${result.error}`);
-                            }
-                        },
+                        onDuplicate: this._createDuplicateCallback(userShader.name, userShader.sql),
                         onDelete: async (info) => {
                             if (!confirm(`Delete shader "${userShader.name}"?\n\nThis cannot be undone.`)) {
                                 return;
@@ -141,26 +173,7 @@ export class AssetManager {
             };
 
             // Add duplicate callback for all shaders
-            shaderInfo.onDuplicate = async (info) => {
-                const newName = prompt(`Enter a name for the duplicate shader:`, `${shader.name} (Copy)`);
-                if (!newName || newName.trim() === '') return;
-
-                const result = this.shaderStateManager.saveShader({
-                    name: newName.trim(),
-                    sql: sql,
-                    type: 'user-created',
-                    originalName: null
-                });
-
-                if (result.success) {
-                    console.log('[Duplicate] Created duplicate shader:', newName.trim());
-                    if (this.onShaderDuplicated) {
-                        this.onShaderDuplicated(newName.trim(), sql);
-                    }
-                } else {
-                    alert(`Failed to duplicate: ${result.error}`);
-                }
-            };
+            shaderInfo.onDuplicate = this._createDuplicateCallback(shader.name, sql);
 
             // Add delete callback for user-created shaders
             if (isUserCreated) {
@@ -218,20 +231,19 @@ export class AssetManager {
      * Opens the modal and returns a promise that resolves with the selected index.
      * @param {Array<object>} shaderInfos - The list of shaders with names, descriptions, and SQL.
      * @param {number} currentShaderIndex - The index of the currently running shader.
+     * @param {Array<number>} indexMapping - Mapping from display index to original shader index.
      * @returns {Promise<number>} A promise that resolves with the index of the selected shader.
      */
-    open(shaderInfos, currentShaderIndex = -1) {
+    open(shaderInfos, currentShaderIndex = -1, indexMapping = null) {
         return new Promise((resolve, reject) => {
-            this.dom.listContainer.innerHTML = ''; // Clear previous content
+            // Store parameters for potential refresh
+            this._currentShaderInfos = shaderInfos;
+            this._currentShaderIndex = currentShaderIndex;
+            this._currentIndexMapping = indexMapping;
+            this._currentResolve = resolve;
+            this._currentReject = reject;
 
-            shaderInfos.forEach((shaderInfo, index) => {
-                const isCurrentlyRunning = index === currentShaderIndex;
-                const row = this._createAssetRow(shaderInfo, isCurrentlyRunning, () => {
-                    this._close();
-                    resolve(index);
-                });
-                this.dom.listContainer.appendChild(row);
-            });
+            this._renderShaderList();
 
             const handleClose = () => {
                 this._close();
@@ -252,6 +264,70 @@ export class AssetManager {
             window.addEventListener('keydown', this.boundHandleKeyDown);
             this.dom.modal.style.display = 'flex';
         });
+    }
+
+    /**
+     * Renders the shader list in the modal.
+     * Extracted to support refreshing without reopening.
+     */
+    _renderShaderList() {
+        this.dom.listContainer.innerHTML = ''; // Clear previous content
+
+        this._currentShaderInfos.forEach((shaderInfo, index) => {
+            const isCurrentlyRunning = index === this._currentShaderIndex;
+            const row = this._createAssetRow(shaderInfo, isCurrentlyRunning, () => {
+                this._close();
+                this._currentResolve(index);
+            });
+            this.dom.listContainer.appendChild(row);
+        });
+    }
+
+    /**
+     * Refreshes the shader list without closing the modal.
+     * Used after delete/restore operations to update the list.
+     * Rebuilds the entire shader list with fresh callbacks.
+     * Automatically finds the currently displayed shader in the new list.
+     */
+    async refresh() {
+        if (!this._currentResolve) {
+            console.warn('[AssetManager] Cannot refresh: modal not open');
+            return;
+        }
+
+        if (!this._allShaderDefs || !this._loadShaderContentFn || !this._extractDescriptionFn) {
+            console.warn('[AssetManager] Cannot refresh: missing rebuild parameters');
+            return;
+        }
+
+        // Get the name of the currently highlighted shader (if any)
+        let currentShaderName = null;
+        if (this._currentShaderIndex >= 0 && this._currentShaderInfos) {
+            currentShaderName = this._currentShaderInfos[this._currentShaderIndex]?.shaderName;
+        }
+
+        // Rebuild the shader infos with fresh callbacks
+        const { shaderInfos, indexMapping } = await this.buildShaderInfos(
+            this._allShaderDefs,
+            this._loadShaderContentFn,
+            this._extractDescriptionFn
+        );
+
+        // Try to find the same shader in the new list
+        let newCurrentIndex = -1;
+        if (currentShaderName) {
+            for (let i = 0; i < shaderInfos.length; i++) {
+                if (shaderInfos[i].shaderName === currentShaderName) {
+                    newCurrentIndex = i;
+                    break;
+                }
+            }
+        }
+
+        this._currentShaderInfos = shaderInfos;
+        this._currentShaderIndex = newCurrentIndex;
+        this._currentIndexMapping = indexMapping;
+        this._renderShaderList();
     }
 
     _close() {

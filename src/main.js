@@ -244,9 +244,8 @@ const main = async (engine) => {
     };
 
     // Setup callbacks for AssetManager to notify main.js of state changes
-    assetManager.onShaderDeleted = (shaderName) => {
+    assetManager.onShaderDeleted = async (shaderName) => {
         setErrorPanelMessage(`✓ Deleted shader "${shaderName}"`, false);
-        assetManager._close();
 
         // If the deleted shader was currently loaded, switch to first non-template shader
         if (dom.shaderSelectButton.textContent.includes(shaderName)) {
@@ -255,17 +254,22 @@ const main = async (engine) => {
                 handleShaderSelection(firstShaderIndex);
             }
         }
+
+        // Refresh the asset manager (it will rebuild the list internally)
+        await assetManager.refresh();
     };
 
     assetManager.onShaderRestored = async (shaderName) => {
         setErrorPanelMessage(`✓ Restored "${shaderName}" to original`, false);
-        assetManager._close();
 
         // If the restored shader was currently loaded, reload it
         if (dom.shaderSelectButton.textContent.includes(shaderName)) {
             const shaderDefs = shaderManager.getShaders();
             await handleShaderSelection(shaderDefs.findIndex(s => s.name === shaderName));
         }
+
+        // Refresh the asset manager (it will rebuild the list internally)
+        await assetManager.refresh();
     };
 
     assetManager.onShaderDuplicated = (shaderName, sql) => {
@@ -319,7 +323,7 @@ const main = async (engine) => {
                 }
 
                 // Open the manager and wait for a selection
-                const selectedDisplayIndex = await assetManager.open(shaderInfos, currentDisplayIndex);
+                const selectedDisplayIndex = await assetManager.open(shaderInfos, currentDisplayIndex, indexMapping);
 
                 // Map the selected display index back to the original shader index or handle user shader
                 const originalIndex = indexMapping[selectedDisplayIndex];
@@ -687,8 +691,9 @@ const main = async (engine) => {
         shaderManager.pristineSql = currentSQL;
         // Disable save button
         dom.saveShaderButton.disabled = true;
-        // Update shader button to show modified indicator
-        dom.shaderSelectButton.textContent = `🔧 ${shaderName}`;
+        // Update shader button to show correct indicator based on shader type
+        const icon = isBuiltIn ? '🔧' : '📝';
+        dom.shaderSelectButton.textContent = `${icon} ${shaderName}`;
       } else {
         console.error('[Save] Failed to save shader:', result.error);
         // Show error message (blocks error panel updates for 3 seconds)

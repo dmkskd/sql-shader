@@ -8,10 +8,5 @@
     "id": "clickhouse",
     "name": "ClickHouse",
     "requiresConfiguration": true
-  },
-  {
-    "id": "dummy",
-    "name": "Dummy",
-    "requiresConfiguration": false
   }
 ]
