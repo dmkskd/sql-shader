@@ -10,7 +10,9 @@ class DuckDBWasmEngine {
     this.db = null;
     this.connection = null;
     this.profiler = null;
-    this.bundleInfo = 'N/A'; // Will hold the name of the selected bundle file.
+    this.bundleFile = 'N/A'; // Will hold the name of the selected bundle file.
+    this.bundleType = 'N/A'; // Will hold the bundle type (Multi-Threaded/Single-Threaded)
+    this.wasmVersion = 'N/A'; // Will hold the DuckDB-WASM wrapper version
   }
 
   /**
@@ -23,7 +25,12 @@ class DuckDBWasmEngine {
     statusCallback('Initializing DuckDB-WASM...');
     const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
 
+    // Try to get the WASM wrapper version from the package
+    // The version is typically exposed via the bundle configuration
+    this.wasmVersion = duckdb.PACKAGE_VERSION || JSDELIVR_BUNDLES.version || '1.31.0';
+
     // Log the decision-making process for bundle selection.
+    console.log('[DuckDB Engine] DuckDB-WASM version:', this.wasmVersion);
     console.log('[DuckDB Engine] Available bundles:', JSDELIVR_BUNDLES);
     console.log("[DuckDB Engine] Requesting 'mt' (multi-threaded) bundle...");
 
@@ -37,7 +44,9 @@ class DuckDBWasmEngine {
     const filename = bundle.mainWorker.split('/').pop();
 
     // Store the bundle information for display in the stats panel.
-    this.bundleInfo = `${filename} (${isMultiThreaded ? 'Multi-Threaded' : 'Single-Threaded'})`;
+    // Remove .worker.js extension to make it more compact
+    this.bundleFile = filename.replace('.worker.js', '');
+    this.bundleType = isMultiThreaded ? 'Multi-Threaded' : 'Single-Threaded';
     console.log(`[DuckDB Engine] Selected bundle: ${filename}`, bundle);
 
     // To avoid cross-origin issues in local development, create a Blob URL for the worker.
@@ -120,12 +129,7 @@ class DuckDBWasmEngine {
       'iAudio.bass': uniforms.iAudio.bass,
       'iAudio.mid': uniforms.iAudio.mid,
       'iAudio.treble': uniforms.iAudio.treble,
-      'iAudio.isActive': uniforms.iAudio.isActive,
-      // Individual audio parameters for direct access
-      'iAudioVolume': uniforms.iAudioVolume,
-      'iAudioBass': uniforms.iAudioBass,
-      'iAudioMid': uniforms.iAudioMid,
-      'iAudioTreble': uniforms.iAudioTreble
+      'iAudio.isActive': uniforms.iAudio.isActive
     };
     
     // Execute with DuckDB-formatted parameters
@@ -211,11 +215,13 @@ class DuckDBWasmEngine {
         return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${['B', 'KB', 'MB', 'GB'][i]}`;
       };
       return [
-        { label: 'Bundle', value: this.bundleInfo, rawValue: 0, description: "The DuckDB-WASM bundle file currently in use. 'mt' bundles support multi-threading." },
-        { label: 'DB Version', value: version, rawValue: 0, description: "The version of the DuckDB library. From PRAGMA version." },
-        { label: 'Memory Used', value: formatBytes(memoryUsedBytes), rawValue: memoryUsedBytes, description: "Estimated memory usage of the database buffer pool. From PRAGMA database_size." },
-        { label: 'Memory Limit', value: settings['memory_limit'], rawValue: 0, description: "The configured memory limit for the database instance. From duckdb_settings()." },
-        { label: 'Worker Threads', value: settings['threads'].toLocaleString(), rawValue: settings['threads'], description: "The number of active worker threads for parallel execution. From duckdb_settings()." },
+        { label: 'Bundle', value: this.bundleFile, rawValue: 0, description: "The DuckDB-WASM bundle file currently in use (without .worker.js extension)." },
+        { label: 'Type', value: this.bundleType, rawValue: 0, description: "MT = Multi-Threaded (requires cross-origin isolation), ST = Single-Threaded." },
+        { label: 'WASM', value: `v${this.wasmVersion}`, rawValue: 0, description: "The version of the DuckDB-WASM JavaScript wrapper package." },
+        { label: 'DB', value: version, rawValue: 0, description: "The version of the DuckDB core library (C++). From PRAGMA version." },
+        { label: 'Memory', value: formatBytes(memoryUsedBytes), rawValue: memoryUsedBytes, description: "Estimated memory usage of the database buffer pool. From PRAGMA database_size." },
+        { label: 'Limit', value: settings['memory_limit'], rawValue: 0, description: "The configured memory limit for the database instance. From duckdb_settings()." },
+        { label: 'Threads', value: settings['threads'].toLocaleString(), rawValue: settings['threads'], description: "The number of active worker threads for parallel execution. From duckdb_settings()." },
       ];
 
     } catch (e) {

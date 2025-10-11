@@ -1,7 +1,7 @@
 -- "Squircle 2" by @XorDev - Converted to DuckDB-WASM SQL
 -- https://www.shadertoy.com/view/WfySDD
 -- A lightweight shader with rotating squircle distance field and colorful waves
--- @run: resolution=320x240, zoom=2
+-- @run: resolution=640x480, zoom=1
 
 WITH
 uniforms AS (

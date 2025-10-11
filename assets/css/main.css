@@ -543,30 +543,43 @@ header #version-span {
 }
 #engine-stats-container {
   font-family: monospace;
-  font-size: 12px;
+  font-size: 11px;
   color: #ccc;
 }
 #engine-stats-content {
   display: grid;
-  grid-template-columns: repeat(2, minmax(140px, 1fr)); /* Create 2 columns, 30% smaller min-width */
-  grid-template-rows: repeat(2, auto); /* Allow for a max of 2 rows */
+  grid-template-columns: repeat(4, minmax(100px, 1fr)); /* 4 columns for 7 stats */
+  grid-template-rows: repeat(2, auto); /* Max 2 entries per column */
   grid-auto-flow: column; /* Fill columns first */
-  gap: 5px 20px;
+  gap: 3px 15px;
 }
 .engine-stat-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   background-color: #282828;
-  padding: 4px 8px;
+  padding: 3px 6px;
   border-radius: 3px;
   border: 1px solid #444;
+  white-space: nowrap; /* Prevent text wrapping */
+  overflow: hidden; /* Hide overflow */
 }
 .stat-text {
   flex-grow: 1; /* Allow text to take available space */
   display: flex;
   justify-content: space-between; /* Pushes label and value apart */
+  gap: 6px; /* Add gap between label and value */
+  min-width: 0; /* Allow shrinking below content size */
+}
+.stat-label {
+  flex-shrink: 0; /* Don't shrink labels */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat-value {
+  flex-shrink: 0; /* Don't shrink values */
+  font-weight: bold;
 }
 .stat-value {
   font-weight: bold;
