@@ -98,6 +98,39 @@ const main = async (engine) => {
     theme: 'material-darker',
     lineNumbers: true,
     lineWrapping: true,
+    extraKeys: {
+      // Save shader (Ctrl+S / Cmd+S)
+      'Ctrl-S': function(cm) {
+        const saveButton = document.getElementById('save-shader-button');
+        if (saveButton && !saveButton.disabled) {
+          saveButton.click();
+        }
+        return false; // Prevent default browser save
+      },
+      'Cmd-S': function(cm) {
+        const saveButton = document.getElementById('save-shader-button');
+        if (saveButton && !saveButton.disabled) {
+          saveButton.click();
+        }
+        return false; // Prevent default browser save
+      },
+      
+      // Run/Compile shader (Ctrl+Enter / Cmd+Enter)
+      'Ctrl-Enter': function(cm) {
+        const compileButton = document.getElementById('compile-button');
+        if (compileButton && compileButton.style.display !== 'none') {
+          compileButton.click();
+        }
+        return false;
+      },
+      'Cmd-Enter': function(cm) {
+        const compileButton = document.getElementById('compile-button');
+        if (compileButton && compileButton.style.display !== 'none') {
+          compileButton.click();
+        }
+        return false;
+      }
+    }
   });
 
   // Initialize all UI components
