@@ -23,6 +23,8 @@ See [adding a new engine](docs/adding_a_new_engine.md) if you want to integrate 
 *   **Performance Profiling**: profile your query with a simple click.
 *   **Configurable Environment**: adjust resolution, zoom, editor and more to your flow.
 
+https://github.com/user-attachments/assets/2320e576-05a8-4df9-a505-290de2ec25eb
+
 ## Quick Start
 
 This project uses `just` as a command runner to simplify starting the required services (Caddy web server and ClickHouse).
