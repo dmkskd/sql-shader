@@ -31,7 +31,12 @@ The application has been architected to support multiple SQL Engines.
 ## DuckDB-WASM
 [DuckDB](duckdb_wasm.md)
 
+https://github.com/user-attachments/assets/adefdca8-7139-406a-8286-08e09161bddd
+
 ## ClickHouse
+
+https://github.com/user-attachments/assets/2320e576-05a8-4df9-a505-290de2ec25eb
+
 [Clickhouse](clickhouse.md)
 
 
