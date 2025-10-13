@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ClickHouse SQL Execution - SQL Shader</title>
+    <link rel="stylesheet" href="../assets/test-styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ClickHouse SQL Execution Tests</h1>
+            <p>Tests actual shader SQL execution with ClickHouse (localhost:8123, default/sql_shader).</p>
+        </div>
+
+        <div class="test-controls">
+            <button id="runTests" class="primary">RUN TESTS</button>
+            <button id="clearResults">CLEAR RESULTS</button>
+        </div>
+
+        <div class="results">
+            <h3>Test Results</h3>
+            <div id="testOutput"></div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import { TestLogger } from '../assets/test-logger.js';
+        import { ButtonManager } from '../assets/test-utils.js';
+        import { ClickHouseSQLExecutionTestSuite } from './test_sql_execution.js';
+
+        const logger = new TestLogger('testOutput');
+        const suite = new ClickHouseSQLExecutionTestSuite();
+        suite.setLogger(logger);
+
+        const buttonMgr = new ButtonManager(['runTests', 'clearResults']);
+        
+        buttonMgr.get('runTests').addEventListener('click', async () => {
+            buttonMgr.disable();
+            logger.clear();
+            await suite.execute();
+            buttonMgr.enable();
+        });
+        
+        buttonMgr.get('clearResults').addEventListener('click', () => {
+            logger.clear();
+        });
+    </script>
+</body>
+</html>

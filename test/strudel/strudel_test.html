@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Strudel Integration Test</title>
+</head>
+<body>
+    <h1>Strudel Integration Test</h1>
+    <button id="test1">Test 1: Simple s("bd sd")</button>
+    <button id="test2">Test 2: With evaluate function scan</button>
+    <button id="test3">Test 3: Manual function assignment</button>
+    <button id="test4">Test 4: Pattern with .play()</button>
+    <button id="test5">Test 5: Pattern object inspection</button>
+    <button id="test6">Test 6: StrudelInput simulation</button>
+    <button id="stop">Stop All</button>
+    
+    <h2>Debug Output:</h2>
+    <div id="output" style="font-family: monospace; white-space: pre-wrap; background: #f0f0f0; padding: 10px;"></div>
+
+    <script src="https://unpkg.com/@strudel/web@1.0.3"></script>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(msg) {
+            console.log(msg);
+            output.textContent += msg + '\n';
+        }
+        
+        let strudelAPI = {};
+        
+        async function initializeStrudel() {
+            try {
+                log('=== INITIALIZING STRUDEL ===');
+                
+                // Wait for Strudel to load
+                let attempts = 0;
+                while (!window.initStrudel && attempts < 50) {
+                    await new Promise(r => setTimeout(r, 100));
+                    attempts++;
+                }
+                
+                log('window.initStrudel: ' + typeof window.initStrudel);
+                log('window.strudel exists: ' + !!window.strudel);
+                
+                if (window.strudel) {
+                    log('window.strudel properties count: ' + Object.keys(window.strudel).length);
+                    
+                    // Search for key functions
+                    const props = Object.keys(window.strudel);
+                    const functions = props.filter(p => typeof window.strudel[p] === 'function');
+                    log('Functions in window.strudel: ' + functions.slice(0, 10).join(', ') + '...');
+                    
+                    // Look for specific ones
+                    log('window.strudel.s: ' + typeof window.strudel.s);
+                    log('window.strudel.sound: ' + typeof window.strudel.sound);
+                    log('window.strudel.stack: ' + typeof window.strudel.stack);
+                    log('window.strudel.note: ' + typeof window.strudel.note);
+                    log('window.strudel.evaluate: ' + typeof window.strudel.evaluate);
+                    log('window.strudel.hush: ' + typeof window.strudel.hush);
+                }
+                
+                await window.initStrudel({
+                    prebake: () => window.samples('github:tidalcycles/dirt-samples'),
+                });
+                
+                // Store API references
+                strudelAPI.evaluate = window.evaluate || (window.strudel && window.strudel.evaluate);
+                strudelAPI.hush = window.hush || (window.strudel && window.strudel.hush);
+                
+                log('✅ Strudel initialized');
+                log('evaluate function: ' + typeof strudelAPI.evaluate);
+                log('hush function: ' + typeof strudelAPI.hush);
+                log('Using window.evaluate: ' + (strudelAPI.evaluate === window.evaluate));
+                log('Using window.strudel.evaluate: ' + (strudelAPI.evaluate === window.strudel.evaluate));
+                
+            } catch (error) {
+                log('❌ Init failed: ' + error.message);
+            }
+        }
+        
+        document.getElementById('test1').onclick = async () => {
+            try {
+                log('\n=== TEST 1: Simple Pattern ===');
+                const pattern = 's("bd sd")';
+                log('Pattern: ' + pattern);
+                await strudelAPI.evaluate(pattern);
+                log('✅ Test 1 SUCCESS');
+            } catch (error) {
+                log('❌ Test 1 FAILED: ' + error.message);
+            }
+        };
+        
+        document.getElementById('test2').onclick = async () => {
+            try {
+                log('\n=== TEST 2: Function Scan ===');
+                
+                // Scan for ALL evaluate-like functions
+                const allProps = Object.keys(window);
+                const evalFunctions = allProps.filter(p => 
+                    p.includes('eval') && typeof window[p] === 'function'
+                );
+                log('Global eval functions: ' + evalFunctions.join(', '));
+                
+                if (window.strudel) {
+                    const strudelProps = Object.keys(window.strudel);
+                    const strudelEvals = strudelProps.filter(p => 
+                        p.includes('eval') && typeof window.strudel[p] === 'function'
+                    );
+                    log('Strudel eval functions: ' + strudelEvals.join(', '));
+                }
+                
+                const pattern = 's("bd sd")';
+                log('Trying pattern: ' + pattern);
+                await strudelAPI.evaluate(pattern);
+                log('✅ Test 2 SUCCESS');
+            } catch (error) {
+                log('❌ Test 2 FAILED: ' + error.message);
+            }
+        };
+        
+        document.getElementById('test3').onclick = async () => {
+            try {
+                log('\n=== TEST 3: Manual Setup ===');
+                
+                // Try to set up functions manually
+                if (window.strudel) {
+                    window.s = window.strudel.s;
+                    window.sound = window.strudel.sound;
+                    window.stack = window.strudel.stack;
+                    window.note = window.strudel.note;
+                    
+                    log('Set up functions:');
+                    log('  window.s: ' + typeof window.s);
+                    log('  window.sound: ' + typeof window.sound);
+                    log('  window.stack: ' + typeof window.stack);
+                    log('  window.note: ' + typeof window.note);
+                }
+                
+                const pattern = 's("bd sd")';
+                log('Pattern: ' + pattern);
+                await strudelAPI.evaluate(pattern);
+                log('✅ Test 3 SUCCESS');
+            } catch (error) {
+                log('❌ Test 3 FAILED: ' + error.message);
+            }
+        };
+        
+        document.getElementById('test4').onclick = async () => {
+            try {
+                log('\n=== TEST 4: Pattern with .play() ===');
+                const pattern = 's("bd sd").play()';
+                log('Pattern: ' + pattern);
+                await strudelAPI.evaluate(pattern);
+                log('✅ Test 4 SUCCESS');
+            } catch (error) {
+                log('❌ Test 4 FAILED: ' + error.message);
+            }
+        };
+        
+        document.getElementById('test5').onclick = async () => {
+            try {
+                log('\n=== TEST 5: Pattern Object Inspection ===');
+                
+                // Test what evaluate returns
+                const pattern1 = 's("bd sd")';
+                log('Evaluating: ' + pattern1);
+                const result1 = await strudelAPI.evaluate(pattern1);
+                log('Result type: ' + typeof result1);
+                log('Result: ' + result1);
+                
+                if (result1) {
+                    log('Result properties: ' + Object.keys(result1).slice(0, 10).join(', '));
+                    log('Has play method: ' + (typeof result1.play === 'function'));
+                    log('Has stop method: ' + (typeof result1.stop === 'function'));
+                }
+                
+                // Test with .play()
+                const pattern2 = 's("bd sd").play()';
+                log('\nEvaluating with .play(): ' + pattern2);
+                const result2 = await strudelAPI.evaluate(pattern2);
+                log('Result type: ' + typeof result2);
+                log('Result: ' + result2);
+                
+                if (result2) {
+                    log('Result properties: ' + Object.keys(result2).slice(0, 10).join(', '));
+                    log('Has play method: ' + (typeof result2.play === 'function'));
+                    log('Has stop method: ' + (typeof result2.stop === 'function'));
+                }
+                
+                log('✅ Test 5 SUCCESS');
+            } catch (error) {
+                log('❌ Test 5 FAILED: ' + error.message);
+            }
+        };
+        
+        document.getElementById('test6').onclick = async () => {
+            try {
+                log('\n=== TEST 6: StrudelInput Simulation ===');
+                
+                // First try: Direct window.strudel.evaluate (like successful tests)
+                log('Method 1: Direct window.strudel.evaluate');
+                if (window.strudel && window.strudel.hush) {
+                    window.strudel.hush();
+                    log('Called window.strudel.hush()');
+                }
+                
+                const pattern = 's("bd sd")';
+                log('Trying pattern: ' + pattern);
+                
+                try {
+                    await window.strudel.evaluate(pattern);
+                    log('✅ Method 1 SUCCESS - Direct call worked');
+                } catch (directError) {
+                    log('❌ Method 1 FAILED: ' + directError.message);
+                    
+                    // Method 2: Try with proper context binding
+                    log('\nMethod 2: With context binding');
+                    try {
+                        await window.strudel.evaluate.call(window.strudel, pattern);
+                        log('✅ Method 2 SUCCESS - Context binding worked');
+                    } catch (contextError) {
+                        log('❌ Method 2 FAILED: ' + contextError.message);
+                        
+                        // Method 3: Try stored function reference (like test does)
+                        log('\nMethod 3: Stored function reference');
+                        const evaluateFunc = window.evaluate || (window.strudel && window.strudel.evaluate);
+                        await evaluateFunc(pattern);
+                        log('✅ Method 3 SUCCESS - Stored reference worked');
+                    }
+                }
+                
+                log('✅ Test 6 SUCCESS');
+            } catch (error) {
+                log('❌ Test 6 FAILED: ' + error.message);
+            }
+        };
+        
+        document.getElementById('test3').onclick = async () => {
+            try {
+                log('\n=== TEST 3: Manual Setup ===');
+                
+                // Try to set up functions manually
+                if (window.strudel) {
+                    window.s = window.strudel.s;
+                    window.sound = window.strudel.sound;
+                    window.stack = window.strudel.stack;
+                    window.note = window.strudel.note;
+                    
+                    log('Set up functions:');
+                    log('  window.s: ' + typeof window.s);
+                    log('  window.sound: ' + typeof window.sound);
+                    log('  window.stack: ' + typeof window.stack);
+                    log('  window.note: ' + typeof window.note);
+                }
+                
+                const pattern = 's("bd sd")';
+                log('Pattern: ' + pattern);
+                await strudelAPI.evaluate(pattern);
+                log('✅ Test 3 SUCCESS');
+            } catch (error) {
+                log('❌ Test 3 FAILED: ' + error.message);
+            }
+        };
+        
+        document.getElementById('stop').onclick = () => {
+            try {
+                if (strudelAPI.hush) {
+                    strudelAPI.hush();
+                    log('🛑 Stopped');
+                } else {
+                    log('❌ No hush function available');
+                }
+            } catch (error) {
+                log('❌ Stop failed: ' + error.message);
+            }
+        };
+        
+        // Auto-initialize
+        setTimeout(initializeStrudel, 1000);
+    </script>
+</body>
+</html>

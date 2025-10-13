@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Example Test - SQL Shader</title>
+    <link rel="stylesheet" href="../assets/test-styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Example Test</h1>
+            <p>Demonstrates browser + CLI test execution</p>
+        </div>
+
+        <div class="test-controls">
+            <button id="runTests" class="primary">Run Tests</button>
+            <button id="clearResults">Clear Results</button>
+        </div>
+
+        <div class="results">
+            <h3>Test Results</h3>
+            <div id="testOutput">
+                <p style="color: #888;">Click "Run Tests" to start...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { TestLogger } from '../assets/test-logger.js';
+        import { ButtonManager } from '../assets/test-utils.js';
+        import { ExampleTestSuite } from './example-test.js';
+
+        const logger = new TestLogger('testOutput');
+        const suite = new ExampleTestSuite();
+        suite.setLogger(logger);
+
+        const buttonMgr = new ButtonManager(['runTests', 'clearResults']);
+        
+        buttonMgr.get('runTests').addEventListener('click', async () => {
+            logger.clear();
+            logger.log('Starting example tests...');
+            
+            const results = await suite.execute();
+            
+            logger.log(`\nTest Summary:`, 'info');
+            logger.log(`  Total: ${results.summary.total}`, 'info');
+            logger.log(`  Passed: ${results.summary.passed}`, 'success');
+            logger.log(`  Failed: ${results.summary.failed}`, results.summary.failed > 0 ? 'error' : 'info');
+        });
+
+        buttonMgr.get('clearResults').addEventListener('click', () => {
+            logger.clear();
+            logger.log('Example test ready. Click "Run Tests" to start...', 'info');
+        });
+    </script>
+</body>
+</html>

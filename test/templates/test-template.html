@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Template - SQL Shader</title>
+    <link rel="stylesheet" href="../assets/test-styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Test Template</h1>
+            <p>Description of what this test suite validates</p>
+        </div>
+
+        <!-- Optional: Settings Panel (remove if not needed) -->
+        <div class="settings" id="settings" style="display: none;">
+            <h3>Configuration</h3>
+            <label for="setting1">Setting 1:</label>
+            <input type="text" id="setting1" placeholder="Enter value...">
+            
+            <label for="setting2">Setting 2:</label>
+            <input type="text" id="setting2" placeholder="Enter value...">
+            
+            <div style="margin-top: 15px;">
+                <button id="saveSettings">Save Settings</button>
+            </div>
+        </div>
+
+        <div class="test-controls">
+            <button id="runAllTests" class="primary">Run All Tests</button>
+            <button id="runSingleTest">Run Single Test</button>
+            <button id="clearResults">Clear Results</button>
+        </div>
+
+        <div class="results">
+            <h3>Test Results</h3>
+            <div id="testOutput">
+                <p style="color: #888;">Click "Run All Tests" to start...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { TestLogger } from '../assets/test-logger.js';
+        import { ButtonManager, SettingsManager, TestResultBuilder } from '../assets/test-utils.js';
+
+        // Initialize infrastructure
+        const logger = new TestLogger('testOutput');
+        const buttons = new ButtonManager(['runAllTests', 'runSingleTest', 'clearResults', 'saveSettings']);
+        const settings = new SettingsManager('template-test', {
+            setting1: 'default-value-1',
+            setting2: 'default-value-2'
+        });
+
+        // Load settings on startup
+        const settingInputs = {
+            setting1: document.getElementById('setting1'),
+            setting2: document.getElementById('setting2')
+        };
+        settings.loadIntoForm(settingInputs);
+
+        // Save settings handler
+        buttons.get('saveSettings')?.addEventListener('click', () => {
+            settings.saveFromForm(settingInputs);
+            logger.success('Settings saved');
+        });
+
+        // Clear results handler
+        buttons.get('clearResults').addEventListener('click', () => {
+            logger.clear();
+        });
+
+        // Run all tests
+        buttons.get('runAllTests').addEventListener('click', async () => {
+            buttons.disable();
+            logger.clear();
+            
+            const results = new TestResultBuilder();
+            results.start();
+
+            try {
+                logger.info('Starting test suite...');
+
+                // Test 1: Example passing test
+                logger.test('Running Test 1: Basic validation');
+                try {
+                    // Your test logic here
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate async work
+                    const passed = true; // Replace with actual test logic
+                    
+                    if (passed) {
+                        results.pass('Basic validation', 'All checks passed');
+                        logger.success('✓ Test 1 passed');
+                    } else {
+                        throw new Error('Validation failed');
+                    }
+                } catch (error) {
+                    results.fail('Basic validation', error.message);
+                    logger.error('✗ Test 1 failed: ' + error.message);
+                }
+
+                // Test 2: Example with data
+                logger.test('Running Test 2: Data processing');
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    const data = { processed: true, count: 42 };
+                    
+                    results.pass('Data processing', `Processed ${data.count} items`);
+                    logger.success('✓ Test 2 passed');
+                } catch (error) {
+                    results.fail('Data processing', error.message);
+                    logger.error('✗ Test 2 failed: ' + error.message);
+                }
+
+                // Test 3: Example failing test (comment out in production)
+                logger.test('Running Test 3: Error handling');
+                try {
+                    // Intentional failure for demo
+                    // throw new Error('Simulated error');
+                    results.pass('Error handling', 'Error handling works correctly');
+                    logger.success('✓ Test 3 passed');
+                } catch (error) {
+                    results.fail('Error handling', error.message);
+                    logger.error('✗ Test 3 failed: ' + error.message);
+                }
+
+                // Build and display summary
+                const finalResults = results.build();
+                logger.summary(`\nCompleted: ${finalResults.passed}/${finalResults.total} tests passed (${(finalResults.duration).toFixed(2)}ms)`);
+                logger.showSummary(finalResults);
+
+            } catch (error) {
+                logger.error('Test suite error: ' + error.message);
+            } finally {
+                buttons.enable();
+            }
+        });
+
+        // Run single test example
+        buttons.get('runSingleTest').addEventListener('click', async () => {
+            buttons.disable();
+            logger.info('Running single test...');
+
+            try {
+                // Single test logic
+                await new Promise(resolve => setTimeout(resolve, 300));
+                logger.success('Single test completed');
+            } catch (error) {
+                logger.error('Single test failed: ' + error.message);
+            } finally {
+                buttons.enable();
+            }
+        });
+
+        // Initialization
+        logger.info('Test suite ready');
+    </script>
+</body>
+</html>

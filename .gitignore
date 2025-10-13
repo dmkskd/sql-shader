@@ -1,0 +1,30 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Build artifacts or temporary files
+dist/
+build/
+*.log
+
+# Environment variables
+.env
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python

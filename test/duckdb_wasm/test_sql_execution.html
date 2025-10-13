@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DuckDB-WASM SQL Execution Tests</title>
+    <link rel="stylesheet" href="../assets/test-styles.css">
+    <script src="../../src/coi-serviceworker.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>DuckDB-WASM SQL Execution Tests</h1>
+            <p>Real shader SQL execution with DuckDB-WASM (legacy + JSON parameters)</p>
+        </div>
+
+        <div class="test-controls">
+            <button id="run" class="primary">Run Tests</button>
+            <button id="clear">Clear Results</button>
+        </div>
+
+        <div class="results">
+            <h3>Test Results</h3>
+            <div id="results-output">
+                <p style="color: #888;">Click "Run Tests" to start...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { TestLogger } from '../assets/test-logger.js';
+        import { ButtonManager } from '../assets/test-utils.js';
+        import { DuckDBSQLExecutionTestSuite } from './test_sql_execution.js';
+
+        const logger = new TestLogger('results-output');
+        const buttonMgr = new ButtonManager(['run', 'clear']);
+        const suite = new DuckDBSQLExecutionTestSuite();
+        suite.setLogger(logger);
+
+        buttonMgr.get('run').addEventListener('click', async () => {
+            logger.clear();
+            logger.log('Starting DuckDB-WASM SQL Execution Tests...');
+            
+            const results = await suite.execute();
+            
+            logger.log(`\nTest Summary:`, 'info');
+            logger.log(`  Total: ${results.summary.total}`, 'info');
+            logger.log(`  Passed: ${results.summary.passed}`, 'success');
+            logger.log(`  Failed: ${results.summary.failed}`, results.summary.failed > 0 ? 'error' : 'info');
+        });
+
+        buttonMgr.get('clear').addEventListener('click', () => {
+            logger.clear();
+        });
+    </script>
+</body>
+</html>

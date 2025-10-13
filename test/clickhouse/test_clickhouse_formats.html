@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ClickHouse Data Formats - SQL Shader</title>
+    <link rel="stylesheet" href="../assets/test-styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>ClickHouse Data Format Tests</h1>
+            <p>Tests different ClickHouse data format strategies (JSONEachRow, Arrow, ArrowStream) for performance and reliability.</p>
+        </div>
+
+        <div class="test-controls">
+            <button id="runTests" class="primary">RUN TESTS</button>
+            <button id="clearResults">CLEAR RESULTS</button>
+        </div>
+
+        <div class="results">
+            <h3>Test Results</h3>
+            <div id="testOutput"></div>
+        </div>
+
+        <div class="summary" id="summary" style="display: none;">
+            <h3>Performance Summary</h3>
+            <table id="performanceTable">
+                <thead>
+                    <tr>
+                        <th>Strategy</th>
+                        <th>Status</th>
+                        <th>Duration (ms)</th>
+                    </tr>
+                </thead>
+                <tbody id="performanceTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm",
+            "@apache/arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@latest/+esm"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import { TestLogger } from '../assets/test-logger.js';
+        import { ButtonManager, SettingsManager } from '../assets/test-utils.js';
+        import { ClickHouseFormatsTestSuite } from './test_clickhouse_formats.js';
+
+        const logger = new TestLogger('testOutput');
+        const suite = new ClickHouseFormatsTestSuite();
+        suite.setLogger(logger);
+
+        const buttonMgr = new ButtonManager(['runTests', 'clearResults']);
+        
+        // Run Tests button
+        buttonMgr.get('runTests').addEventListener('click', async () => {
+            buttonMgr.disable();
+            logger.clear();
+            document.getElementById('summary').style.display = 'none';
+            document.getElementById('performanceTableBody').innerHTML = '';
+            
+            await suite.execute();
+            
+            // Display performance summary table
+            const summary = suite.getPerformanceSummary();
+            if (summary && summary.length > 0) {
+                const tbody = document.getElementById('performanceTableBody');
+                tbody.innerHTML = '';
+                summary.forEach(result => {
+                    const row = tbody.insertRow();
+                    const statusClass = result.status === 'SUCCESS' ? 'pass' : 'fail';
+                    row.innerHTML = `
+                        <td>${result.name}</td>
+                        <td class="${statusClass}">${result.status}${result.error ? ': ' + result.error : ''}</td>
+                        <td>${result.duration}ms</td>
+                    `;
+                });
+                document.getElementById('summary').style.display = 'block';
+            }
+            
+            buttonMgr.enable();
+        });
+        
+        // Clear Results button
+        buttonMgr.get('clearResults').addEventListener('click', () => {
+            logger.clear();
+            document.getElementById('summary').style.display = 'none';
+            document.getElementById('performanceTableBody').innerHTML = '';
+        });
+    </script>
+</body>
+</html>

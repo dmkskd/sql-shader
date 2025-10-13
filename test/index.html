@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Shader Test Suite</title>
+    <link rel="stylesheet" href="assets/test-styles.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            color: #00d9ff;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+        }
+        
+        .subtitle {
+            color: #888;
+            font-size: 1.1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+        
+        .stat-card {
+            flex: 1;
+            min-width: 200px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #00d9ff;
+        }
+        
+        .stat-label {
+            color: #888;
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+        
+        .test-category {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .test-category h2 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .test-category h2::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 24px;
+            background: linear-gradient(180deg, #00d9ff 0%, #0099ff 100%);
+            border-radius: 2px;
+        }
+        
+        .category-description {
+            color: #aaa;
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+        }
+        
+        .test-link {
+            display: block;
+            padding: 16px 20px;
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            border-radius: 8px;
+            text-decoration: none;
+            color: #00d9ff;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .test-link::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 217, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .test-link:hover::before {
+            left: 100%;
+        }
+        
+        .test-link:hover {
+            background: rgba(0, 217, 255, 0.2);
+            border-color: #00d9ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+        }
+        
+        .test-title {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+        
+        .test-desc {
+            font-size: 0.85rem;
+            color: #999;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        
+        .badge-automated { background: #4caf50; color: white; }
+        .badge-legacy { background: #9c27b0; color: white; }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+        
+        .empty-category {
+            color: #666;
+            font-style: italic;
+            padding: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 SQL Shader Test Suite</h1>
+        <p class="subtitle">Browser test index - Run `just test` for CLI</p>
+        
+        <div style="background: rgba(255, 152, 0, 0.1); border: 1px solid rgba(255, 152, 0, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 24px; color: #ffb74d; font-size: 0.9rem;">
+            ⚠️ <strong>WIP:</strong> Test list is hardcoded (browser can't read directories). Some tests not yet migrated to new infrastructure.
+        </div>
+        
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="total-tests">-</div>
+                <div class="stat-label">Total Tests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="total-categories">-</div>
+                <div class="stat-label">Categories</div>
+            </div>
+        </div>
+
+        <div id="test-categories">
+            <div class="loading">🔍 Discovering tests...</div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Auto-discover tests by scanning for HTML files in test subdirectories
+        // Convention: test folders contain test_*.html or *-test.html files
+        
+        const CATEGORY_INFO = {
+            'duckdb_wasm': {
+                title: 'DuckDB-WASM',
+                description: 'Browser-only, zero setup'
+            },
+            'clickhouse': {
+                title: 'ClickHouse',
+                description: 'Server backend (needs Docker)'
+            },
+            'shader_state': {
+                title: 'Application',
+                description: 'State management and persistence'
+            },
+            'strudel': {
+                title: 'Audio',
+                description: 'Audio live coding with Strudel'
+            }
+        };
+        
+        // Automated tests (run with pass/fail)
+        const AUTOMATED_TESTS = new Set([
+            'duckdb_wasm/test_sql_execution.html',
+            'duckdb_wasm/test_duckdb_stats.html',
+            'clickhouse/test_sql_execution.html',
+            'clickhouse/test_clickhouse_formats.html',
+            'clickhouse/test_flamegraph_grouping.html',
+            'shader_state/test_shader_state_manager.html'
+        ]);
+
+        function discoverTests() {
+            const categories = {};
+            const testDirs = ['duckdb_wasm', 'clickhouse', 'shader_state', 'strudel'];
+            
+            for (const dir of testDirs) {
+                const testFiles = findTestFiles(dir);
+                if (testFiles.length > 0) {
+                    categories[dir] = testFiles;
+                }
+            }
+            
+            return categories;
+        }
+
+        function findTestFiles(dir) {
+            // Map of directory to known test files
+            const tests = {
+                'duckdb_wasm': [
+                    { file: 'test_sql_execution.html', name: 'SQL Execution' },
+                    { file: 'test_duckdb_stats.html', name: 'DuckDB Stats' }
+                ],
+                'clickhouse': [
+                    { file: 'test_sql_execution.html', name: 'SQL Execution' },
+                    { file: 'test_clickhouse_formats.html', name: 'ClickHouse Formats' },
+                    { file: 'test_flamegraph_grouping.html', name: 'Flamegraph Grouping' },
+                    { file: 'test_opentelemetry.html', name: 'OpenTelemetry' },
+                    { file: 'test_opentelemetry_min.html', name: 'OpenTelemetry Min' }
+                ],
+                'shader_state': [
+                    { file: 'test_shader_state_manager.html', name: 'Shader State Manager' },
+                    { file: '../parameter_system/test_parameter_system.html', name: 'Parameter System' }
+                ],
+                'strudel': [
+                    { file: 'strudel_test.html', name: 'Strudel Integration' },
+                    { file: 'test_strudel_multiline.html', name: 'Strudel Multiline' }
+                ]
+            };
+            
+            return (tests[dir] || []).map(t => ({
+                file: t.file,
+                path: `${dir}/${t.file}`,
+                name: t.name
+            }));
+        }
+
+        function fileToTitle(filename) {
+            // Convert test_sql_execution.html -> SQL Execution
+            return filename
+                .replace(/\.html$/, '')
+                .replace(/^test_/, '')
+                .replace(/_/g, ' ')
+                .split(' ')
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(' ');
+        }
+
+        function renderTests(categories) {
+            const container = document.getElementById('test-categories');
+            container.innerHTML = '';
+            
+            let totalTests = 0;
+            const categoryCount = Object.keys(categories).length;
+            
+            for (const [category, tests] of Object.entries(categories)) {
+                totalTests += tests.length;
+                
+                const info = CATEGORY_INFO[category] || {
+                    title: category.charAt(0).toUpperCase() + category.slice(1),
+                    description: `Tests in ${category} directory`
+                };
+                
+                const categoryDiv = document.createElement('div');
+                categoryDiv.className = 'test-category';
+                
+                const isAutomated = (testPath) => AUTOMATED_TESTS.has(testPath);
+                
+                categoryDiv.innerHTML = `
+                    <h2>${info.title}</h2>
+                    <p class="category-description">${info.description}</p>
+                    <div class="test-grid">
+                        ${tests.map(test => {
+                            const automated = isAutomated(test.path);
+                            const badge = automated 
+                                ? '<span class="badge badge-automated">Automated</span>'
+                                : '<span class="badge badge-legacy">Manual</span>';
+                            return `
+                                <a href="${test.path}" class="test-link">
+                                    <div class="test-title">${test.name} ${badge}</div>
+                                    <div class="test-desc">${test.path}</div>
+                                </a>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+                
+                container.appendChild(categoryDiv);
+            }
+            
+            // Update stats
+            document.getElementById('total-tests').textContent = totalTests;
+            document.getElementById('total-categories').textContent = categoryCount;
+            
+            if (totalTests === 0) {
+                container.innerHTML = '<div class="empty-category">No tests discovered</div>';
+            }
+        }
+
+        // Load tests on page load
+        const categories = discoverTests();
+        console.log('Test categories:', categories);
+        renderTests(categories);
+    </script>
+</body>
+</html>

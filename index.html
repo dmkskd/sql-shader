@@ -1,0 +1,263 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>SQL Shader</title>
+    <!-- CodeMirror for syntax highlighting (from CDN) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+    <!-- FlameGraph CSS -->
+    <!-- Use CDN CSS for d3-flame-graph instead of local modified version -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/d3-flame-graph@4.1.3/dist/d3-flamegraph.css">
+    <link
+      href="https://unpkg.com/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="assets/vendor/style.css" />
+    <link rel="stylesheet" href="assets/css/main.css" />
+  </head>
+  <body>
+    <div class="main-container">
+      <header>
+        <span>SQL Shader <span id="version-span"></span></span>
+        <div class="engine-selector">
+          <label for="engine-select">Engine:</label>
+          <select id="engine-select">
+            <!-- Options will be dynamically populated by main.js -->
+          </select>
+          <button id="settings-button">⚙️ Settings</button>
+          <button id="help-indicator" title="Toggle help mode">❓ Help <span id="help-shortcut"></span></button>
+          <button id="clear-state-button" title="Clear all saved settings and shaders from your browser's local storage">⚠️ Clear State</button>
+        </div>
+      </header>
+      <div class="editor-pane">
+        <canvas id="shader-canvas" width="640" height="480"></canvas>
+        <div id="resize-handle"></div>
+        <div class="right-pane">
+          <textarea id="sql-editor" spellcheck="false"></textarea>
+          <div id="editor-status-bar">
+            <div id="editor-actions">
+              <button id="compile-button" style="display: none;" title="Compile shader (Ctrl+Enter / Cmd+Enter)">Compile</button>
+              <button id="play-toggle-button" title="Stop/Resume shader execution">❚❚ Stop</button>
+              <button id="restart-button" title="Restart shader from time 0">↺ Restart</button>
+              <button id="save-shader-button" title="Save current shader to browser storage (Ctrl+S / Cmd+S)" disabled>💾 Save</button>
+            </div>
+            <div id="error-panel"></div>
+          </div>
+        </div>
+      </div>
+      <div id="controls-bar">
+        <div class="control-group">
+          <button id="shader-select-button" title="Open Asset Manager to select a shader"></button>
+          <select id="resolution-select"></select>
+          <select id="zoom-select"></select>
+        </div>
+        <div class="control-group">
+          <button id="profile-button" title="Run the query once and log detailed performance profile to the console">Profile</button>
+          <button id="toggle-perf-button" title="Show/Hide Performance Stats">Stats: <span class="perf-status perf-status-on">ON</span></button>
+        </div>
+        <div class="control-group">
+          <button id="toggle-editor-button" title="Toggle SQL Editor Visibility">Editor: <span class="perf-status perf-status-on">ON</span></button>
+          <button id="overlay-toggle-button" title="Toggle Editor Overlay Mode">Overlay: <span class="perf-status perf-status-off">OFF</span></button>
+          <input type="range" id="overlay-opacity-slider" min="0.1" max="1" step="0.05" value="0.85" style="display: none;" title="Overlay Opacity">
+          <button id="autocompile-toggle-button" title="Toggle autocompilation on editor change">Autocompile: <span class="perf-status perf-status-on">ON</span></button>
+        </div>
+        <div class="control-group">
+          <button id="audio-pattern-button" title="Toggle Audio Pattern">Audio: <span class="perf-status perf-status-off">OFF</span></button>
+          <select id="effect-select" title="Select an editor effect">
+            <option value="none">Effect: None</option>
+            <option value="crt-effect">CRT</option>
+            <option value="vhs-effect">VHS</option>
+            <option value="terminal-effect">Terminal</option>
+          </select>
+          <button id="share-button" title="Generate a shareable link for the current shader and settings">🔗 Share</button>
+        </div>
+      </div>
+      <div id="stats-panel">Initializing...</div>
+      <!-- New Performance Monitoring Bar -->
+      <div id="performance-bar">
+        <div id="pipeline-stats-container" class="perf-section">
+          <div class="perf-section-title">Rendering Pipeline</div>
+          <canvas id="timing-chart-canvas" width="315" height="60"></canvas>
+        </div>
+        <div id="engine-stats-container" class="perf-section">
+          <div class="perf-section-title" id="engine-stats-title">Engine Stats</div>
+          <div id="engine-stats-content">Loading...</div>
+        </div>
+        <div id="cpu-core-stats-container" class="perf-section" style="display: none;">
+          <div class="perf-section-title" id="cpu-core-stats-title">Per-Core CPU</div>
+          <div class="cpu-core-chart-wrapper">
+            <canvas id="cpu-core-chart-canvas" height="42"></canvas>
+            <div id="cpu-core-chart-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="profile-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content">
+        <span class="modal-close-button" title="Close">&times;</span>
+        <h2>Query Profile</h2>
+        <!-- 
+          This single container will be populated dynamically by the active engine.
+          This allows each engine to define its own profiler UI without polluting the global scope.
+        -->
+        <div id="profiler-content-container">
+          <!-- Engine-specific content will be injected here -->
+        </div>
+
+        <!-- Tooltips are kept here as they are global overlays -->
+        <div id="graph-tooltip" style="position: fixed; display: none; background: #2a2a2a; padding: 10px; border: 1px solid #777; border-radius: 3px; pointer-events: none; z-index: 1002; max-width: 400px; font-family: monospace; font-size: 12px;"></div>
+        <!-- The tooltip is wrapped in a container so we can easily destroy and recreate it to prevent state bugs -->
+        <div id="flamegraph-tooltip-container">
+          <div id="flamegraph-tooltip" class="d3-flame-graph-tip" style="position: fixed; z-index: 1001; display: none;"></div>
+        </div>
+      </div>
+    </div>
+    <div id="settings-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content">
+        <span class="modal-close-button" title="Close">&times;</span>
+        <h2>Settings</h2>
+        <div id="general-settings">
+          <h3>General</h3>
+          <div class="settings-form-group">
+            <label for="stats-poll-interval">Stats Poll Interval (ms)</label>
+            <input type="number" id="stats-poll-interval" value="250" min="100" step="50">
+            <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">
+              How often to refresh the engine performance stats. Lower values are more real-time but may have a slight overhead.
+            </p>
+          </div>
+          <div class="settings-form-group">
+            <label for="autocompile-delay">Autocompile Delay (ms)</label>
+            <input type="number" id="autocompile-delay" value="300" min="0" step="50">
+            <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">
+              How long to wait after typing stops before automatically compiling the shader. Set to 0 for instant compilation.
+            </p>
+          </div>
+        </div>
+        <hr>
+        <div id="engine-specific-settings">
+          <!-- Engine-specific settings will be dynamically injected here -->
+        </div>
+        <button id="save-settings-button">Save and Reload</button>
+      </div>
+    </div>
+    <div id="clear-state-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="width: auto; height: auto; max-width: 500px;">
+        <span class="modal-close-button" title="Close">&times;</span>
+        <h2>Confirm Clear State</h2>
+        <p style="font-size: 1.1em; line-height: 1.5;">Are you sure you want to clear all saved shaders and settings from your browser's local storage? This action cannot be undone.</p>
+        <br>
+        <button id="confirm-clear-state-button" style="background-color: #a04040; color: #fff;">Yes, Clear Everything</button>
+        <button id="cancel-clear-state-button">Cancel</button>
+      </div>
+    </div>
+    <div id="share-modal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="width: auto; height: auto; max-width: 600px;">
+        <span class="modal-close-button" title="Close">&times;</span>
+        <h2>Share Link</h2>
+        <p>Use this link to share your current shader and settings:</p>
+        <input type="text" id="share-link-input" readonly>
+        <button id="copy-link-button">Copy to Clipboard</button>
+      </div>
+    </div>
+    <!-- Unsaved Changes Confirmation Modal -->
+    <div id="unsaved-changes-modal" class="modal-overlay" style="display: none; z-index: 1001;">
+        <div class="modal-content" style="width: auto; height: auto; max-width: 450px;">
+            <div class="modal-header" style="padding-bottom: 10px;">
+                <h3 style="margin-bottom: 0;">Unsaved Changes</h3>
+            </div>
+            <div class="modal-body">
+                <p>You have unsaved changes in the editor. What would you like to do?</p>
+            </div>
+            <!-- Use flex-end to group buttons to the right, which is a common UX pattern. -->
+            <div class="modal-footer" style="justify-content: flex-end; padding-top: 15px; gap: 10px;">
+                <!-- "Cancel" is the secondary action. -->
+                <button id="unsaved-changes-cancel-button" class="button-secondary">Cancel</button>
+                <!-- "Discard" is the primary, more destructive action. Style it to stand out. -->
+                <button id="unsaved-changes-discard-button" class="button-destructive">⚠️ Discard Changes</button>
+            </div>
+        </div>
+    </div>
+    <!-- Asset Manager Modal -->
+    <div id="asset-manager-modal" class="modal-overlay" style="display: none; z-index: 1000;">
+      <div class="modal-content">
+        <span class="modal-close-button" title="Close">&times;</span>
+        <h2>Asset Manager</h2>
+        <div class="profiler-tabs">
+          <button class="profiler-tab active">Shaders</button>
+          <button class="profiler-tab" disabled title="Coming soon!">Inputs</button>
+        </div>
+        <div style="padding: 10px 0;">
+          <button id="new-shader-button" title="Create a new shader from template" style="padding: 8px 16px; font-size: 14px;">+ New Shader</button>
+        </div>
+        <div id="asset-list-container">
+          <!-- Shader items will be dynamically injected here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Strudel Web Library for live coding -->
+    <script src="https://unpkg.com/@strudel/web@1.0.3" 
+            onload="console.log('✅ Strudel script loaded successfully')"
+            onerror="console.error('❌ Failed to load Strudel script')"></script>
+    
+    <!-- Debug Strudel after load -->
+    <script>
+      setTimeout(() => {
+        console.log('🔍 Strudel debug after load:');
+        console.log('window.initStrudel:', typeof window.initStrudel);
+        console.log('window.strudel:', window.strudel);
+        if (window.strudel) {
+          console.log('Strudel properties:', Object.keys(window.strudel));
+        }
+      }, 1000);
+    </script>
+    
+    <!-- 
+      An import map allows us to use "bare" module specifiers like in Node.js.
+      This is the modern way to resolve modules in the browser.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.30.0/+esm",
+          "@apache/arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@latest/+esm",
+          "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm",
+          "mermaid": "https://esm.sh/mermaid@10",
+          "d3": "https://esm.sh/d3@7",
+          "d3-flame-graph": "https://esm.sh/d3-flame-graph@4.1.3",
+          "duckdb-explain-visualizer": "./assets/vendor/duckdb-explain-visualizer.es.mjs",
+          "vue": "./assets/vendor/vue.esm-browser.prod-3.2.45.mjs"
+        }
+      }
+    </script>
+    <!--
+      Initialize Mermaid immediately after the import map is defined.
+      This ensures that the configuration is set before any other module
+      (like main.js) can import and use the library, preventing race conditions.
+    -->
+    <script type="module">
+      import mermaid from 'mermaid';
+      // The `maxEdges` and `maxTextSize` are secure configs that must be set
+      // this way, before any other rendering calls are made.
+      mermaid.initialize({
+        securityLevel: 'loose',
+        theme: 'dark',
+        startOnLoad: false,
+        maxTextSize: 3000000,  // Increased limit for large graph definitions (secure config)
+        maxEdges: 20000,       // Increased limit for the number of edges in a graph (secure config)
+        flowchart: {
+          htmlLabels: true,
+          curve: 'basis'
+        }
+      });
+      console.log('[Mermaid] Initialized with maxEdges:', 20000, 'maxTextSize:', 3000000);
+    </script>
+    <!-- Load ShaderStateManager before main.js -->
+    <script src="src/shader_state_manager.js"></script>
+    <!-- Load the main application logic from an external file -->
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

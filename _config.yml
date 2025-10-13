@@ -1,0 +1,7 @@
+# GitHub Pages configuration
+# Disable Jekyll processing to avoid MIME type issues with ES modules
+include:
+  - .nojekyll
+
+# Keep Jekyll from processing JS files
+plugins: []

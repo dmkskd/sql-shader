@@ -1,0 +1,11 @@
+:8000
+
+# Enable file serving from the /srv directory (mounted from project root)
+file_server
+
+# Set the required headers for Cross-Origin Isolation.
+# This is necessary for SharedArrayBuffer, which DuckDB-WASM uses for multi-threading.
+header {
+	Cross-Origin-Opener-Policy "same-origin"
+	Cross-Origin-Embedder-Policy "require-corp"
+}

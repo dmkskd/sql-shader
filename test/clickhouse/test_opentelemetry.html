@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClickHouse OpenTelemetry Test</title>
+    <style>
+        body { 
+            font-family: monospace; 
+            margin: 20px; 
+            background: #1a1a1a; 
+            color: #eee; 
+        }
+        .test-case { 
+            margin: 10px 0; 
+            padding: 8px; 
+            border-left: 3px solid #666; 
+        }
+        .test-case.success { 
+            border-color: #4CAF50; 
+            background: #2a3a2a; 
+        }
+        .test-case.error { 
+            border-color: #f44336; 
+            background: #3a2a2a; 
+        }
+        .test-case.info { 
+            border-color: #2196F3; 
+            background: #2a2a3a; 
+        }
+        .test-case.warning { 
+            border-color: #ff9800; 
+            background: #3a3a2a; 
+        }
+        button { 
+            padding: 10px 20px; 
+            background: #0066cc; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 10px 0; 
+        }
+        button:hover { 
+            background: #0088ff; 
+        }
+        pre {
+            background: #333;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .summary {
+            margin: 16px 0;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .summary h2 { font-size: 16px; margin: 0 0 8px 0; }
+        table.summary-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        table.summary-table th, table.summary-table td { border: 1px solid #444; padding: 6px 8px; text-align: left; }
+        table.summary-table th { background: #2a2a2a; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 11px; }
+        .badge.pass { background: #2e7d32; color: #fff; }
+        .badge.fail { background: #c62828; color: #fff; }
+        .badge.na { background: #616161; color: #fff; }
+        details { background: #202020; padding: 6px 8px; border: 1px solid #333; border-radius: 4px; margin: 6px 0; }
+        details > summary { cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>ClickHouse OpenTelemetry Test</h1>
+    <p>This test verifies that we can generate OpenTelemetry spans from JavaScript using the ClickHouse client.</p>
+    
+    <button onclick="runOpenTelemetryTest()">Run OpenTelemetry Test</button>
+    <button onclick="clearResults()">Clear Results</button>
+    <div style="margin:10px 0;">
+      <label for="verbosity">Verbosity:</label>
+      <select id="verbosity">
+        <option value="minimal" selected>Minimal</option>
+        <option value="normal">Normal</option>
+        <option value="verbose">Verbose</option>
+      </select>
+      <span style="color:#aaa; font-size:12px; margin-left:8px;">Minimal = summary + per-test status only</span>
+    </div>
+    
+    <div id="results"></div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "@clickhouse/client-web": "https://cdn.jsdelivr.net/npm/@clickhouse/client-web@latest/+esm"
+        }
+      }
+    </script>
+    <script type="module" src="test_opentelemetry.js"></script>
+</body>
+</html>
