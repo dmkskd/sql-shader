@@ -81,6 +81,33 @@ export class ClickHouseProfilerTraceLogs {
   }
 
   /**
+   * Analyzes thread relationships to determine parent-child hierarchy.
+   * The first thread encountered is considered the main thread.
+   * @param {Array} serverTextLog Array of log entries from system.text_log.
+   * @returns {Object} Object with thread hierarchy information.
+   */
+  analyzeThreadHierarchy(serverTextLog) {
+    const threadInfo = new Map();
+    let mainThreadId = null;
+    
+    // Process logs in chronological order to find thread relationships
+    for (const log of serverTextLog) {
+      const threadId = log.thread_id;
+      
+      if (!mainThreadId) {
+        // First thread is considered the main thread
+        mainThreadId = threadId;
+        threadInfo.set(threadId, { isMain: true, level: 0, symbol: '' });
+      } else if (!threadInfo.has(threadId)) {
+        // New thread - it's a child of the main thread
+        threadInfo.set(threadId, { isMain: false, level: 1, symbol: '↳ ' });
+      }
+    }
+    
+    return { threadInfo, mainThreadId };
+  }
+
+  /**
    * Generates a distinct color for thread IDs with proximity adjustment for close numbers.
    * Uses the original hash approach but adds differentiation for similar thread IDs.
    * @param {string|number} threadId Thread ID to generate color from.
@@ -139,6 +166,9 @@ export class ClickHouseProfilerTraceLogs {
       return '<p>No server text logs were found. This may be disabled by the server configuration.</p>';
     }
 
+    // Analyze thread hierarchy
+    const { threadInfo, mainThreadId } = this.analyzeThreadHierarchy(serverTextLog);
+
     let content = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
     content += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Timestamp</th><th>Time Taken</th><th>Source</th><th>Thread(ID)</th><th>Level</th><th>Message</th></tr></thead>';
     content += '<tbody>';
@@ -152,12 +182,24 @@ export class ClickHouseProfilerTraceLogs {
     for (const log of logsWithDuration) {
       const percentOfTotal = totalDurationMs > 0 ? (log.durationMs / totalDurationMs) * 100 : 0;
       const colorClass = this.getPercentColorClass(percentOfTotal);
+      
+      // Get thread hierarchy info
+      const hierarchy = threadInfo.get(log.thread_id) || { isMain: false, level: 0, symbol: '' };
+      const threadColor = this.getThreadIdColor(log.thread_id);
+      const threadSymbol = hierarchy.symbol;
+      
+      // Style for main thread vs child threads
+      const threadStyle = hierarchy.isMain 
+        ? `font-weight: bold; color: ${threadColor};`
+        : `color: ${threadColor}; opacity: 0.9;`;
 
       content += `<tr style="border-bottom: 1px solid #444; padding: 3px 0;">
                     <td style="white-space: nowrap;">${log.event_time_microseconds}</td>
                     <td class="${colorClass}" style="white-space: nowrap; text-align: right; padding-right: 10px;">${log.durationMs.toFixed(2)}ms (${percentOfTotal.toFixed(1)}%)</td>
                     <td style="color: ${this.stringToHslColor(log.source)}; font-weight: bold;">${log.source}</td>
-                    <td style="white-space: nowrap;">${log.thread_name}(<span style="color: ${this.getThreadIdColor(log.thread_id)}; font-weight: bold;">${log.thread_id}</span>)</td>
+                    <td style="white-space: nowrap; ${threadStyle}">
+                      ${threadSymbol}${log.thread_name}(<span style="color: ${threadColor}; font-weight: bold;">${log.thread_id}</span>)
+                    </td>
                     <td style="color: ${this.getLevelColor(log.level)}; font-weight: bold;">${log.level}</td>
                     <td style="white-space: pre-wrap;">${log.message}</td>
                   </tr>`;
