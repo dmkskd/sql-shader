@@ -231,6 +231,14 @@ export class ClickHouseProfilerCallGraph {
 
     container.innerHTML = ''; // Clear container before rendering
     
+    // Initialize Mermaid with higher edge limits for complex call graphs
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: 'loose',
+      maxEdges: 2000,  // Increase from default 500 to handle complex graphs
+      maxTextSize: 50000
+    });
+    
     // First, build the same hierarchical data structure as the flame graph.
     const root = { name: "Total CPU Time", value: 0, children: [] };
     let totalValue = 0;

@@ -81,6 +81,36 @@ export class ClickHouseProfilerTraceLogs {
   }
 
   /**
+   * Generates a distinct color for thread IDs with proximity adjustment for close numbers.
+   * Uses the original hash approach but adds differentiation for similar thread IDs.
+   * @param {string|number} threadId Thread ID to generate color from.
+   * @returns {string} HSL color string optimized for thread identification.
+   */
+  getThreadIdColor(threadId) {
+    const id = parseInt(threadId.toString(), 10) || 0;
+    
+    // Base hash (for primary color component)
+    let hash = 0;
+    const str = threadId.toString();
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Primary hue from hash
+    const baseHue = Math.abs(hash) % 360;
+    
+    // Proximity adjustment: use last digits to differentiate close numbers
+    // For 777 vs 770, this will give different adjustments
+    const proximityAdjust = (id % 100) * 3.6; // 0-99 maps to 0-356 degrees
+    
+    // Combine base hue with proximity adjustment
+    const finalHue = (baseHue + proximityAdjust) % 360;
+    
+    // Keep original saturation and lightness - simple and readable
+    return `hsl(${finalHue}, 75%, 55%)`;
+  }
+
+  /**
    * Processes server text logs to add duration calculations between log entries.
    * @param {Array} serverTextLog Array of log entries from system.text_log.
    * @returns {Array} Log entries with added durationMs property.
@@ -110,7 +140,7 @@ export class ClickHouseProfilerTraceLogs {
     }
 
     let content = '<table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 12px;">';
-    content += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Timestamp</th><th>Time Taken</th><th>Source</th><th>Thread</th><th>Level</th><th>Message</th></tr></thead>';
+    content += '<thead><tr style="text-align: left; border-bottom: 1px solid #777;"><th>Timestamp</th><th>Time Taken</th><th>Source</th><th>Thread(ID)</th><th>Level</th><th>Message</th></tr></thead>';
     content += '<tbody>';
 
     // Process logs to calculate durations
@@ -127,7 +157,7 @@ export class ClickHouseProfilerTraceLogs {
                     <td style="white-space: nowrap;">${log.event_time_microseconds}</td>
                     <td class="${colorClass}" style="white-space: nowrap; text-align: right; padding-right: 10px;">${log.durationMs.toFixed(2)}ms (${percentOfTotal.toFixed(1)}%)</td>
                     <td style="color: ${this.stringToHslColor(log.source)}; font-weight: bold;">${log.source}</td>
-                    <td style="white-space: nowrap;">${log.thread_name}(${log.thread_id})</td>
+                    <td style="white-space: nowrap;">${log.thread_name}(<span style="color: ${this.getThreadIdColor(log.thread_id)}; font-weight: bold;">${log.thread_id}</span>)</td>
                     <td style="color: ${this.getLevelColor(log.level)}; font-weight: bold;">${log.level}</td>
                     <td style="white-space: pre-wrap;">${log.message}</td>
                   </tr>`;
