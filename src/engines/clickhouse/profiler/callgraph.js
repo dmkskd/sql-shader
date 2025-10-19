@@ -136,7 +136,7 @@ export class ClickHouseProfilerCallGraph {
       });
 
       zoomOutBtn.addEventListener('click', () => {
-        currentGraphZoom = Math.max(0.1, currentGraphZoom - zoomStep);
+        currentGraphZoom = Math.max(0.05, currentGraphZoom - zoomStep); // Matching min zoom with wheel
         updateGraphZoom();
       });
 
@@ -147,11 +147,11 @@ export class ClickHouseProfilerCallGraph {
         updateGraphZoom();
       });
       
-      // Add mouse wheel zoom (increased max zoom to 10x)
+      // Add mouse wheel zoom (increased max zoom to 30x for detailed inspection)
       graphContainer.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const delta = -Math.sign(e.deltaY) * 0.1;
-        currentGraphZoom = Math.max(0.1, Math.min(10, currentGraphZoom + delta));
+        const delta = -Math.sign(e.deltaY) * 0.15; // Increased sensitivity from 0.1 to 0.15
+        currentGraphZoom = Math.max(0.05, Math.min(30, currentGraphZoom + delta)); // Max zoom 30x, min 0.05x
         updateGraphZoom();
       });
       
@@ -231,14 +231,6 @@ export class ClickHouseProfilerCallGraph {
 
     container.innerHTML = ''; // Clear container before rendering
     
-    // Initialize Mermaid with higher edge limits for complex call graphs
-    mermaid.initialize({
-      startOnLoad: true,
-      securityLevel: 'loose',
-      maxEdges: 2000,  // Increase from default 500 to handle complex graphs
-      maxTextSize: 50000
-    });
-    
     // First, build the same hierarchical data structure as the flame graph.
     const root = { name: "Total CPU Time", value: 0, children: [] };
     let totalValue = 0;
@@ -315,7 +307,7 @@ export class ClickHouseProfilerCallGraph {
 
     // Generate edge definitions with safety limits
     let edgeCount = 0;
-    const maxEdges = 1500; // Stay well below Mermaid's limit of 2000
+    const maxEdges = 400; // Conservative limit to avoid Mermaid edge limit issues
     
     for (const [edgeKey, value] of aggregatedEdges.entries()) {
         if (edgeCount >= maxEdges) {
