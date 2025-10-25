@@ -1,6 +1,6 @@
 -- Squircle 2 by @XorDev - Converted to ClickHouse SQL
 -- https://www.shadertoy.com/view/WfySDD
--- Shader dimensions: 160x64
+-- Shader dimensions: 160x100
 
 WITH
     {width:UInt32} AS W,
@@ -54,7 +54,7 @@ FROM
             cos(sqrt(pow(c_x, 4) + pow(c_y, 4)) / 0.1 - iTime) AS l,
             
             -- Color wave components
-            sin(0.0 * sqrt(c_x * c_x + c_y * c_y) + 2.0 * c_y + iTime + 6.0) AS w_r,
+            sin(3.0 * sqrt(c_x * c_x + c_y * c_y) + 2.0 * c_y + iTime + 6.0) AS w_r,
             sin(3.0 * sqrt(c_x * c_x + c_y * c_y) + 2.0 * c_y + iTime + 1.0) AS w_g,
             sin(3.0 * sqrt(c_x * c_x + c_y * c_y) + 2.0 * c_y + iTime + 2.0) AS w_b,
             
