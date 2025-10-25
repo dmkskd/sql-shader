@@ -33,7 +33,7 @@ run: start-clickhouse start-caddy
 start-clickhouse:
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "🗄️  Starting ClickHouse Database"
+	@echo "   Starting ClickHouse Database"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
 	@echo "Ensuring port {{ch_http_port}} is free by stopping any container using it..."
@@ -58,7 +58,7 @@ start-clickhouse:
 start-caddy:
 	@echo ""
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "🌐 Starting Caddy Web Server"
+	@echo "   Starting Caddy Web Server"
 	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
 	@echo "Ensuring port {{caddy_port}} is free by stopping any container using it..."
@@ -95,3 +95,20 @@ stop-caddy:
 test filter="":
 	@echo "Running automated test suite..."
 	@node test/run-tests.js {{filter}}
+
+# Run the terminal-based shader using ClickHouse CLI
+# Shader file must be in scripts/ directory
+# Usage: 
+#   just terminal-shader                 # runs squircle2.sql (default)
+#   just terminal-shader worm_hole.sql   # runs worm_hole_bw.sql
+terminal-shader shader="squircle2.sql":
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "   Starting Terminal Shader"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@echo "Running scripts/{{shader}} in terminal..."
+	@echo "Using ClickHouse password from environment"
+	@echo "Press Ctrl+C to exit"
+	@echo ""
+	@CLICKHOUSE_PASSWORD={{ch_password}} bash scripts/runner.sh {{shader}}
