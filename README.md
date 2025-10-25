@@ -77,6 +77,13 @@ Some prior inspiring work:
 The tool was built while trying to create a simple ASCII based SQL shader renderer and the subsequent need to improve its performance.
 How to turn 10 lines shell script into a full blown webapp 🤦
 
+You can stil invoke it by running
+```
+just terminal-shader
+```
+
+https://github.com/user-attachments/assets/64457df0-e19b-444e-b66a-cae5d83d7282
+
 ## License
 
 This project is licensed under the **Apache License 2.0** - see the [LICENSE](LICENSE) file for details.
