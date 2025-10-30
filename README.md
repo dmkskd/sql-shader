@@ -4,9 +4,9 @@
 
 A browser-based SQL shader editor that uses database engines as pixel shaders.
 
-
 Write SQL queries that run on every frame to generate real-time, procedural graphics. The application is designed to be a coding tool for exploring the performance and capabilities of different database engines on cpu-bound queries.
 
+If you are familiar with [Shadertoy](https://www.shadertoy.com/) - that's Shadertoy, in SQL.
 
 It currently supports two database engines:
 *   **DuckDB-WASM**: Runs entirely in the browser using WebAssembly. No server required! Can run your on phone as well!
