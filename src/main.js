@@ -36,6 +36,42 @@ let activeEngine = null;
 const APP_VERSION = '1.1.0';
 const STORAGE_PREFIX = 'sqlshader.';
 
+/**
+ * Shows a modal with initialization errors
+ * @param {Array<string>} errors - Array of error messages
+ * @param {string} title - Optional custom title
+ * @param {string} message - Optional custom message
+ */
+const showInitializationErrorModal = (errors, title = 'Initialization Errors', message = 'Some errors occurred during engine initialization:') => {
+  const modal = document.getElementById('initialization-error-modal');
+  const titleElement = document.getElementById('initialization-error-title');
+  const messageElement = document.getElementById('initialization-error-message');
+  const detailsDiv = document.getElementById('initialization-error-details');
+  const closeButton = modal.querySelector('.modal-close-button');
+  const okButton = document.getElementById('initialization-error-ok-button');
+  
+  // Set custom title and message
+  titleElement.textContent = `⚠️ ${title}`;
+  messageElement.textContent = message;
+  
+  // Format errors for display
+  detailsDiv.textContent = errors.join('\n\n');
+  
+  // Show the modal
+  modal.style.display = 'flex';
+  
+  // Set up close handlers
+  const closeModal = () => {
+    modal.style.display = 'none';
+  };
+  
+  closeButton.onclick = closeModal;
+  okButton.onclick = closeModal;
+  modal.onclick = (e) => {
+    if (e.target === modal) closeModal();
+  };
+};
+
 const main = async (engine) => {
   activeEngine = engine; // Store the reference to the initialized engine.
   dom.versionSpan.textContent = `v${APP_VERSION}`; // Mermaid is now initialized in index.html
@@ -658,8 +694,18 @@ const main = async (engine) => {
 
     console.log('[Init] Initializing database engine connection...');
     updateInitStatus('Compiling initial shader...'); // Pass true for the initial compile
-    await engine.initialize(updateInitStatus);
+    const initResult = await engine.initialize(updateInitStatus);
     shaderManager.engineReady = true; // Signal that the engine is now ready for use
+    
+    // Check if the engine returned initialization errors and show modal if needed
+    if (initResult && initResult.initializationErrors && initResult.initializationErrors.length > 0) {
+      showInitializationErrorModal(
+        initResult.initializationErrors,
+        initResult.errorTitle || 'Initialization Errors',
+        initResult.errorMessage || 'Some errors occurred during engine initialization:'
+      );
+    }
+    
     // Initial shader compilation. If it fails, we stop before starting the render loop.
     const initialCompileSuccess = await shaderManager.updateShader(true, stats);
     if (!initialCompileSuccess) {

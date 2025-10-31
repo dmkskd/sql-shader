@@ -140,7 +140,11 @@
         <div id="engine-specific-settings">
           <!-- Engine-specific settings will be dynamically injected here -->
         </div>
-        <button id="save-settings-button">Save and Reload</button>
+        <div id="settings-error-panel" style="display: none; margin: 10px 0; padding: 10px; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;"></div>
+        <div id="settings-status-panel" style="display: none; margin: 10px 0; padding: 10px; background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; border-radius: 4px;"></div>
+        <div style="text-align: left;">
+          <button id="save-settings-button">Save and Reload</button>
+        </div>
       </div>
     </div>
     <div id="clear-state-modal" class="modal-overlay" style="display: none;">
@@ -178,6 +182,20 @@
                 <!-- "Discard" is the primary, more destructive action. Style it to stand out. -->
                 <button id="unsaved-changes-discard-button" class="button-destructive">⚠️ Discard Changes</button>
             </div>
+        </div>
+    </div>
+    <!-- Initialization Error Modal -->
+    <div id="initialization-error-modal" class="modal-overlay" style="display: none; z-index: 1001;">
+        <div class="modal-content" style="width: auto; height: auto; max-width: 500px;">
+            <span class="modal-close-button" title="Close">&times;</span>
+            <h3 id="initialization-error-title" style="color: #dc3545; margin-top: 0;">⚠️ Initialization Errors</h3>
+            <p id="initialization-error-message" style="font-size: 0.9em;">Some errors occurred during engine initialization:</p>
+            <div id="initialization-error-details" style="background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; border: 1px solid #f5c6cb; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85em; white-space: pre-wrap;"></div>
+            <p style="margin-top: 10px; font-size: 0.85em; color: #666;">
+              The application will continue to run, but some features may not be available.
+              You can review and fix the errors in Settings.
+            </p>
+            <button id="initialization-error-ok-button" style="margin-top: 10px;">OK</button>
         </div>
     </div>
     <!-- Asset Manager Modal -->
