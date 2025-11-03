@@ -80,67 +80,18 @@ class DuckDBWasmEngine {
 
     // Execute preamble SQL if configured
     const storedSettings = JSON.parse(localStorage.getItem('sqlshader.duckdb_wasm-settings')) || {};
-    console.log('[DuckDB Engine] Stored settings:', storedSettings);
-    console.log('[DuckDB Engine] Preamble value:', storedSettings.preamble);
     const preambleErrors = [];
     
     if (storedSettings.preamble && storedSettings.preamble.trim()) {
       statusCallback('Executing initialization preamble...');
-      console.log('[DuckDB Engine] Executing preamble SQL:', storedSettings.preamble);
       
-      // Split preamble into individual statements and execute each one
-      // This ensures INSTALL and LOAD are executed as separate statements
-      const statements = storedSettings.preamble
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
-      
-      console.log('[DuckDB Engine] Preamble split into', statements.length, 'statements');
-      
-      for (let i = 0; i < statements.length; i++) {
-        const stmt = statements[i];
-        console.log(`[DuckDB Engine] Executing statement ${i + 1}/${statements.length}:`, stmt);
-        
-        try {
-          const result = await this.connection.query(stmt);
-          console.log(`[DuckDB Engine] Statement ${i + 1} completed:`, result);
-        } catch (error) {
-          console.error(`[DuckDB Engine] Error in statement ${i + 1}:`, error);
-          preambleErrors.push(`Statement: ${stmt}\n\nError: ${error.message}`);
-        }
-      }
-      
-      // Check what extensions are loaded after preamble
       try {
-        const extensionsResult = await this.connection.query("SELECT extension_name, loaded, installed FROM duckdb_extensions();");
-        const extensions = extensionsResult.toArray();
-        
-        console.log('[DuckDB Engine] ========== EXTENSIONS STATUS ==========');
-        console.log('[DuckDB Engine] Total extensions available:', extensions.length);
-        
-        const loadedExts = extensions.filter(e => e.loaded);
-        console.log('[DuckDB Engine] Loaded extensions:', loadedExts.length);
-        loadedExts.forEach(e => {
-          console.log(`[DuckDB Engine]   ✓ ${e.extension_name} (installed: ${e.installed})`);
-        });
-        
-        const installedExts = extensions.filter(e => e.installed && !e.loaded);
-        if (installedExts.length > 0) {
-          console.log('[DuckDB Engine] Installed but not loaded:', installedExts.length);
-          installedExts.forEach(e => {
-            console.log(`[DuckDB Engine]   - ${e.extension_name}`);
-          });
-        }
-        
-        console.log('[DuckDB Engine] =======================================');
-      } catch (e) {
-        console.warn('[DuckDB Engine] Could not query extensions:', e.message);
-      }
-      
-      if (preambleErrors.length === 0) {
+        await this.connection.query(storedSettings.preamble);
         statusCallback('Preamble execution completed successfully');
-      } else {
-        statusCallback('Warning: Some preamble statements failed');
+      } catch (error) {
+        console.error('[DuckDB Engine] Preamble execution error:', error);
+        preambleErrors.push(`${storedSettings.preamble}\n\nError: ${error.message}`);
+        statusCallback('Warning: Preamble execution failed');
       }
     }
 
@@ -165,16 +116,6 @@ class DuckDBWasmEngine {
    * @returns {Promise<any>} A handle to the prepared query.
    */
   async prepare(sql) {
-    console.log('[DuckDB Engine] Preparing SQL with connection:', this.connection ? 'Connected' : 'Not Connected');
-    
-    // Verify loaded extensions (for debugging)
-    try {
-      const extensionsResult = await this.connection.query("SELECT * FROM duckdb_extensions() WHERE loaded = true;");
-      console.log('[DuckDB Engine] Currently loaded extensions:', extensionsResult.toArray());
-    } catch (e) {
-      console.warn('[DuckDB Engine] Could not query loaded extensions:', e.message);
-    }
-    
     const preparedStatement = await this.connection.prepare(sql);
     
     // Return an object that conforms to the engine interface

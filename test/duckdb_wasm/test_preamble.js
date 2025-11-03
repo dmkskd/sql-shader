@@ -26,10 +26,13 @@ export class DuckDBPreambleTestSuite extends BaseTestRunner {
         // Test 3: Empty preamble
         await this.testEmptyPreamble();
 
-        // Test 4: Extension persistence
+        // Test 4: Multi-statement preamble
+        await this.testMultiStatementPreamble();
+
+        // Test 5: Extension persistence
         await this.testExtensionPersistence();
 
-        // Test 5: Extension install vs load behavior
+        // Test 6: Extension install vs load behavior
         await this.testExtensionInstallBehavior();
 
         this.log('All preamble tests completed.', 'test');
@@ -106,6 +109,57 @@ export class DuckDBPreambleTestSuite extends BaseTestRunner {
             await engine.terminate();
         } catch (error) {
             this.addResult('Empty Preamble', 'FAIL', null, error.message);
+        }
+    }
+
+    async testMultiStatementPreamble() {
+        this.log('Test 4: Multiple SQL statements in preamble execute correctly', 'test');
+        
+        try {
+            // Save preamble with multiple statements (DuckDB should handle semicolons)
+            const preamble = `CREATE TEMP TABLE test_table (id INTEGER, name VARCHAR);
+INSERT INTO test_table VALUES (1, 'test');
+SELECT COUNT(*) as count FROM test_table;`;
+            const settings = { preamble };
+            localStorage.setItem('sqlshader.duckdb_wasm-settings', JSON.stringify(settings));
+
+            // Import and initialize engine
+            const { engine } = await import('../../src/engines/duckdb_wasm/duckdb_wasm_engine.js');
+            const result = await engine.initialize(() => {});
+
+            if (!result || !result.initializationErrors) {
+                // Verify the table was created and populated
+                const verifySql = "SELECT COUNT(*) as count FROM test_table";
+                const prepared = await engine.prepare(verifySql);
+                const queryResult = await prepared.query({
+                    iResolution: [800, 600, 1],
+                    iMouse: [0, 0, 0, 0],
+                    iDate: [2024, 10, 20, 0],
+                    iTime: 0,
+                    iTimeDelta: 0,
+                    iFrameRate: 60,
+                    iFrame: 0,
+                    iSampleRate: 44100,
+                    iAudio: { volume: 0, bass: 0, mid: 0, treble: 0, isActive: false }
+                });
+
+                if (queryResult.table && queryResult.table.numRows > 0) {
+                    const row = queryResult.table.get(0);
+                    if (row.count === 1) {
+                        this.addResult('Multi-Statement Preamble', 'PASS', 'Multiple statements executed successfully');
+                    } else {
+                        this.addResult('Multi-Statement Preamble', 'FAIL', null, `Expected count=1, got count=${row.count}`);
+                    }
+                } else {
+                    this.addResult('Multi-Statement Preamble', 'FAIL', null, 'Could not verify table data');
+                }
+            } else {
+                this.addResult('Multi-Statement Preamble', 'FAIL', null, 'Preamble execution failed');
+            }
+
+            await engine.terminate();
+        } catch (error) {
+            this.addResult('Multi-Statement Preamble', 'FAIL', null, error.message);
         }
     }
 
