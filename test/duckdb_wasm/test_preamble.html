@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DuckDB Preamble Test - SQL Shader</title>
+    <script src="../../src/coi-serviceworker.js"></script>
+    <link rel="stylesheet" href="../assets/test-styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>DuckDB Preamble Tests</h1>
+            <p>Tests DuckDB initialization preamble functionality and error handling.</p>
+        </div>
+
+        <div class="test-controls">
+            <button id="runTests" class="primary">RUN TESTS</button>
+            <button id="clearResults">CLEAR RESULTS</button>
+        </div>
+
+        <div class="results">
+            <h3>Test Results</h3>
+            <div id="testOutput"></div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "@duckdb/duckdb-wasm": "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm",
+            "@apache/arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@18.1.0/+esm"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import { TestLogger } from '../assets/test-logger.js';
+        import { ButtonManager } from '../assets/test-utils.js';
+        import { DuckDBPreambleTestSuite } from './test_preamble.js';
+
+        const logger = new TestLogger('testOutput');
+        const suite = new DuckDBPreambleTestSuite();
+        suite.setLogger(logger);
+
+        const buttonMgr = new ButtonManager(['runTests', 'clearResults']);
+        
+        buttonMgr.get('runTests').addEventListener('click', async () => {
+            buttonMgr.disable();
+            logger.clear();
+            await suite.execute();
+            buttonMgr.enable();
+        });
+
+        buttonMgr.get('clearResults').addEventListener('click', () => {
+            logger.clear();
+        });
+    </script>
+</body>
+</html>

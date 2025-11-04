@@ -19,7 +19,7 @@ class DuckDBWasmEngine {
    * Initializes the DuckDB-WASM instance, worker, and database connection.
    * This is a required method for the engine interface.
    * @param {function(string): void} statusCallback A function to report progress updates.
-   * @returns {Promise<void>}
+   * @returns {Promise<{preambleErrors?: Array<string>}>} Object with optional preamble errors
    */
   async initialize(statusCallback) {
     statusCallback('Initializing DuckDB-WASM...');
@@ -78,8 +78,35 @@ class DuckDBWasmEngine {
       console.log('[DuckDB Engine] Single-threaded bundle loaded. Thread count cannot be changed.');
     }
 
-    this.profiler = new DuckDBWasmProfiler(this.connection);
+    // Execute preamble SQL if configured
+    const storedSettings = JSON.parse(localStorage.getItem('sqlshader.duckdb_wasm-settings')) || {};
+    const preambleErrors = [];
+    
+    if (storedSettings.preamble && storedSettings.preamble.trim()) {
+      statusCallback('Executing initialization preamble...');
+      
+      try {
+        await this.connection.query(storedSettings.preamble);
+        statusCallback('Preamble execution completed successfully');
+      } catch (error) {
+        console.error('[DuckDB Engine] Preamble execution error:', error);
+        preambleErrors.push(`${storedSettings.preamble}\n\nError: ${error.message}`);
+        statusCallback('Warning: Preamble execution failed');
+      }
+    }
 
+    this.profiler = new DuckDBWasmProfiler(this.connection);
+    
+    // Return initialization errors if any occurred
+    if (preambleErrors.length > 0) {
+      return {
+        initializationErrors: preambleErrors,
+        errorTitle: 'Preamble Errors',
+        errorMessage: 'Some SQL statements in your preamble failed to execute during initialization:'
+      };
+    }
+    
+    return {};
   }
 
   /**
@@ -247,6 +274,57 @@ class DuckDBWasmEngine {
   async loadShaderContent(shader) {
     // Delegate to the loader function in the shaders file.
     return loadShaderContent(shader);
+  }
+
+  /**
+   * Returns the HTML content for the engine-specific settings panel.
+   * @returns {string} The HTML string for the settings UI.
+   */
+  getSettingsPanel() {
+    return `
+      <h3>DuckDB Configuration</h3>
+      <div class="settings-form-group">
+        <label for="duckdb-preamble">Initialization Preamble (SQL)</label>
+        <textarea id="duckdb-preamble" rows="8" style="width: 800px; max-width: 100%;" placeholder="Enter SQL commands to run when DuckDB initializes&#10;Example:&#10;INSTALL stochastic FROM community;&#10;LOAD stochastic;"></textarea>
+        <p style="font-size: 0.8em; color: #aaa; margin-top: 5px;">
+          SQL commands that will be executed when DuckDB-WASM initializes. 
+          This is useful for installing and loading extensions that should be available throughout the instance lifecycle.
+          Each statement should be on a separate line. Comments starting with -- are ignored.
+        </p>
+      </div>
+    `;
+  }
+
+  /**
+   * Returns the default settings for the DuckDB engine.
+   * @returns {object}
+   */
+  getSettingsDefaults() {
+    return {
+      preamble: ''
+    };
+  }
+
+  /**
+   * Populates the engine's settings form with stored or default values.
+   * @param {object} storedSettings - The settings object from localStorage.
+   * @param {object} defaultSettings - The engine's default settings.
+   */
+  populateSettings(storedSettings, defaultSettings) {
+    const preambleElement = document.getElementById('duckdb-preamble');
+    if (preambleElement) {
+      preambleElement.value = storedSettings.preamble || defaultSettings.preamble || '';
+    }
+  }
+
+  /**
+   * Reads the current values from the settings modal and saves them to localStorage.
+   */
+  saveSettings() {
+    const duckdbSettings = {
+      preamble: document.getElementById('duckdb-preamble').value || ''
+    };
+    localStorage.setItem('sqlshader.duckdb_wasm-settings', JSON.stringify(duckdbSettings));
   }
 }
 

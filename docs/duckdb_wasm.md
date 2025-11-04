@@ -1,5 +1,16 @@
 # DuckDB WASM Engine
 
+## Configuration
+
+### Initialization Preamble
+
+DuckDB supports an optional preamble for running SQL at initialization (Settings → DuckDB Configuration). Use this to install and load extensions that will be available throughout the session:
+
+```sql
+INSTALL quack FROM community;
+LOAD quack;
+```
+
 ## Gotchas and Common Issues
 
 ### Float Type Casting Required for Literal Values
