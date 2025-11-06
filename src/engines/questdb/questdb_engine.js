@@ -529,9 +529,9 @@ class QuestDBEngine {
       </div>
       
       <div id="questdb-pg-settings" style="display: none;">
-        <h4>PostgreSQL Wire Protocol Settings</h4>
+        <h4>PostgreSQL Wire Protocol Settings <span style="color: #ff9800; font-size: 0.8em;">(Experimental)</span></h4>
         <p style="font-size: 0.9em; color: #ffc980; margin-top: 0;">
-          <b>Binary protocol</b> with connection pooling.<br>
+          <b>⚠️ Experimental:</b> Binary protocol with connection pooling.<br>
           Requires WebSocket proxy running: <code>just start-questdb-ws-proxy</code>
         </p>
         <div class="settings-form-group">
