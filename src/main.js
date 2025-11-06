@@ -1029,6 +1029,7 @@ const main = async (engine) => {
         console.error("Query runtime error:", e);
         consecutiveErrors++; // Increment error counter
         stats.errorMessage = `Runtime Error:\n${e.message}`;
+        updateErrorPanel(stats); // Display the error in the UI
         shaderManager.isPlaying = false; // Stop the animation on a runtime error
         dom.playToggleButton.innerHTML = '▶ Play';
       }

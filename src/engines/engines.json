@@ -8,5 +8,10 @@
     "id": "clickhouse",
     "name": "ClickHouse",
     "requiresConfiguration": true
+  },
+  {
+    "id": "questdb",
+    "name": "QuestDB",
+    "requiresConfiguration": true
   }
 ]

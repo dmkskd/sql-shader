@@ -9,3 +9,14 @@ header {
 	Cross-Origin-Opener-Policy "same-origin"
 	Cross-Origin-Embedder-Policy "require-corp"
 }
+
+# Reverse proxy for QuestDB with CORS headers
+# QuestDB doesn't have a browser-specific client, so we need CORS headers
+handle /questdb/* {
+	reverse_proxy pixelql-questdb:9000 {
+		header_down Access-Control-Allow-Origin *
+		header_down Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		header_down Access-Control-Allow-Headers "Content-Type"
+	}
+	uri strip_prefix /questdb
+}
