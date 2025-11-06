@@ -122,7 +122,7 @@ Available placeholders:
 ### PostgreSQL Issues
 
 **"WebSocket connection failed"**
-- Ensure the proxy is running: `node scripts/questdb-ws-proxy.js`
+- Ensure the proxy is running: `just start-questdb-ws-proxy`
 - Check QuestDB PostgreSQL port (8812) is accessible
 - Verify no firewall is blocking WebSocket connections
 
