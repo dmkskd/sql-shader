@@ -90,6 +90,11 @@ export class HelpOverlay {
         position: 'top'
       },
       {
+        selector: '#debug-toggle-button',
+        text: '<strong>Debug Mode:</strong> Display raw query results as text instead of rendering to canvas. Auto-compile is disabled - use "Run Query" to execute manually.',
+        position: 'top'
+      },
+      {
         selector: '#effect-select',
         text: '<strong>Visual Effects:</strong> Apply retro visual effects (CRT, VHS, Terminal).',
         position: 'top'
