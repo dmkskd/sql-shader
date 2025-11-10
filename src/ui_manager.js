@@ -7,6 +7,7 @@ export const dom = {
     engineSelect: document.getElementById('engine-select'),
     versionSpan: document.getElementById('version-span'),
     canvas: document.getElementById('shader-canvas'),
+    debugPanel: document.getElementById('debug-panel'),
     editorPane: document.querySelector('.editor-pane'),
     editorTextarea: document.getElementById('sql-editor'),
     statsPanel: document.getElementById('stats-panel'),
@@ -14,6 +15,7 @@ export const dom = {
     resizeHandle: document.getElementById('resize-handle'),
     restartButton: document.getElementById('restart-button'),
     playToggleButton: document.getElementById('play-toggle-button'),
+    runQueryButton: document.getElementById('run-query-button'),
     shaderSelectButton: document.getElementById('shader-select-button'),
     newShaderButton: document.getElementById('new-shader-button'),
     saveShaderButton: document.getElementById('save-shader-button'),
@@ -57,6 +59,8 @@ export const dom = {
     unsavedChangesCancelButton: document.getElementById('unsaved-changes-cancel-button'),
     // Audio control
     audioPatternButton: document.getElementById('audio-pattern-button'),
+    // Debug mode
+    debugToggleButton: document.getElementById('debug-toggle-button'),
 };
 
 export const updateInitStatus = (message) => {
@@ -296,8 +300,14 @@ export const setupUI = (initialCallbacks) => {
     // The compile button is now in the editor status bar, but the listener is still attached here.
     document.getElementById('compile-button').addEventListener('click', () => uiCallbacks.onCompile && uiCallbacks.onCompile());
     
+    // --- Run Query Button (Debug Mode) ---
+    dom.runQueryButton.addEventListener('click', () => uiCallbacks.onRunQuery && uiCallbacks.onRunQuery());
+    
     // --- Audio Pattern Control ---
     dom.audioPatternButton.addEventListener('click', () => uiCallbacks.onAudioPatternToggle && uiCallbacks.onAudioPatternToggle());
+    
+    // --- Debug Mode Toggle ---
+    dom.debugToggleButton.addEventListener('click', () => uiCallbacks.onDebugToggle && uiCallbacks.onDebugToggle());
     
     // --- Visual Effect Selector ---
     dom.effectSelect.addEventListener('change', (e) => {

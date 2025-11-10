@@ -120,6 +120,75 @@ const main = async (engine) => {
             alert('Failed to start audio pattern: ' + error.message);
         }
     },
+    onDebugToggle: () => {
+        const debugButton = document.getElementById('debug-toggle-button');
+        const debugStatus = debugButton.querySelector('.perf-status');
+        
+        // Toggle debug mode (will be set in main after engine loads)
+        if (window.shaderManager) {
+            window.shaderManager.isDebugMode = !window.shaderManager.isDebugMode;
+            
+            // Update UI
+            if (window.shaderManager.isDebugMode) {
+                debugStatus.textContent = 'ON';
+                debugStatus.className = 'perf-status perf-status-on';
+                dom.canvas.style.display = 'none';
+                dom.debugPanel.style.display = 'block';
+                
+                // Hide play/restart buttons in debug mode
+                dom.playToggleButton.style.display = 'none';
+                dom.restartButton.style.display = 'none';
+                
+                // Show Run Query button
+                dom.runQueryButton.style.display = 'inline-block';
+                
+                // Disable autocompile in debug mode
+                if (isAutocompileOn) {
+                    window.wasAutocompileOnBeforeDebug = true;
+                    isAutocompileOn = false;
+                    const autocompileButton = document.getElementById('autocompile-toggle-button');
+                    autocompileButton.innerHTML = 'Autocompile: <span class="perf-status perf-status-off">OFF</span>';
+                    autocompileButton.disabled = true; // Prevent toggling while in debug mode
+                }
+                
+                console.log('[Debug Mode] Enabled - Auto-compile disabled, use "Run Query" to execute');
+            } else {
+                debugStatus.textContent = 'OFF';
+                debugStatus.className = 'perf-status perf-status-off';
+                dom.canvas.style.display = 'block';
+                dom.debugPanel.style.display = 'none';
+                
+                // Show play/restart buttons in normal mode
+                dom.playToggleButton.style.display = 'inline-block';
+                dom.restartButton.style.display = 'inline-block';
+                
+                // Hide Run Query button
+                dom.runQueryButton.style.display = 'none';
+                
+                // Re-enable autocompile if it was on before debug mode
+                if (window.wasAutocompileOnBeforeDebug) {
+                    isAutocompileOn = true;
+                    const autocompileButton = document.getElementById('autocompile-toggle-button');
+                    autocompileButton.innerHTML = 'Autocompile: <span class="perf-status perf-status-on">ON</span>';
+                    autocompileButton.disabled = false;
+                    delete window.wasAutocompileOnBeforeDebug;
+                } else {
+                    // Just re-enable the button
+                    const autocompileButton = document.getElementById('autocompile-toggle-button');
+                    autocompileButton.disabled = false;
+                }
+                
+                console.log('[Debug Mode] Disabled - Auto-compile restored, rendering to canvas');
+            }
+            
+            // Force a recompilation when switching modes to ensure we get appropriate results
+            // This prevents errors when switching from debug shader (no r,g,b) to normal mode
+            if (window.shaderManager.prepared && !window.shaderManager.hasCompilationError) {
+                console.log('[Debug Mode] Recompiling shader for mode switch...');
+                window.shaderManager.updateShader(false, window.stats || {});
+            }
+        }
+    },
   });
 
   updateInitStatus('Initializing...');
@@ -273,6 +342,10 @@ const main = async (engine) => {
 
     const shaderManager = new ShaderManager(engine, editor, updateCanvasSizeAndResolution, shaderStateManager);
     const assetManager = new AssetManager(engine, shaderStateManager);
+    
+    // Expose shaderManager and stats to window for debug toggle callback
+    window.shaderManager = shaderManager;
+    window.stats = stats;
 
     // --- Final Initialization Steps ---
     console.log('[Init] Setting up UI and event listeners...');
@@ -571,6 +644,10 @@ const main = async (engine) => {
             }
         },
         onCompile: () => {
+            shaderManager.updateShader(false, stats);
+        },
+        onRunQuery: () => {
+            // Run query manually in debug mode
             shaderManager.updateShader(false, stats);
         },
         onToggleOverlay: () => {
@@ -872,16 +949,101 @@ const main = async (engine) => {
     });
 
     /**
+     * Renders query results as formatted text in the debug panel.
+     * Supports any Arrow table structure, not just r,g,b columns.
+     * @param {import('@apache/arrow').Table} resultTable The Arrow Table from the query.
+     */
+    const renderDebugOutput = (resultTable) => {
+      const t0 = performance.now();
+      
+      // Get column names from schema
+      const schema = resultTable.schema;
+      const columnNames = schema.fields.map(f => f.name);
+      const numRows = resultTable.numRows;
+      
+      // Limit output to prevent browser freeze
+      const MAX_ROWS = 1000;
+      const rowsToDisplay = Math.min(numRows, MAX_ROWS);
+      
+      // Build header
+      let output = `Query returned ${numRows} row(s), ${columnNames.length} column(s)\n`;
+      if (numRows > MAX_ROWS) {
+        output += `(Showing first ${MAX_ROWS} rows)\n`;
+      }
+      output += '\n';
+      
+      // Calculate column widths for alignment
+      const colWidths = columnNames.map(name => name.length);
+      for (let i = 0; i < rowsToDisplay; i++) {
+        columnNames.forEach((col, idx) => {
+          const value = resultTable.getChild(col).get(i);
+          const strValue = value !== null && value !== undefined ? String(value) : 'NULL';
+          colWidths[idx] = Math.max(colWidths[idx], strValue.length);
+        });
+      }
+      
+      // Add some padding
+      const paddedWidths = colWidths.map(w => Math.min(w + 2, 50)); // Cap at 50 chars
+      
+      // Build table header
+      const headerLine = columnNames.map((name, idx) => 
+        name.padEnd(paddedWidths[idx])
+      ).join(' | ');
+      output += headerLine + '\n';
+      output += paddedWidths.map(w => '-'.repeat(w)).join('-+-') + '\n';
+      
+      // Build table rows
+      for (let i = 0; i < rowsToDisplay; i++) {
+        const rowValues = columnNames.map((col, idx) => {
+          const value = resultTable.getChild(col).get(i);
+          let strValue;
+          
+          if (value === null || value === undefined) {
+            strValue = 'NULL';
+          } else if (typeof value === 'number') {
+            // Format numbers with reasonable precision
+            strValue = Number.isInteger(value) ? String(value) : value.toFixed(6);
+          } else {
+            strValue = String(value);
+          }
+          
+          // Truncate if too long
+          if (strValue.length > 50) {
+            strValue = strValue.substring(0, 47) + '...';
+          }
+          
+          return strValue.padEnd(paddedWidths[idx]);
+        });
+        output += rowValues.join(' | ') + '\n';
+      }
+      
+      // Display in debug panel
+      dom.debugPanel.textContent = output;
+      stats.drawTime = performance.now() - t0;
+    };
+
+    /**
      * Efficiently transfers query result data to the canvas ImageData.
      * @param {import('@apache/arrow').Table} resultTable The Arrow Table from DuckDB.
      * @param {ImageData} targetImageData The ImageData buffer for this specific frame.
      */
     const drawResultToCanvas = (resultTable, targetImageData) => {
+      // Validate that the table has the required r,g,b columns
+      const rCol = resultTable.getChild('r');
+      const gCol = resultTable.getChild('g');
+      const bCol = resultTable.getChild('b');
+      
+      if (!rCol || !gCol || !bCol) {
+        console.error('[drawResultToCanvas] Table is missing r,g,b columns. Available columns:', 
+          resultTable.schema.fields.map(f => f.name).join(', '));
+        throw new Error('Query must return r, g, b columns for canvas rendering. Use debug mode for other column types.');
+      }
+      
       // Get direct access to the underlying typed arrays for each column.
       // This is significantly faster than converting to JS objects.
-      const r = resultTable.getChild('r').toArray();
-      const g = resultTable.getChild('g').toArray();
-      const b = resultTable.getChild('b').toArray();
+      const r = rCol.toArray();
+      const g = gCol.toArray();
+      const b = bCol.toArray();
       const t0 = performance.now();
       // Store the latest color data for the pixel inspector
       lastR = r; // This can still be global for the inspector
@@ -1022,9 +1184,23 @@ const main = async (engine) => {
             });
         }
 
-        drawResultToCanvas(result, localImageData);
-        lastGoodResult = result; // Store the successful result
-        consecutiveErrors = 0; // Reset error counter on success
+        // Use debug rendering if debug mode is enabled
+        if (shaderManager.isDebugMode) {
+          renderDebugOutput(result);
+          lastGoodResult = result;
+          consecutiveErrors = 0;
+          
+          // In debug mode, pause after first execution (run once)
+          if (shaderManager.isPlaying) {
+            shaderManager.isPlaying = false;
+            dom.playToggleButton.innerHTML = '▶ Play';
+            console.log('[Debug Mode] Query executed once - paused. Click Play or compile to run again.');
+          }
+        } else {
+          drawResultToCanvas(result, localImageData);
+          lastGoodResult = result; // Store the successful result
+          consecutiveErrors = 0; // Reset error counter on success
+        }
       } catch (e) {
         console.error("Query runtime error:", e);
         consecutiveErrors++; // Increment error counter
@@ -1064,7 +1240,9 @@ const main = async (engine) => {
         dom.saveShaderButton.disabled = !shaderManager.isDirty();
 
         clearTimeout(shaderManager.debounceTimer);
-        if (isAutocompileOn) {
+        
+        // Skip autocompile if in debug mode - user must manually click "Run Query"
+        if (isAutocompileOn && !shaderManager.isDebugMode) {
             const generalSettings = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}general-settings`)) || {};
             const autocompileDelay = parseInt(generalSettings.autocompileDelay, 10) || 300;
             shaderManager.debounceTimer = setTimeout(() => {

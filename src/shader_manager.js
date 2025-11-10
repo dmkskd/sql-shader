@@ -16,6 +16,7 @@ export class ShaderManager {
         this.prepared = null;
         this.hasCompilationError = false;
         this.isPlaying = true;
+        this.isDebugMode = false; // Debug mode flag
         this.engineReady = false;
         this.wasPlayingBeforeError = true;
         this.pristineSql = ''; // The original SQL of the loaded shader
@@ -87,6 +88,9 @@ export class ShaderManager {
         if (!shader) return;
 
         this.currentShaderIndex = shaderIndex;
+        
+        // Clear any previous compilation errors when loading a new shader
+        this.hasCompilationError = false;
 
         // First, try to load a saved version from localStorage
         let sql = null;
@@ -113,6 +117,10 @@ export class ShaderManager {
 
         // Apply performance hints - the function will call onHintChange internally if needed
         this.applyPerformanceHints(sql, RESOLUTIONS, ZOOM_LEVELS);
+        
+        // Note: updateShader is NOT called here because the editor's change event
+        // will trigger automatically via the setValue() call above, which will
+        // invoke the debounced compilation. This prevents duplicate compilations.
     }
 
     /**

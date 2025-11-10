@@ -24,6 +24,17 @@ The `Caddy` service as part of `just run` should take care of most of the CORS p
 
 Use `Help` for context-based help (`CMD+/` on `Mac` or `CTRL+/` on `Windows/Linux`)
 
+## Debug mode
+
+When you enable Debug mode (use the `Debug` button in the controls bar) the editor stops rendering pixels
+to the canvas and instead shows the raw query results as text. This is useful for inspecting the rows and
+columns your SQL returns without needing to map them to r,g,b values.
+
+- Auto-compile is disabled in Debug mode to avoid running queries on every keystroke. Use the **Run Query** button (visible only while Debug mode is active) to compile and execute the current SQL manually.
+- The Profile feature still works in Debug mode — use the **Profile** button to run the query once and log engine-specific profiling information to the console.
+
+Note: Play / Restart controls are hidden in Debug mode to emphasize manual execution.
+
 # Engines
 
 The application has been architected to support multiple SQL Engines.
