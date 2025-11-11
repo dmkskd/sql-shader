@@ -5,6 +5,11 @@
     "requiresConfiguration": false
   },
   {
+    "id": "datafusion_wasm",
+    "name": "DataFusion WASM",
+    "requiresConfiguration": false
+  },
+  {
     "id": "clickhouse",
     "name": "ClickHouse",
     "requiresConfiguration": true
