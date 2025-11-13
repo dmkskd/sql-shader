@@ -37,19 +37,52 @@ export class DuckDBWasmProfiler {
       console.log('[engine.profile] Successfully retrieved text query plan.');
 
       // Now, get the JSON plan for the structured view
-      await this.connection.query("PRAGMA enable_profiling = 'json'");
-      const jsonResult = await this.connection.query(explainedSql);
-      const fullJsonString = jsonResult.getChild('explain_value').get(0);
-      const fullJsonPlan = JSON.parse(fullJsonString);
+      let jsonPlan = null;
+      let fullJsonPlan = null;
+      try {
+        await this.connection.query("PRAGMA enable_profiling = 'json'");
+        const jsonResult = await this.connection.query(explainedSql);
+        const fullJsonString = jsonResult.getChild('explain_value').get(0);
+        
+        console.log('[engine.profile] Raw JSON string length:', fullJsonString?.length);
+        console.log('[engine.profile] First 200 chars of JSON:', fullJsonString?.substring(0, 200));
+        
+        fullJsonPlan = JSON.parse(fullJsonString);
 
-      // The actual plan is nested. The visualizer expects the root of the plan tree directly.
-      // We traverse down to find the actual root node of the query plan.
-      const jsonPlan = fullJsonPlan?.children?.[0]?.children?.[0];
+        console.log('[engine.profile] Parsed JSON keys:', Object.keys(fullJsonPlan || {}));
+        console.log('[engine.profile] Full JSON plan structure:', JSON.stringify(fullJsonPlan, null, 2).substring(0, 1000));
 
-      console.log('[engine.profile] Successfully retrieved and extracted JSON query plan.');
+        // The actual plan is nested. Extract the root node for our rendering functions.
+        // DuckDB v1.4.0 (in duckdb-wasm 1.31.0) may have changed the structure vs v1.3.2, so we need to be flexible
+        
+        // Try the old structure first (v1.3.2): children[0].children[0]
+        if (fullJsonPlan?.children?.[0]?.children?.[0]) {
+          jsonPlan = fullJsonPlan.children[0].children[0];
+          console.log('[engine.profile] ✓ Using DuckDB v1.3.2 JSON structure (children[0].children[0])');
+        }
+        // Try direct children[0] (possible v1.4.0 structure)
+        else if (fullJsonPlan?.children?.[0]) {
+          jsonPlan = fullJsonPlan.children[0];
+          console.log('[engine.profile] ✓ Using DuckDB v1.4.0 JSON structure (children[0])');
+        }
+        // Use the full plan if no children found
+        else if (fullJsonPlan) {
+          jsonPlan = fullJsonPlan;
+          console.log('[engine.profile] ✓ Using root JSON structure (no nesting)');
+        }
+
+        console.log('[engine.profile] Final jsonPlan keys:', Object.keys(jsonPlan || {}));
+        console.log('[engine.profile] Successfully retrieved and extracted JSON query plan.');
+      } catch (jsonError) {
+        console.error('[engine.profile] Error getting JSON plan:', jsonError);
+        console.error('[engine.profile] Stack:', jsonError.stack);
+        // Continue without JSON plan - the raw plan will still work
+        jsonPlan = null;
+        fullJsonPlan = null;
+      }
       
-      // Return the raw text for the first tab, and null for the structured one for now.
-      return { raw: rawPlan, json: jsonPlan };
+      // Return both the raw text, extracted plan (for our renders), and full plan (for visualizer)
+      return { raw: rawPlan, json: jsonPlan, fullJson: fullJsonPlan };
     } finally {
       // Disable profiling to restore normal connection behavior for the render loop.
       await this.connection.query("PRAGMA disable_profiling");
@@ -194,7 +227,8 @@ export class DuckDBWasmProfiler {
           document.head.appendChild(styleEl);
         }
         
-        const planSource = JSON.stringify(profileData.json);
+        // The visualizer expects the full JSON structure, not the extracted plan
+        const planSource = JSON.stringify(profileData.fullJson || profileData.json);
 
         const app = createApp({
           data() {
@@ -231,12 +265,11 @@ export class DuckDBWasmProfiler {
 
   /**
    * Parses the DuckDB EXPLAIN ANALYZE output into a structured, collapsible HTML view.
-   * @param {object} planNode The root node of the JSON query plan.
+   * @param {object} planNode The root node of the JSON query plan (already extracted).
    * @returns {string} An HTML string representing the structured view.
    */
   parsePlanToHtml(planNode) {
-    // The actual query plan is nested inside the top-level object and an EXPLAIN_ANALYZE node.
-    const rootNode = planNode?.children?.[0]?.children?.[0];
+    const rootNode = planNode;
     if (!rootNode) return 'No structured plan available.';
 
     // First, calculate the total time by summing up all operator timings in the tree.
@@ -290,11 +323,11 @@ export class DuckDBWasmProfiler {
 
   /**
    * Renders a FlameGraph from the DuckDB JSON query plan.
-   * @param {object} planNode The root node of the JSON query plan.
+   * @param {object} planNode The root node of the JSON query plan (already extracted).
    * @param {HTMLElement} container The DOM element to render the chart into.
    */
   renderFlamegraph(planNode, container) {
-    const rootNode = planNode?.children?.[0]?.children?.[0];
+    const rootNode = planNode;
     if (!rootNode) return;
 
     const flamegraphHeaderText = `<h3>CPU FlameGraph</h3><p>Generated from the timing information in the JSON output of <code>EXPLAIN ANALYZE</code></p>`;
@@ -351,12 +384,12 @@ export class DuckDBWasmProfiler {
 
   /**
    * Renders a Mermaid.js graph from the DuckDB JSON query plan.
-   * @param {object} planNode The root node of the JSON query plan.
+   * @param {object} planNode The root node of the JSON query plan (already extracted).
    * @param {HTMLElement} container The DOM element to render the chart into.
    * @param {string} direction The Mermaid graph direction ('TD' or 'BT').
    */
   async renderMermaidGraph(planNode, container, direction = 'TD') {
-    const rootNode = planNode?.children?.[0]?.children?.[0];
+    const rootNode = planNode;
     if (!rootNode) return;
 
     container.innerHTML = ''; // Clear the container before rendering
