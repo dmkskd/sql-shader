@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use arrow::ipc::writer::StreamWriter;
-use arrow::json::writer::ArrayWriter;
+use datafusion::arrow::ipc::writer::StreamWriter;
+use datafusion::arrow::json::ArrayWriter;
 use axum::{
     extract::State,
     http::StatusCode,
@@ -218,7 +218,7 @@ async fn execute_query(
 
                 // Convert batch to JSON
                 let mut buf = Vec::new();
-                let mut json_writer = arrow::json::writer::ArrayWriter::new(&mut buf);
+                let mut json_writer = ArrayWriter::new(&mut buf);
                 json_writer.write(batch).context("Failed to write JSON")?;
                 json_writer.finish().context("Failed to finish JSON")?;
                 

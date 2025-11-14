@@ -33,7 +33,31 @@ Visualizes DataFusion query plans:
 - [EXPLAIN SQL command](https://datafusion.apache.org/user-guide/sql/explain.html)
 - [Plan representations](https://docs.rs/datafusion/latest/datafusion/#plan-representations)
 
-### 2. Query Metrics Module
+### 2. PEV2 Plan Visualizer
+
+Interactive visual representation of query execution plans powered by [Dalibo's PEV2](https://explain.dalibo.com/).
+
+- **Postgres-compatible JSON**: Uses DataFusion's `EXPLAIN FORMAT PGJSON` output
+- **Interactive Graph**: Click nodes to see operator details, timing, and row counts
+- **Industry Standard**: Same visualizer used by the PostgreSQL community
+
+**Features:**
+- Tree view of query plan with collapsible nodes
+- Color-coded performance indicators
+- Detailed operator metrics on hover/click
+- Automatically loaded from CDN (no build dependencies)
+
+**How it works:**
+```sql
+EXPLAIN FORMAT PGJSON SELECT ...
+```
+
+DataFusion's `PGJSON` format outputs Postgres-compatible JSON that PEV2 can directly visualize. The profiler:
+1. Fetches the plan via `EXPLAIN FORMAT PGJSON`
+2. Loads PEV2 Vue component from CDN
+3. Renders interactive visualization in the browser
+
+### 3. Query Metrics Module
 
 Displays execution metrics:
 

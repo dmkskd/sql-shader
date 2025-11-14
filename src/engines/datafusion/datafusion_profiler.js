@@ -112,6 +112,13 @@ export class DataFusionProfiler {
         header: 'DataFusion logical and physical query plans generated via <code>EXPLAIN</code> statements'
       },
       { 
+        id: 'pev2', 
+        title: 'Plan Visualizer', 
+        content: '<div id="datafusion-pev2-container" style="width: 100%; min-height: 100vh; overflow: auto;"></div>', 
+        header: 'Interactive query plan visualization powered by <a href="https://explain.dalibo.com/" target="_blank">PEV2</a>',
+        customRender: true // Flag to handle special rendering
+      },
+      { 
         id: 'metrics', 
         title: 'Query Metrics', 
         module: this.metrics, 
@@ -173,7 +180,163 @@ export class DataFusionProfiler {
           const isForActiveTab = controls.dataset.forTab === tab.dataset.tab;
           controls.style.display = isForActiveTab ? 'flex' : 'none';
         });
+        
+        // Initialize PEV2 when its tab is clicked
+        if (tab.dataset.tab === 'pev2') {
+          this.initializePEV2();
+        }
       });
     });
+  }
+
+  /**
+   * Initialize PEV2 (Postgres Explain Visualizer 2) with DataFusion's PGJSON output.
+   * Loads PEV2 from CDN and renders the plan visualization.
+   */
+  async initializePEV2() {
+    const container = document.getElementById('datafusion-pev2-container');
+    if (!container) {
+      console.error('[PEV2] Container not found');
+      return;
+    }
+
+    // Check if we have PGJSON data
+    if (!this.explain.pgjson || !this.explain.pgjson[0]?.Plan) {
+      container.innerHTML = `
+        <div style="padding: 20px; text-align: center; color: #888;">
+          <h3>Plan visualization not available</h3>
+          <p>Your DataFusion version does not support <code>EXPLAIN FORMAT PGJSON</code>.</p>
+          <p><strong>Current version:</strong> DataFusion 50.3.0</p>
+          <p><strong>Status:</strong> PGJSON format is documented but not yet available in released versions</p>
+          <p><strong>What is PGJSON?</strong> It's a Postgres-compatible JSON format that would enable interactive visualization with PEV2.</p>
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid #444;">
+          <p style="font-size: 0.9em;">The PGJSON format is coming soon to DataFusion. For now, use the <strong>Explain Plan</strong> tab to view logical and physical plans in text format.</p>
+          <p style="margin-top: 20px; font-size: 0.85em; color: #666;">
+            Learn more: <a href="https://datafusion.apache.org/user-guide/sql/explain.html" target="_blank">DataFusion EXPLAIN Documentation</a>
+          </p>
+        </div>
+      `;
+      return;
+    }
+
+    // Check if PEV2 is already loaded
+    if (!window.pev2 || !window.Vue) {
+      console.log('[PEV2] Loading PEV2 from CDN...');
+      
+      try {
+        // Load Vue 3 first
+        if (!window.Vue) {
+          await this.loadScript('https://unpkg.com/vue@3/dist/vue.global.prod.js');
+        }
+        
+        // Load PEV2
+        if (!window.pev2) {
+          await this.loadScript('https://unpkg.com/pev2/dist/pev2.umd.js');
+          await this.loadStylesheet('https://unpkg.com/pev2/dist/pev2.css');
+        }
+        
+        // Bootstrap CSS is already loaded in index.html, no need to load it again
+        
+        console.log('[PEV2] PEV2 loaded successfully');
+      } catch (error) {
+        console.error('[PEV2] Failed to load PEV2:', error);
+        container.innerHTML = `
+          <div style="padding: 20px; color: #ff6b6b;">
+            <h3>Failed to load PEV2 visualizer</h3>
+            <p>Error: ${error.message}</p>
+          </div>
+        `;
+        return;
+      }
+    }
+
+    // Convert PGJSON array to the format PEV2 expects (JSON string)
+    const planJson = JSON.stringify(this.explain.pgjson[0]);
+    
+    // Create Vue app with PEV2 component
+    try {
+      const { createApp } = window.Vue;
+      
+      // Clear container and create mount point with proper styling
+      container.innerHTML = '<div id="pev2-app" style="width: 100%; height: 100%; min-height: 800px;"></div>';
+      
+      const app = createApp({
+        data() {
+          return {
+            plan: planJson,
+            query: '' // We don't have the original query text readily available
+          };
+        },
+        template: '<pev2 :plan-source="plan" :plan-query="query" style="height: 100%; min-height: 800px;" />'
+      });
+      
+      app.component('pev2', window.pev2.Plan);
+      app.mount('#pev2-app');
+      
+      console.log('[PEV2] Visualization rendered');
+    } catch (error) {
+      console.error('[PEV2] Failed to render visualization:', error);
+      container.innerHTML = `
+        <div style="padding: 20px; color: #ff6b6b;">
+          <h3>Failed to render visualization</h3>
+          <p>Error: ${error.message}</p>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Helper to dynamically load a script from CDN.
+   * @param {string} src - Script URL
+   * @returns {Promise<void>}
+   */
+  loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  /**
+   * Helper to dynamically load a stylesheet from CDN.
+   * @param {string} href - Stylesheet URL
+   * @returns {Promise<void>}
+   */
+  loadStylesheet(href) {
+    return new Promise((resolve, reject) => {
+      // Check if already loaded
+      if (document.querySelector(`link[href="${href}"]`)) {
+        resolve();
+        return;
+      }
+      
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.setAttribute('data-pev2-style', 'true'); // Mark for cleanup
+      link.onload = () => resolve();
+      link.onerror = () => reject(new Error(`Failed to load stylesheet: ${href}`));
+      document.head.appendChild(link);
+    });
+  }
+
+  /**
+   * Cleanup PEV2 resources when profiler is closed.
+   * Call this when the profiler modal is closed.
+   */
+  cleanup() {
+    console.log('[DataFusion Profiler] Cleaning up PEV2 resources');
+    
+    // Clear the PEV2 container content
+    const container = document.getElementById('datafusion-pev2-container');
+    if (container) {
+      container.innerHTML = '<div id="datafusion-pev2-container" style="width: 100%; min-height: 90vh; overflow: auto;"></div>';
+    }
+    
+    // Don't remove Bootstrap or PEV2 CSS - they're reused
+    // Just clear the Vue app instance by clearing the container
   }
 }

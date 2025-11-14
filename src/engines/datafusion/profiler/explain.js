@@ -16,6 +16,7 @@ export class DataFusionProfilerExplain {
     // Module owns its data
     this.logicalPlan = null;
     this.physicalPlan = null;
+    this.pgjson = null; // Postgres-compatible JSON for PEV2 visualizer
     this.error = null;
   }
 
@@ -35,10 +36,18 @@ export class DataFusionProfilerExplain {
   async fetchData(baseUrl, sql, uniforms, statusCallback = () => {}) {
     statusCallback('Fetching DataFusion explain plans...');
     
+    // Remove leading comments and whitespace from SQL
+    // This is necessary because EXPLAIN gets prepended, and comments confuse the parser
+    const cleanedSql = sql.replace(/^(\s*--.*\n)+/, '').trim();
+    
+    console.log('[DataFusion Explain] Original SQL length:', sql.length);
+    console.log('[DataFusion Explain] Cleaned SQL length:', cleanedSql.length);
+    console.log('[DataFusion Explain] First 100 chars of cleaned SQL:', cleanedSql.substring(0, 100));
+    
     try {
       // Fetch logical plan - just EXPLAIN
       statusCallback('Fetching logical plan...');
-      const logicalSql = `EXPLAIN ${sql}`;
+      const logicalSql = `EXPLAIN ${cleanedSql}`;
       const logicalData = await this.executeExplain(baseUrl, logicalSql);
       this.logicalPlan = logicalData;
 
@@ -51,7 +60,7 @@ export class DataFusionProfilerExplain {
       
       // Try ANALYZE first (shows execution plan with stats)
       try {
-        const analyzeSql = `EXPLAIN ANALYZE ${sql}`;
+        const analyzeSql = `EXPLAIN ANALYZE ${cleanedSql}`;
         indentData = await this.executeExplain(baseUrl, analyzeSql);
         console.log('[DataFusion Explain] Got EXPLAIN ANALYZE plan');
       } catch (analyzeError) {
@@ -64,12 +73,39 @@ export class DataFusionProfilerExplain {
       
       this.physicalPlan = indentData || 'Physical plan not available in this DataFusion version. Try updating to a newer version that supports EXPLAIN ANALYZE.';
 
+      // Fetch PGJSON format for PEV2 visualizer
+      statusCallback('Fetching Postgres-compatible JSON...');
+      try {
+        const pgjsonSql = `EXPLAIN FORMAT PGJSON ${cleanedSql}`;
+        console.log('[DataFusion Explain] Fetching PGJSON plan');
+        const pgjsonData = await this.executeExplain(baseUrl, pgjsonSql);
+        
+        console.log('[DataFusion Explain] PGJSON raw data:', pgjsonData);
+        
+        // The PGJSON output comes as a JSON string in the 'plan' column
+        // Parse it to get the actual plan array
+        const jsonMatch = pgjsonData.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          console.log('[DataFusion Explain] Parsed PGJSON successfully');
+          console.log('[DataFusion Explain] PGJSON[0]?.Plan:', !!parsed[0]?.Plan);
+          this.pgjson = parsed;
+        } else {
+          console.warn('[DataFusion Explain] Could not extract JSON from PGJSON output');
+          this.pgjson = null;
+        }
+      } catch (pgjsonError) {
+        console.error('[DataFusion Explain] PGJSON format error:', pgjsonError.message);
+        this.pgjson = null;
+      }
+
       statusCallback('Explain plans fetched.');
     } catch (e) {
       console.error('[DataFusion Explain] Error fetching explain plans:', e.message);
       this.error = `Error: ${e.message}`;
       this.logicalPlan = this.error;
       this.physicalPlan = this.error;
+      this.pgjson = null;
     }
   }
 

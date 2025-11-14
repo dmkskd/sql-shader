@@ -49,8 +49,32 @@ This project uses the following third-party libraries and components. Each has i
 #### DuckDB Explain Visualizer
 - **Package**: `duckdb-explain-visualizer`
 - **License**: MIT License
-- **URL**: https://github.com/mysticfall/duckdb-explain-visualizer
-- **Usage**: Interactive query plan visualization for DuckDB
+- **URL**: https://github.com/aantakli/duckdb-explain-visualizer
+- **Usage**: Interactive visualization of DuckDB query execution plans
+
+#### PEV2 (Postgres Explain Visualizer 2)
+- **Package**: `pev2`
+- **License**: PostgreSQL License
+- **URL**: https://github.com/dalibo/pev2
+- **Usage**: Interactive visualization of PostgreSQL-compatible query execution plans (used for DataFusion PGJSON format)
+- **Note**: Loaded from CDN at runtime for DataFusion profiler
+
+### UI Frameworks
+
+#### Vue.js 3
+- **Package**: `vue`
+- **License**: MIT License
+- **URL**: https://github.com/vuejs/core
+- **Usage**: Progressive JavaScript framework (used by PEV2 visualizer)
+- **Note**: Loaded from CDN at runtime for DataFusion profiler
+
+#### Bootstrap 5
+- **Package**: `bootstrap`
+- **License**: MIT License
+- **URL**: https://github.com/twbs/bootstrap
+- **Usage**: CSS framework for UI components (required by PEV2)
+
+### Code Editor
 
 #### Vue.js
 - **Package**: `vue`

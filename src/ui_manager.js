@@ -180,6 +180,11 @@ export const setupUI = (initialCallbacks) => {
             console.log('[Cleanup] Removing orphaned flamegraph tooltip to prevent performance issues.');
             tip.remove();
         });
+        
+        // Cleanup any engine-specific profiler resources (like PEV2)
+        if (window.currentEngine && window.currentEngine.profiler && typeof window.currentEngine.profiler.cleanup === 'function') {
+            window.currentEngine.profiler.cleanup();
+        }
     };
 
     // Attach listeners only once to prevent multiple calls.
