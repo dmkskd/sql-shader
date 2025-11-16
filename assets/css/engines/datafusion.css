@@ -1,0 +1,157 @@
+/* ============================================
+   DATAFUSION ENGINE - PROFILER STYLES
+   ============================================ */
+
+/* PEV2 Visualizer (Logical Plan) */
+#datafusion-pev2-container {
+  width: 100% !important;
+  min-height: 90vh !important;
+  height: auto !important;
+}
+
+#pev2-app,
+#pev2-app > div {
+  width: 100% !important;
+  min-height: 90vh !important;
+  height: auto !important;
+}
+
+.pev2,
+.pev2 > div {
+  min-height: 800px !important;
+  height: auto !important;
+}
+
+/* Physical Plan Timeline */
+.physical-plan-formatted {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  background: #1a1a1a;
+  color: #e0e0e0;
+  padding: 15px;
+  border-radius: 4px;
+}
+
+.plan-header {
+  border: 2px solid #444;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 15px;
+  background: #242424;
+}
+
+.plan-title {
+  font-weight: bold;
+  font-size: 14px;
+  color: #ffc980;
+  margin-bottom: 5px;
+}
+
+.plan-total {
+  color: #80bfff;
+  font-size: 13px;
+}
+
+.plan-table {
+  border: 2px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.plan-table-header {
+  display: grid;
+  grid-template-columns: 100px 85px 1fr;
+  gap: 10px;
+  background: #2a2a2a;
+  padding: 8px 12px;
+  font-weight: bold;
+  border-bottom: 2px solid #444;
+  color: #ffc980;
+}
+
+.plan-row {
+  display: grid;
+  grid-template-columns: 100px 85px 1fr;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #333;
+}
+
+.plan-row:hover {
+  background: #2a2a2a;
+}
+
+.col-time {
+  color: #e0e0e0;
+  font-weight: bold;
+}
+
+.col-percent {
+  position: relative;
+}
+
+.percent-bar-container {
+  position: relative;
+  width: 65px;
+  height: 20px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.percent-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #4080ff, #80bfff);
+  transition: width 0.3s ease;
+}
+
+.plan-row.hotspot .percent-bar-fill {
+  background: linear-gradient(90deg, #ff4040, #ff8080);
+}
+
+.percent-bar-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: bold;
+  font-size: 11px;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+  z-index: 1;
+}
+
+.col-operator {
+  color: #e0e0e0;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.plan-hotspots {
+  margin-top: 15px;
+  padding: 12px;
+  background: #242424;
+  border: 2px solid #ff8080;
+  border-radius: 4px;
+}
+
+.hotspot-title {
+  font-weight: bold;
+  color: #ff8080;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.hotspot-item {
+  padding: 4px 0;
+  color: #e0e0e0;
+  font-size: 12px;
+}
