@@ -12,7 +12,7 @@ header {
 
 # Reverse proxy for DataFusion HTTP server with CORS headers
 handle_path /datafusion/* {
-	reverse_proxy pixelql-datafusion:8124 {
+	reverse_proxy sql-shader-datafusion:8124 {
 		header_down Access-Control-Allow-Origin *
 		header_down Access-Control-Allow-Methods "GET, POST, OPTIONS"
 		header_down Access-Control-Allow-Headers "Content-Type"

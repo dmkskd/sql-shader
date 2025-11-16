@@ -648,9 +648,9 @@ header #version-span {
 }
 #engine-stats-content {
   display: grid;
-  grid-template-columns: repeat(4, minmax(100px, 1fr)); /* 4 columns for 7 stats */
-  grid-template-rows: repeat(2, auto); /* Max 2 entries per column */
-  grid-auto-flow: column; /* Fill columns first */
+  grid-template-columns: repeat(5, auto); /* Auto-size columns based on content */
+  grid-template-rows: repeat(2, auto); /* 2 rows for 10 items (2+2+2+2+2) */
+  grid-auto-flow: column; /* Fill columns vertically - static metrics on left */
   gap: 3px 15px;
 }
 .engine-stat-item {

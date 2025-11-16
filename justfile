@@ -32,7 +32,7 @@ run: create-network start-clickhouse start-datafusion start-caddy
 
 # Create Docker network if it doesn't exist
 create-network:
-	@docker network inspect pixelql-network > /dev/null 2>&1 || docker network create pixelql-network > /dev/null 2>&1 || true
+	@docker network inspect sql-shader-network > /dev/null 2>&1 || docker network create sql-shader-network > /dev/null 2>&1 || true
 
 # Starts the ClickHouse server in a Docker container.
 start-clickhouse:
@@ -47,8 +47,8 @@ start-clickhouse:
 	@bash -c 'pw="{{ch_password}}"; first="${pw:0:1}"; last="${pw: -1}"; echo "Using password: ${first}***${last} (change ch_password in justfile to customize)"'
 	@docker run \
 		--rm -d \
-		--name pixelql-clickhouse \
-		--network pixelql-network \
+		--name sql-shader-clickhouse \
+		--network sql-shader-network \
 		-p {{ch_http_port}}:8123 \
 		-p {{ch_tcp_port}}:9000 \
 		--ulimit nofile=262144:262144 \
@@ -69,14 +69,14 @@ start-datafusion:
 	@echo "Ensuring port {{df_http_port}} is free by stopping any container using it..."
 	@docker ps -q --filter "publish={{df_http_port}}" | xargs -r docker stop > /dev/null 2>&1 || true
 	@echo "Building DataFusion Docker image (this may take a few minutes on first run)..."
-	@docker build -t pixelql-datafusion -f docker/datafusion/Dockerfile docker/datafusion || (echo "❌ Build failed. Check docker/datafusion/Dockerfile" && exit 1)
+	@docker build -t sql-shader-datafusion -f docker/datafusion/Dockerfile docker/datafusion || (echo "❌ Build failed. Check docker/datafusion/Dockerfile" && exit 1)
 	@echo "Starting DataFusion container on port {{df_http_port}}..."
 	@docker run \
 		--rm -d \
-		--name pixelql-datafusion \
-		--network pixelql-network \
+		--name sql-shader-datafusion \
+		--network sql-shader-network \
 		-p {{df_http_port}}:8124 \
-		pixelql-datafusion > /dev/null
+		sql-shader-datafusion > /dev/null
 	@echo "✅ DataFusion started successfully"
 	@echo ""
 
@@ -93,8 +93,8 @@ start-caddy:
 	@echo "Starting new Caddy web server on port {{caddy_port}}..."
 	@docker run \
 		--rm -d \
-		--name pixelql-caddy \
-		--network pixelql-network \
+		--name sql-shader-caddy \
+		--network sql-shader-network \
 		-p {{caddy_port}}:8000 \
 		-v "{{justfile_directory()}}:/srv" \
 		-v "{{justfile_directory()}}/docker/caddy/Caddyfile:/etc/caddy/Caddyfile" \

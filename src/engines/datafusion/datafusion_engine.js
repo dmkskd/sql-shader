@@ -10,6 +10,10 @@ class DataFusionEngine {
     this.baseUrl = null;
     this.serverVersion = null;
     this.profiler = null;
+    // Store timing metrics for stats display
+    this.lastQueryMetrics = null;
+    this.metricsHistory = [];
+    this.maxHistorySize = 100; // Keep last 100 queries
   }
 
   /**
@@ -171,40 +175,166 @@ class DataFusionEngine {
     const table = await arrow.tableFromIPC(arrowBuffer);
     timings.processing = performance.now() - t0;
 
+    // Extract server-side metrics from headers
+    const serverMetrics = {
+      parseMs: parseFloat(response.headers.get('X-DataFusion-Parse-Ms')) || 0,
+      executionMs: parseFloat(response.headers.get('X-DataFusion-Execution-Ms')) || 0,
+      serializationMs: parseFloat(response.headers.get('X-DataFusion-Serialization-Ms')) || 0,
+      totalMs: parseFloat(response.headers.get('X-DataFusion-Total-Ms')) || 0,
+      rows: parseInt(response.headers.get('X-DataFusion-Rows')) || 0,
+      batches: parseInt(response.headers.get('X-DataFusion-Batches')) || 0,
+      bytes: parseInt(response.headers.get('X-DataFusion-Bytes')) || 0,
+      columns: parseInt(response.headers.get('X-DataFusion-Columns')) || 0,
+      cpuCount: parseInt(response.headers.get('X-DataFusion-CPU-Count')) || 0,
+      rowsPerBatch: parseInt(response.headers.get('X-DataFusion-Rows-Per-Batch')) || 0,
+    };
+
+    // Store combined metrics
+    const combinedMetrics = {
+      timestamp: Date.now(),
+      server: serverMetrics,
+      client: timings,
+      totalRoundTrip: timings.network + timings.processing,
+    };
+
+    this.lastQueryMetrics = combinedMetrics;
+    
+    // Add to history
+    this.metricsHistory.push(combinedMetrics);
+    if (this.metricsHistory.length > this.maxHistorySize) {
+      this.metricsHistory.shift(); // Remove oldest
+    }
+
     return { table, timings };
   }
 
   /**
    * Polls for engine-specific performance metrics.
-   * DataFusion doesn't have built-in system tables like ClickHouse,
-   * so we return basic stats.
-   * @returns {Promise<Array<{label: string, value: string, rawValue: number, description: string}>>}
+   * Returns simplified timing breakdown to understand where time is spent.
+   * @returns {Promise<Array<{label: string, value: string, rawValue: number, description: string, noSparkline?: boolean}>>}
    */
   async pollEngineStats() {
-    // For now, return basic server status
-    // In the future, we could add custom metrics from the Rust server
-    try {
-      const response = await fetch(`${this.baseUrl}/health`);
-      const data = await response.json();
+    const stats = [];
+    
+    // Server health - static, no sparkline
+    // Last query metrics - showing actual server-side breakdown
+    if (this.lastQueryMetrics) {
+      const m = this.lastQueryMetrics;
       
-      return [
-        {
-          label: 'Status',
-          value: data.status,
-          rawValue: data.status === 'ok' ? 1 : 0,
-          description: 'DataFusion server status'
-        },
-        {
-          label: 'Version',
-          value: data.version || 'Unknown',
-          rawValue: 0,
-          description: 'DataFusion wrapper version'
-        }
-      ];
-    } catch (e) {
-      console.warn('[DataFusion] Failed to poll stats:', e.message);
-      return [];
+      // === STATIC METRICS FIRST (no sparklines) ===
+      
+      // Data volume metrics
+      stats.push({
+        label: 'Rows',
+        value: m.server.rows.toLocaleString(),
+        rawValue: m.server.rows,
+        description: `Total rows: ${m.server.rows.toLocaleString()}`,
+        noSparkline: true
+      });
+      
+      const megabytes = m.server.bytes / (1024 * 1024);
+      stats.push({
+        label: 'Result Size',
+        value: `${megabytes.toFixed(2)} MB`,
+        rawValue: megabytes,
+        description: `Total memory: ${megabytes.toFixed(2)} MB`,
+        noSparkline: true
+      });
+      
+      const bytesPerRow = m.server.rows > 0 ? m.server.bytes / m.server.rows : 0;
+      stats.push({
+        label: 'Bytes/Row',
+        value: `${bytesPerRow.toFixed(1)} B`,
+        rawValue: bytesPerRow,
+        description: `Avg bytes per row: ${bytesPerRow.toFixed(1)} B`,
+        noSparkline: true
+      });
+      
+      // Parallelism configuration
+      stats.push({
+        label: 'CPU Cores',
+        value: m.server.cpuCount.toString(),
+        rawValue: m.server.cpuCount,
+        description: `Server CPU cores: ${m.server.cpuCount}`,
+        noSparkline: true
+      });
+      
+      stats.push({
+        label: 'Rows/Batch',
+        value: m.server.rowsPerBatch.toLocaleString(),
+        rawValue: m.server.rowsPerBatch,
+        description: `Avg rows per batch: ${m.server.rowsPerBatch.toLocaleString()}`,
+        noSparkline: true
+      });
+      
+      // === DYNAMIC METRICS SECOND (with sparklines) ===
+      
+      // Server-side timing breakdown
+      stats.push({
+        label: 'Parse/Plan',
+        value: `${m.server.parseMs.toFixed(1)} ms`,
+        rawValue: m.server.parseMs,
+        description: `SQL parsing + planning: ${m.server.parseMs.toFixed(2)} ms`
+      });
+      
+      stats.push({
+        label: 'Execution',
+        value: `${m.server.executionMs.toFixed(1)} ms`,
+        rawValue: m.server.executionMs,
+        description: `Query execution: ${m.server.executionMs.toFixed(2)} ms`
+      });
+      
+      stats.push({
+        label: 'Serialization',
+        value: `${m.server.serializationMs.toFixed(1)} ms`,
+        rawValue: m.server.serializationMs,
+        description: `Arrow IPC serialization: ${m.server.serializationMs.toFixed(2)} ms`
+      });
+      
+      const httpOverhead = m.totalRoundTrip - m.server.totalMs;
+      stats.push({
+        label: 'HTTP Overhead',
+        value: `${httpOverhead.toFixed(1)} ms`,
+        rawValue: httpOverhead,
+        description: `Network + client parsing: ${httpOverhead.toFixed(2)} ms`
+      });
+      
+      stats.push({
+        label: 'Total Time',
+        value: `${m.totalRoundTrip.toFixed(1)} ms`,
+        rawValue: m.totalRoundTrip,
+        description: `End-to-end time: ${m.totalRoundTrip.toFixed(2)} ms`
+      });
+      
+      // Throughput metrics - DYNAMIC, keep sparkline
+      const rowsPerMs = m.server.executionMs > 0 ? m.server.rows / m.server.executionMs : 0;
+      const rowsPerSec = rowsPerMs * 1000;
+      
+      stats.push({
+        label: 'Throughput',
+        value: `${(rowsPerSec / 1000).toFixed(1)}K rows/sec`,
+        rawValue: rowsPerSec,
+        description: 'Query execution throughput'
+      });
     }
+
+    return stats;
+  }
+
+  /**
+   * Returns the metrics history for charting or analysis.
+   * @returns {Array<object>} Array of metrics objects with timestamps.
+   */
+  getMetricsHistory() {
+    return this.metricsHistory;
+  }
+
+  /**
+   * Clears the metrics history.
+   */
+  clearMetricsHistory() {
+    this.metricsHistory = [];
+    this.lastQueryMetrics = null;
   }
 
   /**

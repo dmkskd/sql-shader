@@ -150,17 +150,44 @@ async fn execute_query(
 ) -> Result<Response, AppError> {
     info!("Executing query: {}", payload.query);
 
-    // Execute the query
+    // Start timing
+    let start_total = std::time::Instant::now();
+
+    // Parse SQL query
+    let parse_start = std::time::Instant::now();
     let df = state
         .ctx
         .sql(&payload.query)
         .await
         .context("Failed to parse SQL query")?;
+    let parse_duration = parse_start.elapsed();
 
+    // Execute query and collect results
+    let execution_start = std::time::Instant::now();
     let batches = df
         .collect()
         .await
         .context("Failed to execute query")?;
+    let execution_duration = execution_start.elapsed();
+
+    // Calculate total rows across all batches
+    let total_rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    let total_batches = batches.len();
+    
+    // Calculate total bytes (approximate memory usage)
+    let total_bytes: usize = batches.iter()
+        .map(|b| b.get_array_memory_size())
+        .sum();
+    
+    // Get number of columns
+    let num_columns = if !batches.is_empty() {
+        batches[0].num_columns()
+    } else {
+        0
+    };
+    
+    // Get CPU count
+    let cpu_count = num_cpus::get();
 
     // Return format based on request
     let format = if payload.format.is_empty() {
@@ -172,6 +199,7 @@ async fn execute_query(
     match format {
         "arrow" => {
             // Return Arrow IPC stream format
+            let serialization_start = std::time::Instant::now();
             let mut buffer = Vec::new();
             
             if !batches.is_empty() {
@@ -188,15 +216,38 @@ async fn execute_query(
                 writer.finish().context("Failed to finish Arrow stream")?;
             }
 
+            let serialization_duration = serialization_start.elapsed();
+            let total_duration = start_total.elapsed();
+
+            // Convert durations to fractional milliseconds for better precision
+            let parse_ms = parse_duration.as_secs_f64() * 1000.0;
+            let execution_ms = execution_duration.as_secs_f64() * 1000.0;
+            let serialization_ms = serialization_duration.as_secs_f64() * 1000.0;
+            let total_ms = total_duration.as_secs_f64() * 1000.0;
+
+            // Add metrics as custom headers
             Ok((
                 StatusCode::OK,
-                [("Content-Type", "application/vnd.apache.arrow.stream")],
+                [
+                    ("Content-Type", "application/vnd.apache.arrow.stream"),
+                    ("X-DataFusion-Parse-Ms", &format!("{:.2}", parse_ms)),
+                    ("X-DataFusion-Execution-Ms", &format!("{:.2}", execution_ms)),
+                    ("X-DataFusion-Serialization-Ms", &format!("{:.2}", serialization_ms)),
+                    ("X-DataFusion-Total-Ms", &format!("{:.2}", total_ms)),
+                    ("X-DataFusion-Rows", &total_rows.to_string()),
+                    ("X-DataFusion-Batches", &total_batches.to_string()),
+                    ("X-DataFusion-Bytes", &total_bytes.to_string()),
+                    ("X-DataFusion-Columns", &num_columns.to_string()),
+                    ("X-DataFusion-CPU-Count", &cpu_count.to_string()),
+                    ("X-DataFusion-Rows-Per-Batch", &(if total_batches > 0 { total_rows / total_batches } else { 0 }).to_string()),
+                ],
                 buffer,
             )
                 .into_response())
         }
         "json" => {
             // Convert to JSON format
+            let serialization_start = std::time::Instant::now();
             let mut all_rows = Vec::new();
             let mut schema_info = None;
 
@@ -227,11 +278,28 @@ async fn execute_query(
                 all_rows.extend(json_array);
             }
 
+            let serialization_duration = serialization_start.elapsed();
+            let total_duration = start_total.elapsed();
+
+            // Convert durations to fractional milliseconds for better precision
+            let parse_ms = parse_duration.as_secs_f64() * 1000.0;
+            let execution_ms = execution_duration.as_secs_f64() * 1000.0;
+            let serialization_ms = serialization_duration.as_secs_f64() * 1000.0;
+            let total_ms = total_duration.as_secs_f64() * 1000.0;
+
             // Optionally collect metrics
             let metrics = if payload.collect_metrics {
                 Some(serde_json::json!({
-                    "batches": batches.len(),
-                    "total_rows": all_rows.len(),
+                    "batches": total_batches,
+                    "total_rows": total_rows,
+                    "total_bytes": total_bytes,
+                    "columns": num_columns,
+                    "timing": {
+                        "parse_ms": parse_ms,
+                        "execution_ms": execution_ms,
+                        "serialization_ms": serialization_ms,
+                        "total_ms": total_ms,
+                    }
                 }))
             } else {
                 None

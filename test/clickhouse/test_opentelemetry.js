@@ -122,7 +122,7 @@ async function runOpenTelemetryTest() {
 
   try {
     // Get stored settings or use defaults
-    const storedSettings = JSON.parse(localStorage.getItem('pixelql.clickhouse-settings')) || {};
+    const storedSettings = JSON.parse(localStorage.getItem('sql-shader.clickhouse-settings')) || {};
     
     log(`Connecting to ClickHouse: ${storedSettings.url || 'http://localhost:8123'}`, 'info');
     

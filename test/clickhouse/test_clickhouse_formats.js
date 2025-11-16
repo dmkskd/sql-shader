@@ -24,7 +24,7 @@ export class ClickHouseFormatsTestSuite extends BaseTestRunner {
 
         // Initialize ClickHouse client
         const storedSettings = typeof localStorage !== 'undefined' 
-            ? JSON.parse(localStorage.getItem('pixelql.clickhouse-settings') || '{}')
+            ? JSON.parse(localStorage.getItem('sql-shader.clickhouse-settings') || '{}')
             : {};
         
         this.client = this.createClient({

@@ -7,7 +7,7 @@ import { SHADERS, loadShaderContent } from './dummy_shaders.js';
 
 /**
  * @interface Engine
- * @description Defines the contract for a database engine that can be used by PixelQL.
+ * @description Defines the contract for a database engine that can be used by SQL Shader.
  * This ensures that the main application can interact with any backend in a consistent way.
  */
 /**

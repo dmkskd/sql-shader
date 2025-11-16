@@ -1,9 +1,9 @@
 import { ShaderLoader } from '../shader_loader.js';
 
 const fileShaderPaths = [
-    { path: './src/engines/datafusion/shaders/template_basic.sql', isTemplate: true },
+    './src/engines/datafusion/shaders/squircle2.sql',
     './src/engines/datafusion/shaders/template_basic.sql',
-
+    { path: './src/engines/datafusion/shaders/template_basic.sql', isTemplate: true },
   ];
 
 const inlineShaders = [];

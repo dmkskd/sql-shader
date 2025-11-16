@@ -35,7 +35,7 @@ while true; do
   
   # Execute shader using Docker ClickHouse client
   # Use environment variable expansion inside container to avoid command line exposure
-  output=$(docker exec -e CLICKHOUSE_PASSWORD pixelql-clickhouse \
+  output=$(docker exec -e CLICKHOUSE_PASSWORD sql-shader-clickhouse \
     sh -c 'clickhouse client \
       --hardware-utilization \
       --password="$CLICKHOUSE_PASSWORD" \
