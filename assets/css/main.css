@@ -1,3 +1,14 @@
+/* Override Bootstrap's default body styles that might affect the canvas */
+body {
+  background-color: #1a1a1a !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+canvas {
+  background-color: #000 !important;
+}
+
 /* Make flamegraph text more readable with white text and dark outline */
 svg.d3-flame-graph text,
 .d3-flame-graph text,
@@ -419,6 +430,27 @@ header #version-span {
 .profiler-tab-content.active {
   display: block;
 }
+
+/* PEV2 Visualizer specific styling */
+#datafusion-pev2-container {
+  width: 100% !important;
+  min-height: 90vh !important;
+  height: auto !important;
+}
+
+#pev2-app,
+#pev2-app > div {
+  width: 100% !important;
+  min-height: 90vh !important;
+  height: auto !important;
+}
+
+/* Override PEV2's default small height */
+.pev2,
+.pev2 > div {
+  min-height: 800px !important;
+  height: auto !important;
+}
 /* --- Middle Tab Styles (between top-level and inner tabs) --- */
 .middle-tabs {
   display: flex;
@@ -616,9 +648,9 @@ header #version-span {
 }
 #engine-stats-content {
   display: grid;
-  grid-template-columns: repeat(4, minmax(100px, 1fr)); /* 4 columns for 7 stats */
-  grid-template-rows: repeat(2, auto); /* Max 2 entries per column */
-  grid-auto-flow: column; /* Fill columns first */
+  grid-template-columns: repeat(5, auto); /* Auto-size columns based on content */
+  grid-template-rows: repeat(2, auto); /* 2 rows for 10 items (2+2+2+2+2) */
+  grid-auto-flow: column; /* Fill columns vertically - static metrics on left */
   gap: 3px 15px;
 }
 .engine-stat-item {

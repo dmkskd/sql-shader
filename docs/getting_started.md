@@ -24,17 +24,6 @@ The `Caddy` service as part of `just run` should take care of most of the CORS p
 
 Use `Help` for context-based help (`CMD+/` on `Mac` or `CTRL+/` on `Windows/Linux`)
 
-## Debug mode
-
-When you enable Debug mode (use the `Debug` button in the controls bar) the editor stops rendering pixels
-to the canvas and instead shows the raw query results as text. This is useful for inspecting the rows and
-columns your SQL returns without needing to map them to r,g,b values.
-
-- Auto-compile is disabled in Debug mode to avoid running queries on every keystroke. Use the **Run Query** button (visible only while Debug mode is active) to compile and execute the current SQL manually.
-- The Profile feature still works in Debug mode — use the **Profile** button to run the query once and log engine-specific profiling information to the console.
-
-Note: Play / Restart controls are hidden in Debug mode to emphasize manual execution.
-
 # Engines
 
 The application has been architected to support multiple SQL Engines.
@@ -50,18 +39,31 @@ https://github.com/user-attachments/assets/2320e576-05a8-4df9-a505-290de2ec25eb
 
 [Clickhouse](clickhouse.md)
 
+## DataFusion
+
+[DataFusion](datafusion.md)
+
+## Debug mode
+
+When you enable Debug mode (use the `Debug` button in the controls bar) the editor stops rendering pixels
+to the canvas and instead shows the raw query results as text. This is useful for inspecting the rows and
+columns your SQL returns without needing to map them to r,g,b values.
+
+- Auto-compile is disabled in Debug mode to avoid running queries on every keystroke. Use the **Run Query** button (visible only while Debug mode is active) to compile and execute the current SQL manually.
+- The Profile feature still works in Debug mode — use the **Profile** button to run the query once and log engine-specific profiling information to the console.
+
+Note: Play / Restart controls are hidden in Debug mode to emphasize manual execution.
 
 ### Adding a new engine
 If you want to experiment [adding a new engine](adding_a_new_engine.md).
 
 ## Engine Feature Matrix
 
-|Feature|DuckDB-WASM|ClickHouse|
-|:------|:----------|:---------|
-| Firefox| :check: | C |
-| Chrome| :check: | C |
-| Safari| :check: | C |
-| Audio | :check: | C |
+**[WIP]** Browser compatibility etc
+
+|Feature|DuckDB-WASM|ClickHouse|DataFusion|
+|:------|:----------|:---------|:---------|
+....
 
 # Architecture
 If you are intereted to know how it works or making changes, have a look at the [architecture](architecture.md) document.

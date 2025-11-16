@@ -16,6 +16,9 @@ dist/
 build/
 *.log
 
+# Rust build artifacts
+docker/datafusion/target/
+
 # Environment variables
 .env
 

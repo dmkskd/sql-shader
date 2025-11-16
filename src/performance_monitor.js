@@ -80,25 +80,27 @@ export class PerformanceMonitor {
         stats = otherStats; // Process the remaining stats
 
         stats.forEach((stat, index) => {
-            const { label, value, rawValue, description } = stat;
+            const { label, value, rawValue, description, noSparkline } = stat;
             const historyKey = `stat-${index}`;
 
-            // Update history for this stat
-            // --- New Logic to Prime the History ---
-            // If this is the 'Compile Time' metric and it's the first time we're seeing it,
-            // we can "prime" its history with the initial, potentially slow, prepare time.
-            // This makes the initial compilation cost visible on the sparkline.
-            if (label === 'Compile Time' && !this.engineStatHistories.has(historyKey) && window.initialPrepareTime) {
-                history.data.push(window.initialPrepareTime);
-                // Clear the global variable after use to prevent it from being used again.
-                delete window.initialPrepareTime;
+            // Update history for this stat (only if sparkline is enabled)
+            if (!noSparkline) {
+                // --- New Logic to Prime the History ---
+                // If this is the 'Compile Time' metric and it's the first time we're seeing it,
+                // we can "prime" its history with the initial, potentially slow, prepare time.
+                // This makes the initial compilation cost visible on the sparkline.
+                if (label === 'Compile Time' && !this.engineStatHistories.has(historyKey) && window.initialPrepareTime) {
+                    history.data.push(window.initialPrepareTime);
+                    // Clear the global variable after use to prevent it from being used again.
+                    delete window.initialPrepareTime;
+                }
+                if (!this.engineStatHistories.has(historyKey)) {
+                    this.engineStatHistories.set(historyKey, { data: [], max: 0 });
+                }
+                const history = this.engineStatHistories.get(historyKey);
+                history.data.push(rawValue);
+                if (history.data.length > 60) history.data.shift(); // Keep 60 data points
             }
-            if (!this.engineStatHistories.has(historyKey)) {
-                this.engineStatHistories.set(historyKey, { data: [], max: 0 });
-            }
-            const history = this.engineStatHistories.get(historyKey);
-            history.data.push(rawValue);
-            if (history.data.length > 60) history.data.shift(); // Keep 60 data points
 
             // Find or create DOM elements
             let itemEl = document.getElementById(`engine-stat-item-${index}`);
@@ -106,26 +108,47 @@ export class PerformanceMonitor {
                 itemEl = document.createElement('div');
                 itemEl.id = `engine-stat-item-${index}`;
                 itemEl.className = 'engine-stat-item';
-                if (description) itemEl.title = description; // Set the tooltip
+                
+                // Only include sparkline canvas if not disabled
+                const sparklineHtml = noSparkline ? '' : `<canvas class="sparkline-canvas" id="sparkline-canvas-${index}" width="60" height="20"></canvas>`;
+                
                 itemEl.innerHTML = `
-                    <div class="stat-text">
-                        <span class="stat-label">${label}:</span>
+                    <div class="stat-text" id="stat-text-${index}">
+                        <span class="stat-label" id="stat-label-${index}">${label}:</span>
                         <span class="stat-value" id="stat-value-${index}"></span>
                     </div>
-                    <canvas class="sparkline-canvas" id="sparkline-canvas-${index}" width="60" height="20"></canvas>
+                    ${sparklineHtml}
                 `;
                 engineStatsContent.appendChild(itemEl);
             }
+            
+            // Always update the tooltip with current description or label+value
+            // This ensures full text is visible on hover if cutoff
+            const tooltipText = description || `${label}: ${value}`;
+            itemEl.title = tooltipText;
+            
+            // Also set title on the text container and individual elements for better coverage
+            const statTextEl = document.getElementById(`stat-text-${index}`);
+            const statLabelEl = document.getElementById(`stat-label-${index}`);
+            if (statTextEl) statTextEl.title = tooltipText;
+            if (statLabelEl) statLabelEl.title = tooltipText;
 
             // Update text value
-            document.getElementById(`stat-value-${index}`).textContent = value;
+            const statValueEl = document.getElementById(`stat-value-${index}`);
+            if (statValueEl) {
+                statValueEl.textContent = value;
+                statValueEl.title = tooltipText;
+            }
 
-            // Draw sparkline
-            const canvas = document.getElementById(`sparkline-canvas-${index}`);
-            // Only draw a sparkline if the rawValue is a number and not always zero,
-            // which indicates it's a dynamic metric worth graphing.
-            if (typeof rawValue === 'number' && rawValue > 0) {
-                this.drawSparkline(canvas, history.data);
+            // Draw sparkline (only if enabled and history exists)
+            if (!noSparkline) {
+                const canvas = document.getElementById(`sparkline-canvas-${index}`);
+                const history = this.engineStatHistories.get(historyKey);
+                // Only draw a sparkline if the rawValue is a number and not always zero,
+                // which indicates it's a dynamic metric worth graphing.
+                if (canvas && history && typeof rawValue === 'number' && rawValue > 0) {
+                    this.drawSparkline(canvas, history.data);
+                }
             }
         });
     }

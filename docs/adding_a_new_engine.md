@@ -1,4 +1,4 @@
-# How to Add a New Engine to PixelQL
+# How to Add a New Engine to SQL Shader
 
 # How to Add a New Engine to SQL Shader
 
