@@ -1,4 +1,5 @@
 import mermaid from 'mermaid';
+import { formatPhysicalPlan } from './physical_plan_formatter.js';
 
 /**
  * DataFusion Explain Plan Module
@@ -280,11 +281,22 @@ export class DataFusionProfilerExplain {
     }
     
     if (this.physicalPlan) {
+      // Use the visual formatter for physical plan
+      const formattedPhysical = formatPhysicalPlan(this.physicalPlan);
+      
       tabs.push({ 
         id: 'physical', 
-        title: 'Physical Plan', 
+        title: 'Physical Plan Timeline', 
+        content: formattedPhysical,
+        info: 'Generated via: <code>EXPLAIN ANALYZE &lt;query&gt;</code> - Shows execution plan with timing metrics'
+      });
+      
+      // Also add raw physical plan as a separate tab
+      tabs.push({ 
+        id: 'physical-raw', 
+        title: 'Physical Plan (Raw)', 
         content: this.formatPlan(this.physicalPlan),
-        info: 'Generated via: <code>EXPLAIN ANALYZE &lt;query&gt;</code> (if available)'
+        info: 'Raw physical plan text from DataFusion'
       });
     }
     
