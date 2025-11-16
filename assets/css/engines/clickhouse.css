@@ -1,0 +1,20 @@
+/* ============================================
+   CLICKHOUSE ENGINE - FLAMEGRAPH STYLES
+   ============================================ */
+
+/* Make flamegraph text more readable with white text and dark outline */
+svg.d3-flame-graph text,
+.d3-flame-graph text,
+#profile-content-flamegraph text {
+  fill: #fff !important;
+  font-weight: 600 !important;
+  paint-order: stroke fill !important;
+  stroke: #000 !important;
+  stroke-width: 3px !important;
+  stroke-linejoin: round !important;
+}
+
+#profile-content-flamegraph {
+  background-color: #2a2a2a;
+  border-radius: 3px;
+}
