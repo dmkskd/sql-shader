@@ -10,7 +10,7 @@ If you are familiar with [Shadertoy](https://www.shadertoy.com/) - that's Shader
 
 It currently supports the following database engines:
 * **DuckDB-WASM**: Runs entirely in the browser using WebAssembly. No server required! Can run your on phone as well!
-* **ClickHouse**: Connects to a 'remote' (as external to the browser) ClickHouse server via its HTTP interface. It can be a local instance running on your machine. See [quickstart](#quick-start-recommended) on how to run it in docker.
+* **ClickHouse**: Connects to a 'remote' (as external to the browser) ClickHouse server via its HTTP interface. It can be a local instance running on your machine. See [quickstart](#quick-start) on how to run it in docker.
 * **DataFusion**: Connects to a 'remote' (as external to the browser) DataFusion server, similar to ClickHouse
 
 See [adding a new engine](docs/adding_a_new_engine.md) if you want to integrate a new database engine.
