@@ -41,6 +41,8 @@ https://github.com/user-attachments/assets/2320e576-05a8-4df9-a505-290de2ec25eb
 
 ## DataFusion
 
+https://github.com/user-attachments/assets/c810d19b-cc17-4c8d-a26b-0c67f8a83e06
+
 [DataFusion](datafusion.md)
 
 ## Debug mode
