@@ -288,7 +288,7 @@ export class DataFusionProfilerExplain {
         id: 'physical', 
         title: 'Physical Plan Timeline', 
         content: formattedPhysical,
-        info: 'Generated via: <code>EXPLAIN ANALYZE &lt;query&gt;</code> - Shows execution plan with timing metrics'
+        info: 'Generated via: <code>EXPLAIN ANALYZE &lt;query&gt;</code>'
       });
       
       // Also add raw physical plan as a separate tab
