@@ -88,11 +88,35 @@ function parsePlanLine(line) {
   const elapsedCompute = metrics.elapsed_compute || metrics.elapsed_time || '0';
   const timeUs = parseTime(elapsedCompute);
   
+  // Extract key metrics
+  const keyMetrics = [];
+  
+  // output_bytes
+  if (metrics.output_bytes) {
+    keyMetrics.push(metrics.output_bytes);
+  }
+  
+  // output_rows
+  if (metrics.output_rows) {
+    keyMetrics.push(`${metrics.output_rows} rows`);
+  }
+  
+  // selectivity (FilterExec and NestedLoopJoinExec)
+  if (metrics.selectivity) {
+    keyMetrics.push(`${metrics.selectivity} selectivity`);
+  }
+  
+  // reduction_factor (AggregateExec)
+  if (metrics.reduction_factor) {
+    keyMetrics.push(`${metrics.reduction_factor} reduction`);
+  }
+  
   return {
     indent: indent.length,
     operator: operator.trim(),
     description: description.replace(/,\s*metrics=.*$/, '').trim(),
     metrics,
+    keyMetrics,
     timeUs,
     line: line.trim()
   };
@@ -167,6 +191,11 @@ export function formatPhysicalPlan(physicalPlanText) {
     
     const rowClass = item.isHotspot ? 'plan-row hotspot' : 'plan-row';
     
+    // Format key metrics if present
+    const metricsDisplay = item.keyMetrics && item.keyMetrics.length > 0
+      ? `<span class="operator-metrics"> [${item.keyMetrics.join(', ')}]</span>`
+      : '';
+    
     html += `
     <div class="${rowClass}">
       <div class="col-time">${formatTime(item.timeUs)}</div>
@@ -177,7 +206,7 @@ export function formatPhysicalPlan(physicalPlanText) {
         </div>
       </div>
       <div class="col-operator">
-        ${indentSpaces}${item.operator}: ${item.description}
+        ${indentSpaces}${item.operator}: ${item.description}${metricsDisplay}
       </div>
     </div>
 `;
