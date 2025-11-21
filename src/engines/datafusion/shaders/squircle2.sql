@@ -11,8 +11,8 @@ pixels AS (
         (CAST(x AS DOUBLE) * 2.0 - $width::DOUBLE) / $height::DOUBLE AS p_x,
         (CAST(y AS DOUBLE) * 2.0 - $height::DOUBLE) / $height::DOUBLE AS p_y
     FROM
-        ((SELECT unnest(range($width::INT)) AS x) 
-         CROSS JOIN (SELECT unnest(range($height::INT)) AS y)) AS p
+        ((SELECT unnest(range($height::INT)) AS y)
+         CROSS JOIN (SELECT unnest(range($width::INT)) AS x)) AS p
 ),
 rotated AS (
     SELECT
